@@ -13,7 +13,7 @@ from pathlib import Path
 
 def inspect_csv(path: Path) -> dict:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    counts = Counter(); versions = Counter(); invalid = Counter(); first = last = None
+    counts = Counter(); versions = Counter(); years = Counter(); invalid = Counter(); first = last = None
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream, restkey="__extra__")
         required = {"latitude", "longitude", "acq_date", "acq_time", "version"}
@@ -32,6 +32,7 @@ def inspect_csv(path: Path) -> dict:
                 invalid["coordinates"] += 1
             try:
                 acquired = date.fromisoformat(row["acq_date"])
+                years[str(acquired.year)] += 1
                 first = min(first, acquired) if first else acquired
                 last = max(last, acquired) if last else acquired
             except ValueError:
@@ -47,7 +48,7 @@ def inspect_csv(path: Path) -> dict:
             else: invalid["type"] += 1
     return {"artifact_kind":"firepulse-nrt-preflight", "schema_version":1, "input_name":path.name, "input_sha256":digest,
             "type_column_present":has_type, "counts":dict(sorted(counts.items())), "invalid":dict(sorted(invalid.items())),
-            "versions":dict(sorted(versions.items())), "first_date":first.isoformat() if first else None, "last_date":last.isoformat() if last else None,
+            "versions":dict(sorted(versions.items())), "years":dict(sorted(years.items())), "first_date":first.isoformat() if first else None, "last_date":last.isoformat() if last else None,
             "limitations":["NRT or standard processing must be confirmed from product provenance, not inferred solely from a filename or numerical version.", "Country geometry, observation coverage, duplicate detections, and source authenticity have not been verified.", "Preflight does not normalize data or import it to a database."]}
 
 

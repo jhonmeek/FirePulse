@@ -14,6 +14,7 @@ class NrtPreflightTests(unittest.TestCase):
             self.assertEqual(report["counts"]["type_unavailable"],1)
             self.assertNotIn("type_0",report["counts"])
             self.assertEqual(report["first_date"],"2026-11-14")
+            self.assertEqual(report["years"],{"2026":1})
             self.assertEqual(report["invalid"],{})
 
     def test_invalid_coordinates_and_type_are_reported(self):
