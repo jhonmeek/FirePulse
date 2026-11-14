@@ -4,12 +4,25 @@ import { storeToRefs } from 'pinia'
 import { useFiltersStore } from '@/stores/filters'
 import type { Region } from '@/types/api'
 import type { ColorMode } from '@/utils/calendar'
+import type { MaskedSummary } from '@/utils/anomalies'
 
 const props = defineProps<{
   regions: Region[]
   /** Années disponibles dans la série chargée. */
   availableYears: number[]
+  /** Détections retirées par le filtre torchères sur la période affichée. */
+  masked: MaskedSummary | null
 }>()
+
+const maskedLabel = computed(() => {
+  const m = props.masked
+  if (!m) return null
+  const n = m.masked.toLocaleString('fr-FR')
+  const share = (100 * m.share).toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+  return filterStatic.value
+    ? `${n} détections masquées (${share} % du brut)`
+    : `${n} détections de sources statiques incluses (${share} %)`
+})
 
 const filters = useFiltersStore()
 const { region, filterStatic, colorMode, yearRange } = storeToRefs(filters)
@@ -93,15 +106,24 @@ const modes: { value: ColorMode; label: string }[] = [
       </div>
     </fieldset>
 
-    <label class="flex items-center gap-2 pb-1.5 text-sm">
-      <input
-        v-model="filterStatic"
-        type="checkbox"
-        class="size-4 accent-orange-700"
-        aria-describedby="filter-static-help"
-      />
-      <span class="font-medium text-stone-800">Exclure torchères / sources statiques</span>
-    </label>
+    <div class="flex flex-col gap-0.5 pb-0.5 text-sm">
+      <label class="flex items-center gap-2">
+        <input
+          v-model="filterStatic"
+          type="checkbox"
+          class="size-4 accent-orange-700"
+          aria-describedby="filter-static-help filter-static-count"
+        />
+        <span class="font-medium text-stone-800">Exclure torchères / sources statiques</span>
+      </label>
+      <p
+        id="filter-static-count"
+        class="pl-6 text-xs tabular-nums text-stone-600"
+        aria-live="polite"
+      >
+        {{ maskedLabel ?? '' }}
+      </p>
+    </div>
     <p id="filter-static-help" class="sr-only">
       Activé : feux de végétation uniquement (détections de type 0 hors cellules industrielles
       persistantes). Désactivé : toutes les anomalies thermiques.

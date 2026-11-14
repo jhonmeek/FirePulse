@@ -15,16 +15,19 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 - **10 régions chargées** depuis [data/boundaries/](data/boundaries/) : `GA` (Gabon entier) et `GA-1` à `GA-9` (9 provinces).
 - **Grille spatiale `0.25°` (`42 482` lignes)** + **masque statique torchères `0.05°` (`183` cellules)** + **séries harmonisées (`6 011` lignes)** disponibles via **8 endpoints REST `/api/v1/`**.
 
-### Frontend (M3) — jalon H3–H12
+### Frontend (M3) — jalon H12–H24
 
-- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia** dans [frontend/](frontend/) ; `echarts`/`vue-echarts` et `maplibre-gl` installés pour le graphe comparatif et la carte (H12–H34).
+- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts** dans [frontend/](frontend/) ; `maplibre-gl` installé pour la carte (H24–H34).
 - **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
 - **Flux réel bout-en-bout vérifié** : UI branchée sur l'API locale (`GA` + 9 provinces, bascule torchères), requêtes `/api/v1/*` en 200.
-- **Écran principal** :
-  - barre de contrôle : zone (Gabon / provinces), plage d'années, couleur *Intensité* / *Anomalie*, toggle « Exclure torchères » ;
+- **Onglet *Explorer*** :
+  - barre de contrôle : zone (Gabon / provinces), plage d'années, couleur *Intensité* / *Anomalie*, toggle « Exclure torchères » avec **compteur de détections masquées** (les deux séries, avec et sans filtre, sont chargées ensemble : bascule instantanée) ;
   - bandeau des régimes capteurs (Terra seul → MODIS reconstitué → VIIRS S-NPP → pont NOAA-20) avec la plage affichée en surbrillance ;
   - **calendrier Années × Mois accessible** : palettes adaptées aux daltoniens (YlOrRd en racine carrée pour l'intensité, PuOr divergente pour l'anomalie, orange = au-dessus de la médiane), mois provisoires/NRT hachurés, mois sans donnée en pointillés, navigation clavier complète, libellé lecteur d'écran par cellule ;
-  - **panneau détail du mois** (survol/focus = aperçu, clic/Entrée = épinglé) : valeur harmonisée ± intervalle 80 %, médiane et IQR du même mois, anomalie (% ou écart absolu si médiane nulle), rang historique 2001–2025, régime, couverture, détections brutes par capteur.
+  - **panneau détail du mois** (survol/focus = aperçu, clic/Entrée = épinglé) : valeur harmonisée ± intervalle 80 %, médiane et IQR du même mois, anomalie (% ou écart absolu si médiane nulle), rang historique 2001–2025, régime, couverture, détections brutes par capteur ;
+  - **graphe comparatif ECharts** : MODIS / VIIRS S-NPP / NOAA-20 bruts, série harmonisée et **bande d'incertitude conforme 80 %**, bouton *Avant / Après harmonisation*, repères des ruptures (Aqua 2002, VIIRS 2012), saut S-NPP/MODIS mesuré (≈ ×3,9 au Gabon), clic = sélection du mois. ECharts est chargé en différé (chunk séparé) ;
+  - **anomalies** : saisonnalité de référence (médiane + IQR par mois, mois sélectionné en pointillés) et mois les plus au-dessus / en dessous de la médiane sur la plage affichée, cliquables.
+- **Onglet *Méthodologie & preuve*** (critère H24 « moteur scientifique validé hors échantillon visible dans l'UI ») : benchmark hors échantillon `2020–2025` des 5 modèles (MAE, RMSE, biais, R², formules avec paramètres calibrés), gain du modèle retenu (au Gabon : −72 % de MAE vs naïf, −16 % vs ratio global, R² = 0,919), facteurs d'incertitude conformes, pont NOAA-20, masque torchères, limites documentées — le tout lu depuis `/api/v1/methodology/`.
 - **Mode mocks** pour développer sans backend : générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2. Comparés à l'API locale : identiques sans filtre ; avec filtre torchères, 37 comptages bruts diffèrent (bord de cellule du masque `0.05°`), écart harmonisé max 1,5 %.
 
 ---
@@ -102,6 +105,12 @@ Après une évolution des CSV de `data/raw/gabon/` ou de la chaîne baseline (n�
 py -3.12 scripts/generate_mocks.py
 ```
 
+Puis reformater (le générateur écrit du JSON compact, les mocks versionnés sont formatés par Prettier) :
+
+```bash
+npm run format
+```
+
 `src/mocks/calendar_edge_cases.json` est **synthétique** (NRT, pont NOAA-20, médiane nulle, mois sans donnée) et sert uniquement à tester l'UI.
 
 ### Vérifications
@@ -112,7 +121,7 @@ npm run test:unit -- --run
 npm run build
 ```
 
-Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite. Ils couvrent aussi les utilitaires du calendrier (palettes, anomalies, rang) et les composants (navigation clavier, sélection, hachures). Ils tournent toujours en mode mocks, même si `.env.local` pointe vers l'API.
+Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite. Ils couvrent aussi les utilitaires (palettes, rang, options du graphe, bande d'incertitude, classement des anomalies, compteur masqué, benchmark) et les composants (navigation clavier, sélection, hachures, bascule avant/après, méthodologie ; ECharts est remplacé par un double car jsdom n'a pas de canvas). Ils tournent toujours en mode mocks, même si `.env.local` pointe vers l'API.
 
 ---
 
@@ -150,8 +159,10 @@ FirePulse/
 │       ├── services/api.ts      # Client API + bascule mocks / API (VITE_USE_MOCKS)
 │       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères, couleur, mois sélectionné
 │       ├── composables/         # useCalendar (historique complet, anti-réponse obsolète), useRegions
-│       ├── utils/calendar.ts    # Matrice années × mois, palettes, anomalies, rang historique, libellés FR
-│       ├── components/          # ControlBar, RegimeTimeline, CalendarHeatmap, MonthDetail
+│       ├── utils/               # calendar.ts (matrice, palettes, rang), chart.ts (options ECharts),
+│       │                        # anomalies.ts (saisonnalité, classement, compteur masqué), methodology.ts
+│       ├── components/          # ControlBar, RegimeTimeline, CalendarHeatmap, MonthDetail,
+│       │                        # ComparisonChart, AnomaliesPanel, MethodologyPanel
 │       ├── mocks/               # JSON générés (GA) + cas limites synthétiques
 │       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/
