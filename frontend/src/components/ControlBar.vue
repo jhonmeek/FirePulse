@@ -32,7 +32,7 @@ const maskedLabel = computed(() => {
 })
 
 const filters = useFiltersStore()
-const { region, filterStatic, colorMode, yearRange } = storeToRefs(filters)
+const { region, bbox, filterStatic, colorMode, yearRange } = storeToRefs(filters)
 
 const country = computed(() => props.regions.filter((r) => r.region_type === 'country'))
 const provinces = computed(() => props.regions.filter((r) => r.region_type === 'province'))
@@ -59,9 +59,10 @@ const modes: { value: ColorMode; label: string }[] = [
       <span class="font-medium text-stone-700">Zone</span>
       <select
         class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-stone-900 focus-visible:outline-2 focus-visible:outline-orange-600"
-        :value="region"
+        :value="bbox ? 'CUSTOM' : region"
         @change="onRegion"
       >
+        <option v-if="bbox" value="CUSTOM" disabled>Zone dessinée</option>
         <option v-if="!regions.length" value="GA">Gabon</option>
         <option v-for="r in country" :key="r.code" :value="r.code">{{ r.name }}</option>
         <optgroup v-if="provinces.length" label="Provinces">

@@ -15,9 +15,9 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 - **10 régions chargées** depuis [data/boundaries/](data/boundaries/) : `GA` (Gabon entier) et `GA-1` à `GA-9` (9 provinces).
 - **Grille spatiale `0.25°` (`42 482` lignes)** + **masque statique torchères `0.05°` (`183` cellules)** + **séries harmonisées (`6 011` lignes)** disponibles via **8 endpoints REST `/api/v1/`**.
 
-### Frontend (M3) — jalon H12–H24
+### Frontend (M3) — jalon H24–H34
 
-- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts** dans [frontend/](frontend/) ; `maplibre-gl` installé pour la carte (H24–H34).
+- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts + MapLibre GL** dans [frontend/](frontend/). ECharts et MapLibre sont chargés en différé (chunks séparés) : le bundle principal reste à ~155 Ko.
 - **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
 - **Flux réel bout-en-bout vérifié** : UI branchée sur l'API locale (`GA` + 9 provinces, bascule torchères), requêtes `/api/v1/*` en 200.
 - **Onglet *Explorer*** :
@@ -26,7 +26,10 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
   - **calendrier Années × Mois accessible** : palettes adaptées aux daltoniens (YlOrRd en racine carrée pour l'intensité, PuOr divergente pour l'anomalie, orange = au-dessus de la médiane), mois provisoires/NRT hachurés, mois sans donnée en pointillés, navigation clavier complète, libellé lecteur d'écran par cellule ;
   - **panneau détail du mois** (survol/focus = aperçu, clic/Entrée = épinglé) : valeur harmonisée ± intervalle 80 %, médiane et IQR du même mois, anomalie (% ou écart absolu si médiane nulle), rang historique 2001–2025, régime, couverture, détections brutes par capteur ;
   - **graphe comparatif ECharts** : MODIS / VIIRS S-NPP / NOAA-20 bruts, série harmonisée et **bande d'incertitude conforme 80 %**, bouton *Avant / Après harmonisation*, repères des ruptures (Aqua 2002, VIIRS 2012), saut S-NPP/MODIS mesuré (≈ ×3,9 au Gabon), clic = sélection du mois. ECharts est chargé en différé (chunk séparé) ;
-  - **anomalies** : saisonnalité de référence (médiane + IQR par mois, mois sélectionné en pointillés) et mois les plus au-dessus / en dessous de la médiane sur la plage affichée, cliquables.
+  - **anomalies** : saisonnalité de référence (médiane + IQR par mois, mois sélectionné en pointillés) et mois les plus au-dessus / en dessous de la médiane sur la plage affichée, cliquables ;
+  - **carte MapLibre** (`/api/v1/hotspots/?mode=grid&agg=cell`) : grille `0.25°` colorée par détections brutes d'un capteur (S-NPP par défaut, MODIS avant 2012, NOAA-20), même échelle racine carrée que le calendrier, **sites statiques exclus** (cellules `0.05°`, bleu) avec info-bulle (motif, détections type 2/3, mois actifs), contours Gabon et provinces, fond de carte OpenFreeMap (sans clé ; attribution OpenMapTiles/OSM affichée), désactivable ; hors ligne, la carte démarre sur fond uni et la grille reste affichée ;
+  - **zone libre** : bouton *Dessiner une zone* (cliquer-glisser un rectangle, Échap pour annuler) ou saisie lat/lon au clavier. La bbox remplace la région pour le calendrier, le graphe, les anomalies, la carte et l'export (série `CUSTOM_BBOX` agrégée par M2 depuis la grille ; pas d'intervalle propre à la zone, signalé dans l'UI) ;
+  - **Export CSV** (`/api/v1/export/?dataset=series`) de la zone et de la période affichées. En mode mocks, le même CSV est construit côté client (identique octet pour octet à l'export Django sur la série GA sans filtre).
 - **Onglet *Méthodologie & évaluation*** (critère H24 « moteur scientifique évalué hors échantillon visible dans l'UI », **protocole en revue M1**) : évaluation `2020–2025` des 5 modèles ajustés sur `2012-02–2019-12` (MAE, RMSE, biais, R², formules avec paramètres calibrés), écart du modèle retenu sur la période test (au Gabon : −72 % de MAE vs naïf, −16 % vs ratio global, R² = 0,919). L'UI affiche les réserves de la revue : intervalle 80 % calibré sur les résidus de test, choix du modèle fait sur la même fenêtre, masque construit avec la période test. Également : facteurs d'incertitude conformes, pont NOAA-20, masque torchères, limites documentées — le tout lu depuis `/api/v1/methodology/`.
 - **Mode mocks** pour développer sans backend : générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2. Comparés à l'API locale : identiques sans filtre ; avec filtre torchères, 37 comptages bruts diffèrent (bord de cellule du masque `0.05°`), écart harmonisé max 1,5 %.
 
@@ -92,7 +95,7 @@ L'application tourne sur `http://localhost:5173`.
 
 | Mode | Activation | Source des données |
 | :--- | :--- | :--- |
-| **Mocks** (défaut en dev) | rien à faire | `frontend/src/mocks/*.json` — région `GA` uniquement ; provinces et zones libres renvoient une série vide |
+| **Mocks** (défaut en dev) | rien à faire | `frontend/src/mocks/*.json` — région `GA` ; une bbox fonctionne pour la carte (grille resommée côté client) mais pas pour les séries ; provinces : série vide |
 | **API Django** | créer `frontend/.env.local` avec `VITE_USE_MOCKS=false` | `/api/v1` relayé par le proxy Vite vers `http://localhost:8000` (backend lancé, voir ci-dessus) |
 
 Le build de production (`npm run build`) utilise toujours l'API réelle ; les mocks n'y sont pas inclus. Modèle de configuration : [frontend/.env.example](frontend/.env.example).
@@ -121,7 +124,7 @@ npm run test:unit -- --run
 npm run build
 ```
 
-Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite. Ils couvrent aussi les utilitaires (palettes, rang, options du graphe, bande d'incertitude, classement des anomalies, compteur masqué, benchmark) et les composants (navigation clavier, sélection, hachures, bascule avant/après, méthodologie ; ECharts est remplacé par un double car jsdom n'a pas de canvas). Ils tournent toujours en mode mocks, même si `.env.local` pointe vers l'API.
+Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite. Ils couvrent aussi les utilitaires (palettes, rang, options du graphe, bande d'incertitude, classement des anomalies, compteur, benchmark, bbox dessinée, échelle de la grille, export CSV) et la grille mock, comparée aux chiffres de l'API (352 cellules et 183 sites au Gabon ; 79 cellules et 27 sites sur une bbox de test), et les composants (navigation clavier, sélection, hachures, bascule avant/après, méthodologie ; ECharts est remplacé par un double car jsdom n'a pas de canvas). Ils tournent toujours en mode mocks, même si `.env.local` pointe vers l'API.
 
 ---
 
@@ -160,9 +163,9 @@ FirePulse/
 │       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères, couleur, mois sélectionné
 │       ├── composables/         # useCalendar (historique complet, anti-réponse obsolète), useRegions
 │       ├── utils/               # calendar.ts (matrice, palettes, rang), chart.ts (options ECharts),
-│       │                        # anomalies.ts (saisonnalité, classement, compteur masqué), methodology.ts
+│       │                        # anomalies.ts (saisonnalité, classement, compteur), methodology.ts, map.ts
 │       ├── components/          # ControlBar, RegimeTimeline, CalendarHeatmap, MonthDetail,
-│       │                        # ComparisonChart, AnomaliesPanel, MethodologyPanel
+│       │                        # ComparisonChart, AnomaliesPanel, MethodologyPanel, MapExplorer, ExportButton
 │       ├── mocks/               # JSON générés (GA) + cas limites synthétiques
 │       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/

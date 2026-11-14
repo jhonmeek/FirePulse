@@ -58,7 +58,7 @@ def load_observations() -> pd.DataFrame:
     frames = []
     for prefix, source in (("modis", "modis"), ("viirs-snpp", "viirs-snpp"), ("viirs-jpss1", "viirs-noaa20")):
         for f in sorted(RAW.glob(f"{prefix}_*_Gabon.csv")):
-            df = pd.read_csv(f, usecols=["latitude", "longitude", "acq_date", "satellite", "type"])
+            df = pd.read_csv(f, usecols=["latitude", "longitude", "acq_date", "satellite", "type", "frp"])
             df["source"] = source
             frames.append(df)
     obs = pd.concat(frames, ignore_index=True)
@@ -66,14 +66,23 @@ def load_observations() -> pd.DataFrame:
     return obs
 
 
-def static_mask(obs: pd.DataFrame) -> tuple[pd.Series, int]:
-    """Cellules 0.05° : type∈{2,3} ≥ 20 OU ≥ 48 mois actifs S-NPP. ST_Intersects inclut les bords."""
+def static_cell_stats(obs: pd.DataFrame) -> pd.DataFrame:
+    """Statistiques par cellule 0.05° (index = (lat×20, lon×20) entiers) + colonne `flagged`."""
     lat_i = np.floor(obs["latitude"].to_numpy() * 20.0).astype(int)
     lon_i = np.floor(obs["longitude"].to_numpy() * 20.0).astype(int)
     cells = pd.DataFrame({"lat": lat_i, "lon": lon_i, "t23": obs["type"].isin([2, 3]).to_numpy()})
     cells["snpp_month"] = obs["month"].where(obs["source"] == "viirs-snpp").to_numpy()
     g = cells.groupby(["lat", "lon"]).agg(t23=("t23", "sum"), active=("snpp_month", "nunique"))
-    flagged = set(g[(g["t23"] >= 20) | (g["active"] >= 48)].index)
+    g["flagged"] = (g["t23"] >= 20) | (g["active"] >= 48)
+    return g
+
+
+def static_mask(obs: pd.DataFrame) -> tuple[pd.Series, int]:
+    """Cellules 0.05° : type∈{2,3} ≥ 20 OU ≥ 48 mois actifs S-NPP. ST_Intersects inclut les bords."""
+    lat_i = np.floor(obs["latitude"].to_numpy() * 20.0).astype(int)
+    lon_i = np.floor(obs["longitude"].to_numpy() * 20.0).astype(int)
+    g = static_cell_stats(obs)
+    flagged = set(g[g["flagged"]].index)
 
     # Un point posé exactement sur un bord touche aussi la cellule voisine (sud / ouest).
     lat_edge = np.isclose(obs["latitude"].to_numpy() * 20.0, lat_i)
@@ -383,6 +392,64 @@ def methodology_response(params: dict, metrics: dict, filter_static: bool, maske
     }
 
 
+def static_cells_response(obs: pd.DataFrame) -> list[list]:
+    """Sites statiques : [cell_id, type23_count, active_months_snpp, reason] (règle d'import_firms)."""
+    g = static_cell_stats(obs)
+    out = []
+    for (la, lo), r in g[g["flagged"]].iterrows():
+        both = r["t23"] >= 20 and r["active"] >= 48
+        reason = (
+            "persistent_type23_and_snpp_frequency" if both
+            else "type23_static_threshold" if r["t23"] >= 20 else "snpp_high_persistence_48m"
+        )
+        out.append([f"{la / 20:.2f}_{lo / 20:.2f}", int(r["t23"]), int(r["active"]), reason])
+    return sorted(out)
+
+
+def cells_intersecting_gabon(cell_ids: set[str]) -> set[str]:
+    """Cellules 0.25° qui intersectent l'ADM0 (comme `geom__intersects` de /hotspots/?region=GA) :
+    un coin de cellule dans le polygone, ou un sommet du polygone dans la cellule."""
+    geom = json.loads((BOUNDARIES / "gabon_adm0.geojson").read_text(encoding="utf-8"))["features"][0]["geometry"]
+    ring = np.array(geom["coordinates"][0] if geom["type"] == "Polygon" else geom["coordinates"][0][0])
+    path = GeoPath(ring)
+    keep = set()
+    for cid in cell_ids:
+        la, lo = (float(v) for v in cid.split("_"))
+        corners = [(lo, la), (lo + 0.25, la), (lo, la + 0.25), (lo + 0.25, la + 0.25), (lo + 0.125, la + 0.125)]
+        vertex_in = ((ring[:, 0] >= lo) & (ring[:, 0] <= lo + 0.25) & (ring[:, 1] >= la) & (ring[:, 1] <= la + 0.25)).any()
+        if vertex_in or path.contains_points(corners).any():
+            keep.add(cid)
+    return keep
+
+
+def grid_yearly(obs: pd.DataFrame, filter_static: bool) -> list[list]:
+    """
+    Grille 0.25° (règle de GridCellMonth) agrégée par cellule et par année, pour que le service
+    mock puisse resommer n'importe quelle plage d'années comme `/hotspots/?agg=cell`.
+    Ligne : [cell_id, année, mois actifs, modis, snpp, noaa20, frp_modis, frp_snpp, frp_noaa20].
+    Toutes les détections (pas de découpe ADM0) comme GridCellMonth, cellules intersectant GA.
+    """
+    df = obs[(obs["type"] == 0) & ~obs["masked"]] if filter_static else obs
+    df = df.assign(
+        lat0=np.floor(df["latitude"] * 4.0) / 4.0,
+        lon0=np.floor(df["longitude"] * 4.0) / 4.0,
+        year=df["month"].str.slice(0, 4).astype(int),
+    )
+    rows = []
+    for (la, lo, yr), d in df.groupby(["lat0", "lon0", "year"]):
+        by = d.groupby("source")
+        n = by.size()
+        frp = by["frp"].sum()
+        rows.append([
+            f"{la:.2f}_{lo:.2f}", int(yr), int(d["month"].nunique()),
+            int(n.get("modis", 0)), int(n.get("viirs-snpp", 0)), int(n.get("viirs-noaa20", 0)),
+            round(float(frp.get("modis", 0.0)), 2), round(float(frp.get("viirs-snpp", 0.0)), 2),
+            round(float(frp.get("viirs-noaa20", 0.0)), 2),
+        ])
+    keep = cells_intersecting_gabon({r[0] for r in rows})
+    return [r for r in rows if r[0] in keep]
+
+
 def edge_cases() -> dict:
     """Cas limites SYNTHÉTIQUES (non issus des données) pour tester l'UI."""
     base = {"modis_count": None, "modis_terra_count": None, "modis_aqua_count": None,
@@ -442,6 +509,14 @@ def main() -> None:
             print(f"  params GA static : p={p['power_law_p']} q={p['power_law_q']} q80={p['conformal_q80_log']}"
                   f" n20/snpp={p['noaa20_to_snpp_ratio']} ; R² power-law="
                   f"{metrics['models_out_of_sample']['power_law_log1p']['r2']}")
+
+    static_cells = static_cells_response(obs)
+    for filter_static, suffix in ((True, "static"), (False, "all")):
+        write(f"hotspots_GA_{suffix}.json", {
+            "_format": "grid_yearly: [cell_id, year, months, modis, snpp, noaa20, frp_modis, frp_snpp, frp_noaa20]",
+            "grid_yearly": grid_yearly(obs, filter_static),
+            "static_cells": static_cells,
+        })
 
     write("regions.json", regions_response())
     write("coverage.json", coverage_response(obs))
