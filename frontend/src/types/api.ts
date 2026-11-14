@@ -1,5 +1,5 @@
 /**
- * Contrat API FirePulse v1 — miroir TypeScript de `docs/api-contract.json` (v2.1.0),
+ * Contrat API FirePulse v1 — miroir TypeScript de `docs/api-contract.json` (v2.2.0),
  * vérifié ligne à ligne contre `backend/apps/api/views.py`.
  * Toute évolution passe d'abord par M2 (contrat + vues), puis ici.
  *
@@ -11,7 +11,7 @@
 
 import type { Feature, FeatureCollection, MultiPolygon, Polygon, Point } from 'geojson'
 
-export const CONTRACT_VERSION = '2.1.0'
+export const CONTRACT_VERSION = '2.2.0'
 
 export type YearMonth = string
 export type IsoDate = string
@@ -83,6 +83,7 @@ export interface SensorCoverage {
   /** Fin opérationnelle (ex. S-NPP : 2026-11-02), sinon null. */
   operational_end_date: IsoDate | null
   processing_levels: ('SP' | 'NRT')[]
+  product_versions: string[]
   notes: string
 }
 

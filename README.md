@@ -6,12 +6,21 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 
 ---
 
-## État actuel du dépôt (jalon M2 Backend / Geo)
+## État actuel du dépôt
+
+### Backend / Geo (M2)
 
 - **Base PostgreSQL 16 + PostGIS 3.4** opérationnelle via Docker Compose (`firepulse_db`).
 - **48 fichiers NASA FIRMS du Gabon (2000–2025)** ingérés de façon idempotente : `292 589` détections (`modis`, `viirs-snpp`, `viirs-noaa20`).
 - **10 régions chargées** depuis [data/boundaries/](data/boundaries/) : `GA` (Gabon entier) et `GA-1` à `GA-9` (9 provinces).
 - **Grille spatiale `0.25°` (`42 482` lignes)** + **masque statique torchères `0.05°` (`183` cellules)** + **séries harmonisées (`6 011` lignes)** disponibles via **8 endpoints REST `/api/v1/`**.
+
+### Frontend (M3) — jalon H0–H3
+
+- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia** dans [frontend/](frontend/) ; `echarts`/`vue-echarts`, `maplibre-gl` et `d3-scale-chromatic` installés pour les vues à venir.
+- **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
+- **Mode mocks** pour développer sans backend : les mocks sont générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2 (masque `0.05°`, frontière ADM0, calibration, médianes) et validés contre le contrat par les tests.
+- Écran actuel : coquille de vérification (filtre torchères + série chargée). Calendrier heatmap, graphe comparatif et carte arrivent en H3–H12.
 
 ---
 
@@ -60,6 +69,48 @@ Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)
 
 ---
 
+## Démarrage rapide (Frontend)
+
+Prérequis : **Node.js `^22.18` ou `>=24.12`**. Depuis `frontend/` :
+
+```bash
+npm install
+npm run dev
+```
+
+L'application tourne sur `http://localhost:5173`.
+
+### Mocks ou API réelle
+
+| Mode | Activation | Source des données |
+| :--- | :--- | :--- |
+| **Mocks** (défaut en dev) | rien à faire | `frontend/src/mocks/*.json` — région `GA` uniquement ; provinces et zones libres renvoient une série vide |
+| **API Django** | créer `frontend/.env.local` avec `VITE_USE_MOCKS=false` | `/api/v1` relayé par le proxy Vite vers `http://localhost:8000` (backend lancé, voir ci-dessus) |
+
+Le build de production (`npm run build`) utilise toujours l'API réelle ; les mocks n'y sont pas inclus. Modèle de configuration : [frontend/.env.example](frontend/.env.example).
+
+### Régénérer les mocks
+
+Après une évolution des CSV de `data/raw/gabon/` ou de la chaîne baseline (nécessite `pandas`, `numpy`, `matplotlib`) :
+
+```bash
+py -3.12 scripts/generate_mocks.py
+```
+
+`src/mocks/calendar_edge_cases.json` est **synthétique** (NRT, pont NOAA-20, médiane nulle, mois sans donnée) et sert uniquement à tester l'UI.
+
+### Vérifications
+
+```bash
+npm run lint
+npm run test:unit -- --run
+npm run build
+```
+
+Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite.
+
+---
+
 ## Qui touche à quoi ? (Frontières d'équipe)
 
 | Rôle | Dossiers dédiés | Périmètre | Guide détaillé |
@@ -73,7 +124,7 @@ Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)
 ## Arborescence utile
 
 ```text
-modis_viirs/
+FirePulse/
 ├── data/
 │   ├── raw/gabon/               # 48 CSV NASA FIRMS 2000–2025 + AttributesReadme.txt
 │   ├── boundaries/              # gabon_adm0.geojson (GA) + gabon_adm1.geojson (GA-1..GA-9)
@@ -87,6 +138,14 @@ modis_viirs/
 │       │                        # + commande build_baseline_series
 │       └── api/                 # Endpoints REST v1 (views.py, services.py, urls.py) + tests (tests.py)
 ├── pipeline/                    # Scripts scientifiques M1 (inventory.py, ...)
+├── frontend/
+│   ├── scripts/generate_mocks.py  # Mocks fidèles à l'API, générés depuis data/raw/gabon
+│   └── src/
+│       ├── types/api.ts         # Miroir TypeScript de docs/api-contract.json
+│       ├── services/api.ts      # Client API + bascule mocks / API (VITE_USE_MOCKS)
+│       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères
+│       ├── mocks/               # JSON générés (GA) + cas limites synthétiques
+│       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/
 │   ├── api-contract.json        # Contrat API v1 synchronisé avec backend/apps/api/views.py
 │   ├── HANDOFF.md               # Fiche d'intervention M1 / M3 / M2 + limites actuelles
