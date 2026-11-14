@@ -1,0 +1,207 @@
+{
+  "artifact_kind": "firepulse-grid-025",
+  "coverage": "observation coverage unknown; absent rows are not zero coverage",
+  "csv_sha256": "5bb17b6e3d9778e59a32e43fdc09819255c5ca6a29c72b4714b54cc0589d145b",
+  "grid_deg": 0.25,
+  "grid_month_rows": 41957,
+  "input_rows": 292589,
+  "inputs": [
+    {
+      "file": "modis_2000_Gabon_normalized.csv",
+      "sha256": "946928d1f455efa67d493709d7fddff0d35c1a10b1faebdf2e4c53eaf716c1ad"
+    },
+    {
+      "file": "modis_2001_Gabon_normalized.csv",
+      "sha256": "3101edc1a44446c06cdcd58a87abb6e2a894fefcf37f51d5ef7e1106ca01c390"
+    },
+    {
+      "file": "modis_2002_Gabon_normalized.csv",
+      "sha256": "9ee33386830cdc9bf1c8bacf4b9b2df01c07d592ac70e6b1bdadec81351d9d50"
+    },
+    {
+      "file": "modis_2003_Gabon_normalized.csv",
+      "sha256": "6dc8b972b77a41b047811a35b109eb982656482ccd0de6be96d8c527ca113529"
+    },
+    {
+      "file": "modis_2004_Gabon_normalized.csv",
+      "sha256": "6ce2677caeb25de5d977fe8bed6969c013c55b8a711583888fdeca6504fabd79"
+    },
+    {
+      "file": "modis_2005_Gabon_normalized.csv",
+      "sha256": "b2fa2f46c2a84cd6e0ef9fb49a6b4cca1085f78b17eba6f44f14fc5c2c17f587"
+    },
+    {
+      "file": "modis_2006_Gabon_normalized.csv",
+      "sha256": "4108432899b3d4bd08ff7ca8651ceab922dacbb8eee1dfe7235599870384ab41"
+    },
+    {
+      "file": "modis_2007_Gabon_normalized.csv",
+      "sha256": "93977c853d5a12fe2e187059b81292ad3af1ae853f28dc151967993ba8370a55"
+    },
+    {
+      "file": "modis_2008_Gabon_normalized.csv",
+      "sha256": "c1f787f915f70d6d1c9a9f2d7812b0128c1fa5f67880f23991fe71a481a4bdce"
+    },
+    {
+      "file": "modis_2009_Gabon_normalized.csv",
+      "sha256": "d3e586e2d9fc68c65f89a31c06f7d755f6d1f3f41b81c013252ffe62a1ad1b64"
+    },
+    {
+      "file": "modis_2010_Gabon_normalized.csv",
+      "sha256": "94160c94eb63a2c6552b3d59e7f86a1a32e186a8cc3d159604003d481f4d0f7c"
+    },
+    {
+      "file": "modis_2011_Gabon_normalized.csv",
+      "sha256": "b86d21bb37ce32048b829472512cbb4df2c6500f04cb70a7c5e371fc1d70232e"
+    },
+    {
+      "file": "modis_2012_Gabon_normalized.csv",
+      "sha256": "11127f701950907e194ea2d8febb2100c0362f5ab6f11b7efde4dda76162223e"
+    },
+    {
+      "file": "modis_2013_Gabon_normalized.csv",
+      "sha256": "26fef35e88c8d01b00ac23da04569fffdfd29d65b73aea278e5039be0f6ca70b"
+    },
+    {
+      "file": "modis_2014_Gabon_normalized.csv",
+      "sha256": "c7d57a2c2c3f39ba5fc68cbc38c9028ab330dd079fb4a7929e33dbfc939b6120"
+    },
+    {
+      "file": "modis_2015_Gabon_normalized.csv",
+      "sha256": "7476778cb75ec42f9c186ad697ea7bfda807fe339b276f5bb7edf5cfb5ba7ed5"
+    },
+    {
+      "file": "modis_2016_Gabon_normalized.csv",
+      "sha256": "cbcf2f2a81d4c6113a648401c18b4045b03c3f042cc9ea276db88004c384766f"
+    },
+    {
+      "file": "modis_2017_Gabon_normalized.csv",
+      "sha256": "cfa1ac065592b521359253b276533fde2778e1ba112010ae86dd6f659f8078ac"
+    },
+    {
+      "file": "modis_2018_Gabon_normalized.csv",
+      "sha256": "05639a40008b334fa17208fe5bc8eafc34a224f07de7b996c217c56790fddc38"
+    },
+    {
+      "file": "modis_2019_Gabon_normalized.csv",
+      "sha256": "3fa7c78f6121227c4697ef9c6d9b2353ea2629da13929428b61b88b229e97b6c"
+    },
+    {
+      "file": "modis_2020_Gabon_normalized.csv",
+      "sha256": "df931b78c47505d1f4c31f43088de1b4c62cc4a6a79b8c674154ea25f15c7d01"
+    },
+    {
+      "file": "modis_2021_Gabon_normalized.csv",
+      "sha256": "840be91097d180ce7e2871ffdc1976f4c27ad70f75501071c98345030a23e92f"
+    },
+    {
+      "file": "modis_2022_Gabon_normalized.csv",
+      "sha256": "06d321083cef7f23895a107fb06348da066eb86f210da5e1beb2e77dc3969b01"
+    },
+    {
+      "file": "modis_2023_Gabon_normalized.csv",
+      "sha256": "e03be952e2a09ea04373d047ce2d1a6783b7d607933712d08300f2c278e7f9eb"
+    },
+    {
+      "file": "modis_2024_Gabon_normalized.csv",
+      "sha256": "033e5a46a6079cd44b9ccfc7d9d871de907a2c36fe2c0ef76d9db5a62817edb8"
+    },
+    {
+      "file": "modis_2025_Gabon_normalized.csv",
+      "sha256": "e3da5d08c2707fd4551075f9382cfc87eaab497f77a5d8a13f43140795b0b1f2"
+    },
+    {
+      "file": "viirs-jpss1_2018_Gabon_normalized.csv",
+      "sha256": "8bc78f1c61198f2bccf7496135c7a0ae0a91c76f0fea986968cd72402cc1689e"
+    },
+    {
+      "file": "viirs-jpss1_2019_Gabon_normalized.csv",
+      "sha256": "613a9efc7c8b6a9db342559aa68ebb37db1390c667916dd6437cf5614d70a685"
+    },
+    {
+      "file": "viirs-jpss1_2020_Gabon_normalized.csv",
+      "sha256": "2be1692b2ecb7a264e8110138e417012f181d5aa30390e7785bba32d8031586d"
+    },
+    {
+      "file": "viirs-jpss1_2021_Gabon_normalized.csv",
+      "sha256": "6ed72554eba15d050ebae277896b9d2d731e51704a5bebcc29162086b9b3c58d"
+    },
+    {
+      "file": "viirs-jpss1_2022_Gabon_normalized.csv",
+      "sha256": "c77bab6f59f9ec2f86b4ae94da82516a0178502ec0e201741d41d994bda8c2de"
+    },
+    {
+      "file": "viirs-jpss1_2023_Gabon_normalized.csv",
+      "sha256": "2eb6454daf9550acc0d3763111a4fb05b3f4b36b8816d7c9ada4449c5bc4e584"
+    },
+    {
+      "file": "viirs-jpss1_2024_Gabon_normalized.csv",
+      "sha256": "164b77a1df73a893fc38d76f17b38b6bbefb5fee2e8e9fb6db82beef798355d2"
+    },
+    {
+      "file": "viirs-jpss1_2025_Gabon_normalized.csv",
+      "sha256": "a2992100f4f4c7bd0e3d162461ecf283accdff9bfbde795d37868d0a51f5dd65"
+    },
+    {
+      "file": "viirs-snpp_2012_Gabon_normalized.csv",
+      "sha256": "5caa250a7f5f0005e876fa250e93a39fa8e1820e53134f221e1bc325791e7041"
+    },
+    {
+      "file": "viirs-snpp_2013_Gabon_normalized.csv",
+      "sha256": "e42b4bf0115dfd69283768b3165c229982f30ee52d91a4173d7f9b172152f1b6"
+    },
+    {
+      "file": "viirs-snpp_2014_Gabon_normalized.csv",
+      "sha256": "29d3f9993db6d70a5225b91133a56ed5e6edf2a4c526bd4a46ff76123d37dccd"
+    },
+    {
+      "file": "viirs-snpp_2015_Gabon_normalized.csv",
+      "sha256": "268b36a3eb76def7186be6415ee47832404dbb5e2d463effbdc2c7123e004278"
+    },
+    {
+      "file": "viirs-snpp_2016_Gabon_normalized.csv",
+      "sha256": "ec418eaa2bd5216e462ae0d89c96b51d992c61214deb2e299248a33df1523e21"
+    },
+    {
+      "file": "viirs-snpp_2017_Gabon_normalized.csv",
+      "sha256": "100a8343df81c475949bc0ee267ae0c0a04ad244038696a99ba4327bdf786fb9"
+    },
+    {
+      "file": "viirs-snpp_2018_Gabon_normalized.csv",
+      "sha256": "f31fa35b5362eab9169440009677a52ba65ab3cde4f2cdeebe912f021a2d1e5d"
+    },
+    {
+      "file": "viirs-snpp_2019_Gabon_normalized.csv",
+      "sha256": "e0e7367efd282404ba0e7ca7d34c6f4c61dd62e3b8e9c291dc5d551bae096f93"
+    },
+    {
+      "file": "viirs-snpp_2020_Gabon_normalized.csv",
+      "sha256": "bfa714947087ba5bd67d21b48cff52d340eb6f912e1f75689b78aac411b2c5e0"
+    },
+    {
+      "file": "viirs-snpp_2021_Gabon_normalized.csv",
+      "sha256": "ed09fe62fa41f896a75e01bcc830a9d8b5d793673c298d50eb7536bf574d07e5"
+    },
+    {
+      "file": "viirs-snpp_2022_Gabon_normalized.csv",
+      "sha256": "d093aac6b3758f12a6155654f19857722babd2b3d5880812155446d2c30604e3"
+    },
+    {
+      "file": "viirs-snpp_2023_Gabon_normalized.csv",
+      "sha256": "8f1de29e353ae1c7f6621c2c61994a5c0f7cd69fc8ed6678dfa36922203a0397"
+    },
+    {
+      "file": "viirs-snpp_2024_Gabon_normalized.csv",
+      "sha256": "067f118c2b694ef13c8c4d275d55b6f59ffbd6a51a32d1320ac0c6cdf913f3a6"
+    },
+    {
+      "file": "viirs-snpp_2025_Gabon_normalized.csv",
+      "sha256": "3d76bf7e4505dbc4757091d04d20fb90ac0c56afd2a32ab702f48c6d8f096914"
+    }
+  ],
+  "json_sha256": "1c778bbe940766cae14b0682496533d906c5dfd984b16ab08b2134fbf0ead54e",
+  "normalized_manifest_sha256": "fb6648045d47918cb079ce4c777f509b33a48c56acc7773005100b2ed3260c68",
+  "schema_version": 1,
+  "scope": "GA country files; geometry unverified",
+  "static_mask_audit_sha256": "b49f45e41e7e198bc086a9d2f15d78174f44ff8a4292294b8d925309762a64d6"
+}
