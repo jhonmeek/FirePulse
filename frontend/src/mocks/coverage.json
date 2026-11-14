@@ -1,0 +1,32 @@
+{
+  "region": "GA",
+  "sensors": [
+    {
+      "source": "modis",
+      "label": "MODIS (Terra + Aqua)",
+      "min_date": "2000-11-01",
+      "max_date": "2025-12-30",
+      "operational_end_date": null,
+      "processing_levels": ["SP"],
+      "notes": "Terra-only from 2000-11 to 2002-06; Aqua starts 2002-07."
+    },
+    {
+      "source": "viirs-noaa20",
+      "label": "VIIRS NOAA-20 375m",
+      "min_date": "2018-04-01",
+      "max_date": "2025-12-31",
+      "operational_end_date": null,
+      "processing_levels": ["SP"],
+      "notes": "Official drop-in continuation after S-NPP retirement."
+    },
+    {
+      "source": "viirs-snpp",
+      "label": "VIIRS Suomi-NPP 375m",
+      "min_date": "2012-01-20",
+      "max_date": "2025-12-31",
+      "operational_end_date": "2026-11-02",
+      "processing_levels": ["SP"],
+      "notes": "Operational FIRMS delivery ended 2026-11-02 13:00 UTC."
+    }
+  ]
+}
