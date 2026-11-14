@@ -114,7 +114,7 @@ Pipeline scientifique pour l'analyse et l'harmonisation des détections de point
 
 ## État du développement
 
-Le premier lot implémente l'inventaire reproductible et les contrôles de qualité des CSV présents dans `data/raw/gabon`. Les données brutes restent inchangées. Les coefficients et benchmarks du guide v2 ne sont pas encore validés par ce pipeline.
+Le pipeline M1 couvre l'inventaire, les contrôles de qualité, la normalisation et les comptages mensuels des CSV présents dans `data/raw/gabon`. Les données brutes restent inchangées. Les coefficients et benchmarks du guide v2 ne sont pas encore validés par ce pipeline.
 
 ## Prérequis
 
@@ -125,9 +125,13 @@ Depuis la racine du dépôt :
 ```powershell
 python -m unittest discover -s tests -v
 python -m pipeline.inventory --input data/raw/gabon --output data/processed/audit
+python -m pipeline.normalize --input data/raw/gabon --output data/processed/normalized
+python -m pipeline.aggregate_monthly --input data/processed/normalized --output data/processed/monthly
 ```
 
 Le manifeste et le rapport qualité JSON sont des résultats d'audit, pas des séries harmonisées utilisables comme résultats scientifiques finaux. Voir `docs/m1-data-audit.md` pour les contrôles, formats, limites et instructions de reproduction.
+
+La normalisation est reproductible depuis les CSV bruts : les gros exports d'observations sont conservés localement et exclus de Git. Leurs manifestes et les petites sorties mensuelles sont versionnés pour le raccordement avec M2. Voir [le contrat M1](docs/m1-normalization.md), [la méthode](docs/methodology.md) et [les limites](docs/limitations.md). Les fichiers mensuels sont des comptages bruts et des statuts de disponibilité, pas des séries harmonisées. L'import DB correspondant reste à raccorder par M2.
 
 ## Sources et limites
 
@@ -140,4 +144,4 @@ La présence de détections ne permet pas de déduire une couverture d'observati
 
 ## Contributions M1
 
-Travail sur `m1/data-science`, contrôles et revue des changements avant proposition d'intégration dans `main`. Les artefacts d'audit sont séparés des fichiers bruts. Les étapes suivantes sont la normalisation, les agrégations mensuelles et l'évaluation de l'harmonisation.
+Travail sur `m1/data-science`, contrôles et revue des changements avant proposition d'intégration dans `main`. Les artefacts d'audit et les résultats de préparation sont séparés des fichiers bruts. Les étapes suivantes sont l'évaluation du filtrage des sources statiques, la calibration et les extensions 2026.
