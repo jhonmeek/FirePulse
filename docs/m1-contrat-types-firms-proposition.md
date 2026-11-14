@@ -1,6 +1,6 @@
 # Proposition M1 — séries par type FIRMS pour M2 et M3
 
-Statut : proposition à revoir avec M2 et M3 ; aucune route API ni classification nouvelle n'est livrée. Un point chaud est une détection thermique, pas nécessairement un incendie distinct.
+Statut : proposition à revoir avec M2 et M3, avec un premier agrégat M1 ; aucune route API ni classification nouvelle n'est livrée. Un point chaud est une détection thermique, pas nécessairement un incendie distinct.
 
 ## Catégories exclusives pour les produits qui fournissent `type`
 
@@ -26,3 +26,9 @@ La persistance constitue un indicateur séparé, `in_persistent_cell`, dont les 
 - Les comptes de types sont bruts et ne constituent pas les séries harmonisées par capteur. Les produits FIRMS, leurs périodes et versions peuvent différer ; la couverture reste inconnue.
 - M1 définit et vérifie les agrégats dans `pipeline/` et `data/processed/` ; M2 définit l'import et le contrat API ; M3 présente barres empilées par type et couche de persistance séparée. La géométrie du fichier pays M1 diffère du filtre PostGIS M2 ; comparer des périmètres équivalents.
 - Ne pas promettre une identification de torchère ou une confiance chiffrée sans source externe datée, contrôle géospatial et évaluation indépendante. Aucun catalogue externe n'est intégré par cette proposition.
+
+## Premier agrégat M1
+
+`python -m pipeline.monthly_types --output data/processed/monthly-types/monthly-types.json` vérifie les empreintes du calendrier, du manifeste normalisé et des CSV, puis rapproche les comptes par type des comptes mensuels existants. L'exécution sur l'archive fournie réconcilie 292 589 détections et produit 1 208 lignes mois/plateforme. Les cinq catégories sont des champs exclusifs dans `type_counts` ; elles sont toutes `null` si le compte brut est indisponible. La persistance est `not_evaluated` dans ce premier résultat : aucune estimation par type/cellule n'est encore publiée. La commande refuse de remplacer un fichier existant ; choisir un autre chemin pour une nouvelle exécution.
+
+La structure exacte de l'API et des graphiques reste à décider avec M2/M3. Le normaliseur actuel rejette encore les entrées NRT sans `type` ; la catégorie `unavailable` du contrat et de l'agrégateur ne signifie pas que ces entrées peuvent déjà être importées.
