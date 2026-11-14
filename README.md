@@ -15,12 +15,17 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 - **10 régions chargées** depuis [data/boundaries/](data/boundaries/) : `GA` (Gabon entier) et `GA-1` à `GA-9` (9 provinces).
 - **Grille spatiale `0.25°` (`42 482` lignes)** + **masque statique torchères `0.05°` (`183` cellules)** + **séries harmonisées (`6 011` lignes)** disponibles via **8 endpoints REST `/api/v1/`**.
 
-### Frontend (M3) — jalon H0–H3
+### Frontend (M3) — jalon H3–H12
 
-- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia** dans [frontend/](frontend/) ; `echarts`/`vue-echarts`, `maplibre-gl` et `d3-scale-chromatic` installés pour les vues à venir.
+- **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia** dans [frontend/](frontend/) ; `echarts`/`vue-echarts` et `maplibre-gl` installés pour le graphe comparatif et la carte (H12–H34).
 - **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
-- **Mode mocks** pour développer sans backend : les mocks sont générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2 (masque `0.05°`, frontière ADM0, calibration, médianes) et validés contre le contrat par les tests.
-- Écran actuel : coquille de vérification (filtre torchères + série chargée). Calendrier heatmap, graphe comparatif et carte arrivent en H3–H12.
+- **Flux réel bout-en-bout vérifié** : UI branchée sur l'API locale (`GA` + 9 provinces, bascule torchères), requêtes `/api/v1/*` en 200.
+- **Écran principal** :
+  - barre de contrôle : zone (Gabon / provinces), plage d'années, couleur *Intensité* / *Anomalie*, toggle « Exclure torchères » ;
+  - bandeau des régimes capteurs (Terra seul → MODIS reconstitué → VIIRS S-NPP → pont NOAA-20) avec la plage affichée en surbrillance ;
+  - **calendrier Années × Mois accessible** : palettes adaptées aux daltoniens (YlOrRd en racine carrée pour l'intensité, PuOr divergente pour l'anomalie, orange = au-dessus de la médiane), mois provisoires/NRT hachurés, mois sans donnée en pointillés, navigation clavier complète, libellé lecteur d'écran par cellule ;
+  - **panneau détail du mois** (survol/focus = aperçu, clic/Entrée = épinglé) : valeur harmonisée ± intervalle 80 %, médiane et IQR du même mois, anomalie (% ou écart absolu si médiane nulle), rang historique 2001–2025, régime, couverture, détections brutes par capteur.
+- **Mode mocks** pour développer sans backend : générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2. Comparés à l'API locale : identiques sans filtre ; avec filtre torchères, 37 comptages bruts diffèrent (bord de cellule du masque `0.05°`), écart harmonisé max 1,5 %.
 
 ---
 
@@ -107,7 +112,7 @@ npm run test:unit -- --run
 npm run build
 ```
 
-Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite.
+Les tests comparent les mocks aux clés et énumérations de `docs/api-contract.json` : toute évolution du contrat par M2 sans mise à jour de `src/types/api.ts` et des mocks fait échouer la suite. Ils couvrent aussi les utilitaires du calendrier (palettes, anomalies, rang) et les composants (navigation clavier, sélection, hachures). Ils tournent toujours en mode mocks, même si `.env.local` pointe vers l'API.
 
 ---
 
@@ -143,7 +148,10 @@ FirePulse/
 │   └── src/
 │       ├── types/api.ts         # Miroir TypeScript de docs/api-contract.json
 │       ├── services/api.ts      # Client API + bascule mocks / API (VITE_USE_MOCKS)
-│       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères
+│       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères, couleur, mois sélectionné
+│       ├── composables/         # useCalendar (historique complet, anti-réponse obsolète), useRegions
+│       ├── utils/calendar.ts    # Matrice années × mois, palettes, anomalies, rang historique, libellés FR
+│       ├── components/          # ControlBar, RegimeTimeline, CalendarHeatmap, MonthDetail
 │       ├── mocks/               # JSON générés (GA) + cas limites synthétiques
 │       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/
