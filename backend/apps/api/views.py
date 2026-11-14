@@ -4,6 +4,7 @@ import csv
 import json
 from datetime import date
 
+from django.conf import settings
 from django.contrib.gis.db.models.functions import AsGeoJSON
 from django.db import DatabaseError, connection
 from django.db.models import Count, Max, Min, Sum
@@ -11,7 +12,18 @@ from django.http import HttpResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from apps.api.cache import cached_api_response
+from apps.api.cache import cached_api_response, offline_unavailable_response
+from apps.api.fallback import (
+    fallback_anomalies,
+    fallback_calendar,
+    fallback_coverage,
+    fallback_export_series_csv,
+    fallback_hotspots,
+    fallback_methodology,
+    fallback_regions,
+    has_offline_snapshot,
+    render_series_csv_response,
+)
 from apps.api.services import (
     bad_request,
     compute_custom_area_series,
@@ -80,6 +92,7 @@ def _in_month_window(m_date: date, start_month: date | None, end_month: date | N
 @api_view(["GET"])
 def health_view(request):
     """Verify PostgreSQL connection and PostGIS extension readiness."""
+    snapshot_ready = has_offline_snapshot()
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT PostGIS_Version();")
@@ -101,10 +114,12 @@ def health_view(request):
             {
                 "status": "error",
                 "database": "disconnected",
+                "offline_snapshot_ready": snapshot_ready,
                 "detail": str(exc),
             },
             status=503,
         )
+    res["X-FirePulse-Fallback"] = "ready" if snapshot_ready else "none"
     res["Cache-Control"] = "no-store"
     return res
 
@@ -145,7 +160,12 @@ def regions_view(request):
             ]
         return {"regions": regions}
 
-    return cached_api_response("regions", request, _produce)
+    return cached_api_response(
+        "regions",
+        request,
+        _produce,
+        fallback=lambda: fallback_regions(include_geom),
+    )
 
 
 @api_view(["GET"])
@@ -186,7 +206,12 @@ def coverage_view(request):
             )
         return {"region": region_code, "sensors": sensors}
 
-    return cached_api_response("coverage", request, _produce)
+    return cached_api_response(
+        "coverage",
+        request,
+        _produce,
+        fallback=lambda: fallback_coverage(region_code),
+    )
 
 
 @api_view(["GET"])
@@ -295,7 +320,12 @@ def calendar_view(request):
             "series": series,
         }
 
-    return cached_api_response("calendar", request, _produce)
+    return cached_api_response(
+        "calendar",
+        request,
+        _produce,
+        fallback=lambda: fallback_calendar(region_code, filter_static, start_month, end_month, custom_geom),
+    )
 
 
 @api_view(["GET"])
@@ -398,7 +428,14 @@ def anomalies_view(request):
             "top_negative": top_negative,
         }
 
-    return cached_api_response("anomalies", request, _produce)
+    return cached_api_response(
+        "anomalies",
+        request,
+        _produce,
+        fallback=lambda: fallback_anomalies(
+            region_code, filter_static, top_n, start_month, end_month, custom_geom
+        ),
+    )
 
 
 @api_view(["GET"])
@@ -583,7 +620,23 @@ def hotspots_view(request):
 
         return {"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features}
 
-    return cached_api_response("hotspots", request, _produce)
+    return cached_api_response(
+        "hotspots",
+        request,
+        _produce,
+        fallback=lambda: fallback_hotspots(
+            mode,
+            agg,
+            region_code,
+            filter_static,
+            include_static_cells,
+            limit,
+            month_date,
+            start_month,
+            end_month,
+            custom_geom,
+        ),
+    )
 
 
 @api_view(["GET"])
@@ -622,43 +675,28 @@ def methodology_view(request):
             "limitations": DOCUMENTED_LIMITATIONS,
         }
 
-    return cached_api_response("methodology", request, _produce)
+    return cached_api_response(
+        "methodology",
+        request,
+        _produce,
+        fallback=lambda: fallback_methodology(region_code, filter_static),
+    )
 
 
 def _export_series_csv(request, region_code: str, filter_static: bool, start_month: date | None, end_month: date | None):
     custom_geom, area_id, _ = parse_area_geometry(request)
     export_id = area_id if custom_geom is not None else region_code
 
-    response = HttpResponse(content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="firepulse_{export_id}_series.csv"'
-    writer = csv.writer(response)
-    writer.writerow(
-        [
-            "region",
-            "month",
-            "filter_static",
-            "modis_count",
-            "viirs_snpp_count",
-            "viirs_noaa20_count",
-            "harmonized_value",
-            "ci_low",
-            "ci_high",
-            "baseline_median",
-            "anomaly_percent",
-            "anomaly_absolute",
-            "sensor_regime",
-            "coverage_status",
-            "method_version",
-        ]
-    )
+    if getattr(settings, "FORCE_SNAPSHOT_FALLBACK", False):
+        fb = fallback_export_series_csv(region_code, filter_static, start_month, end_month, custom_geom)
+        if fb is not None:
+            return fb
 
-    if custom_geom is not None:
-        ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
-        method_version = ga_run.method_version if ga_run else "v2.0"
-        for item in full_series:
-            if not _in_month_window(item["month_date"], start_month, end_month):
-                continue
-            writer.writerow(
+    try:
+        if custom_geom is not None:
+            ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
+            method_version = ga_run.method_version if ga_run else "v2.0"
+            csv_rows = [
                 [
                     export_id,
                     item["month"],
@@ -676,40 +714,47 @@ def _export_series_csv(request, region_code: str, filter_static: bool, start_mon
                     item["coverage_status"],
                     method_version,
                 ]
-            )
-        return response
-
-    qs = HarmonizedMonthSeries.objects.filter(
-        region__code=region_code,
-        filter_static=filter_static,
-        calibration_run__is_active=True,
-    ).order_by("month")
-    if start_month:
-        qs = qs.filter(month__gte=start_month)
-    if end_month:
-        qs = qs.filter(month__lte=end_month)
-
-    for row in qs:
-        writer.writerow(
-            [
-                region_code,
-                row.month.strftime("%Y-%m"),
-                row.filter_static,
-                row.modis_count,
-                row.viirs_snpp_count,
-                row.viirs_noaa20_count,
-                row.harmonized_value,
-                row.ci_low,
-                row.ci_high,
-                row.baseline_median,
-                row.anomaly_percent,
-                row.anomaly_absolute,
-                row.sensor_regime,
-                row.coverage_status,
-                row.method_version,
+                for item in full_series
+                if _in_month_window(item["month_date"], start_month, end_month)
             ]
-        )
-    return response
+        else:
+            qs = HarmonizedMonthSeries.objects.filter(
+                region__code=region_code,
+                filter_static=filter_static,
+                calibration_run__is_active=True,
+            ).order_by("month")
+            if start_month:
+                qs = qs.filter(month__gte=start_month)
+            if end_month:
+                qs = qs.filter(month__lte=end_month)
+            csv_rows = [
+                [
+                    region_code,
+                    row.month.strftime("%Y-%m"),
+                    row.filter_static,
+                    row.modis_count,
+                    row.viirs_snpp_count,
+                    row.viirs_noaa20_count,
+                    row.harmonized_value,
+                    row.ci_low,
+                    row.ci_high,
+                    row.baseline_median,
+                    row.anomaly_percent,
+                    row.anomaly_absolute,
+                    row.sensor_regime,
+                    row.coverage_status,
+                    row.method_version,
+                ]
+                for row in qs
+            ]
+    except DatabaseError as exc:
+        if getattr(settings, "API_SNAPSHOT_FALLBACK", True):
+            fb = fallback_export_series_csv(region_code, filter_static, start_month, end_month, custom_geom)
+            if fb is not None:
+                return fb
+        return offline_unavailable_response(str(exc))
+
+    return render_series_csv_response(export_id, csv_rows)
 
 
 def _export_points_csv(
@@ -727,13 +772,10 @@ def _export_points_csv(
     if not has_time and custom_geom is None:
         return bad_request("dataset=points requires at least 'month', 'start'/'end', 'bbox', or 'polygon'.")
 
-    reg = None
-    if custom_geom is None:
-        reg = Region.objects.filter(code=region_code).first()
+    if getattr(settings, "FORCE_SNAPSHOT_FALLBACK", False):
+        return offline_unavailable_response("Offline snapshot mode forced; point-level export requires PostgreSQL.")
 
-    spatial_geom = custom_geom or (reg.geom if reg else None)
     export_id = area_id if custom_geom is not None else region_code
-
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="firepulse_{export_id}_points.csv"'
     writer = csv.writer(response)
@@ -759,64 +801,72 @@ def _export_points_csv(
         ]
     )
 
-    if custom_geom is None and reg is None:
-        return response
+    try:
+        reg = None
+        if custom_geom is None:
+            reg = Region.objects.filter(code=region_code).first()
+            if reg is None:
+                return response
 
-    qs = HotspotObservation.objects.all()
-    if filter_static:
-        qs = qs.filter(hotspot_type=0, is_static_masked=False)
-    if month_date:
-        qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
-    else:
-        if start_month:
-            qs = qs.filter(acquired_at__gte=start_month)
-        if end_month:
-            qs = qs.filter(acquired_at__lt=next_month(end_month))
-    if spatial_geom is not None:
-        qs = qs.filter(position__within=spatial_geom)
+        spatial_geom = custom_geom or reg.geom
+        qs = HotspotObservation.objects.all()
+        if filter_static:
+            qs = qs.filter(hotspot_type=0, is_static_masked=False)
+        if month_date:
+            qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
+        else:
+            if start_month:
+                qs = qs.filter(acquired_at__gte=start_month)
+            if end_month:
+                qs = qs.filter(acquired_at__lt=next_month(end_month))
+        if spatial_geom is not None:
+            qs = qs.filter(position__within=spatial_geom)
 
-    for obs in (
-        qs.only(
-            "source",
-            "satellite",
-            "instrument",
-            "acquired_at",
-            "position",
-            "frp",
-            "brightness_mir",
-            "brightness_tir",
-            "confidence_raw",
-            "confidence_tier",
-            "daynight",
-            "hotspot_type",
-            "is_static_masked",
-            "product_version",
-            "is_nrt",
-        )
-        .order_by("-acquired_at")[:limit]
-        .iterator(chunk_size=2000)
-    ):
-        writer.writerow(
-            [
-                export_id,
-                obs.source,
-                obs.satellite,
-                obs.instrument,
-                obs.acquired_at.isoformat(),
-                round(obs.position.y, 5),
-                round(obs.position.x, 5),
-                obs.frp,
-                obs.brightness_mir,
-                obs.brightness_tir,
-                obs.confidence_raw,
-                obs.confidence_tier,
-                obs.daynight,
-                obs.hotspot_type,
-                obs.is_static_masked,
-                obs.product_version,
-                obs.is_nrt,
-            ]
-        )
+        for obs in (
+            qs.only(
+                "source",
+                "satellite",
+                "instrument",
+                "acquired_at",
+                "position",
+                "frp",
+                "brightness_mir",
+                "brightness_tir",
+                "confidence_raw",
+                "confidence_tier",
+                "daynight",
+                "hotspot_type",
+                "is_static_masked",
+                "product_version",
+                "is_nrt",
+            )
+            .order_by("-acquired_at")[:limit]
+            .iterator(chunk_size=2000)
+        ):
+            writer.writerow(
+                [
+                    export_id,
+                    obs.source,
+                    obs.satellite,
+                    obs.instrument,
+                    obs.acquired_at.isoformat(),
+                    round(obs.position.y, 5),
+                    round(obs.position.x, 5),
+                    obs.frp,
+                    obs.brightness_mir,
+                    obs.brightness_tir,
+                    obs.confidence_raw,
+                    obs.confidence_tier,
+                    obs.daynight,
+                    obs.hotspot_type,
+                    obs.is_static_masked,
+                    obs.product_version,
+                    obs.is_nrt,
+                ]
+            )
+    except DatabaseError as exc:
+        return offline_unavailable_response(str(exc))
+
     return response
 
 
