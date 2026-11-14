@@ -41,7 +41,8 @@ const rawRows = computed(() =>
 </script>
 
 <template>
-  <section aria-live="polite" class="rounded-lg border border-stone-200 bg-white p-4 text-sm">
+  <!-- Verre dépoli : panneau clé, collant à côté du calendrier. -->
+  <section aria-live="polite" class="glass rounded-2xl p-4 text-sm sm:p-5">
     <template v-if="p">
       <header class="flex items-start justify-between gap-2">
         <div>

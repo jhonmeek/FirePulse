@@ -1,1 +1,100 @@
 @import 'tailwindcss';
+
+/*
+ * Design FirePulse : sobre, lisible, orienté données.
+ * - Fond chaud très léger (deux dégradés statiques, aucun coût d'animation) qui donne de la
+ *   matière au verre dépoli sans le charger.
+ * - Verre dépoli réservé à 2 surfaces : en-tête collant et panneau de détail du mois.
+ * - Une seule teinte d'accent (orange feu) ; les couleurs de données restent celles des palettes
+ *   daltonien-compatibles (YlOrRd, PuOr, Okabe-Ito).
+ */
+@theme {
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial,
+    sans-serif;
+  --color-accent: #c2410c;
+  --shadow-card: 0 1px 2px rgb(28 25 23 / 0.04), 0 4px 16px -8px rgb(28 25 23 / 0.1);
+  --shadow-glass: 0 1px 0 rgb(255 255 255 / 0.6) inset, 0 8px 32px -12px rgb(28 25 23 / 0.18);
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background-color: #faf8f5;
+    background-image:
+      radial-gradient(60rem 30rem at 85% -10%, rgb(251 146 60 / 0.12), transparent 70%),
+      radial-gradient(50rem 28rem at -10% 10%, rgb(14 116 144 / 0.07), transparent 70%);
+    background-attachment: fixed;
+  }
+  :focus-visible {
+    outline-color: var(--color-accent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Carte de section : surface opaque, ombre douce et constante. */
+  .card {
+    @apply rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-5;
+    box-shadow: var(--shadow-card);
+  }
+  .card-title {
+    @apply text-base font-semibold tracking-tight text-stone-900;
+  }
+  .eyebrow {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-stone-500;
+  }
+
+  /* Verre dépoli : uniquement là où la hiérarchie le justifie. */
+  .glass {
+    background-color: rgb(255 255 255 / 0.72);
+    border: 1px solid rgb(255 255 255 / 0.65);
+    box-shadow: var(--shadow-glass);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    backdrop-filter: blur(14px) saturate(1.4);
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      background-color: rgb(255 255 255 / 0.97);
+    }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass {
+      background-color: #fff;
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+
+  /* Contrôles */
+  .field {
+    @apply min-h-9 rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-900 transition-colors duration-150 hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-1;
+  }
+  .segmented {
+    @apply inline-flex rounded-lg border border-stone-200 bg-stone-100/80 p-0.5 text-sm;
+  }
+  .segmented-item {
+    @apply min-h-8 cursor-pointer rounded-md px-3 py-1 text-stone-600 transition-[background-color,color,box-shadow] duration-200 hover:text-stone-900 has-[:checked]:bg-white has-[:checked]:font-medium has-[:checked]:text-stone-900 has-[:checked]:shadow-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--color-accent)];
+  }
+  .btn {
+    @apply inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-800 transition-colors duration-150 hover:border-stone-400 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-1.5 text-sm text-white transition-colors duration-150 hover:bg-stone-800 focus-visible:outline-2 focus-visible:outline-offset-2;
+  }
+  .btn-ghost {
+    @apply inline-flex cursor-pointer items-center rounded-md px-2 py-1 text-xs font-medium text-stone-700 transition-colors duration-150 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-2;
+  }
+}

@@ -1,5 +1,5 @@
 /**
- * Contrat API FirePulse v1 — miroir TypeScript de `docs/api-contract.json` (v2.2.0),
+ * Contrat API FirePulse v1 - miroir TypeScript de `docs/api-contract.json` (v2.2.0),
  * vérifié ligne à ligne contre `backend/apps/api/views.py`.
  * Toute évolution passe d'abord par M2 (contrat + vues), puis ici.
  *

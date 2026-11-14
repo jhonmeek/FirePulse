@@ -41,8 +41,7 @@ function downloadMock() {
   URL.revokeObjectURL(url)
 }
 
-const cls =
-  'inline-flex items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-orange-600'
+const cls = 'btn'
 </script>
 
 <template>

@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AreaQuery, BBox, YearMonth } from '@/types/api'
 import type { ColorMode } from '@/utils/calendar'
+import type { ChartView, ChartWindow } from '@/utils/chart'
 
 export const YEAR_MIN = 2000
 export const YEAR_MAX = 2026
@@ -18,6 +19,11 @@ export const useFiltersStore = defineStore('filters', () => {
   const colorMode = ref<ColorMode>('value')
   /** Mois épinglé (clic / Entrée dans le calendrier). */
   const selectedMonth = ref<YearMonth | null>(null)
+  /** Vue et fenêtre de zoom du graphe : conservées entre bascules et changements de filtre. */
+  const chartView = ref<ChartView>('after')
+  const chartWindow = ref<ChartWindow | null>(null)
+  /** Année du comparateur ; null = choix automatique (mois sélectionné ou dernière année). */
+  const compareYear = ref<number | null>(null)
 
   const start = computed<YearMonth>(() => `${yearRange.value[0]}-01`)
   const end = computed<YearMonth>(() => `${yearRange.value[1]}-12`)
@@ -56,6 +62,9 @@ export const useFiltersStore = defineStore('filters', () => {
     filterStatic,
     colorMode,
     selectedMonth,
+    chartView,
+    chartWindow,
+    compareYear,
     start,
     end,
     query,
