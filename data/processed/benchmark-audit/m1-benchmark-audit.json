@@ -1,0 +1,66 @@
+{
+  "artifact_kind": "firepulse-m1-benchmark-audit",
+  "db_provenance": {
+    "database_name": "firepulse",
+    "db_source": "db",
+    "hotspot_observation_count": 292589,
+    "import_batch_count": 48,
+    "observation_max_date": "2025-12-31",
+    "observation_min_date": "2000-11-01",
+    "static_mask_cell_count": 183
+  },
+  "interpretation": "Exact reproduction checks the exported monthly counts and the power-law fit/metrics. Test interval coverage is descriptive only because M2 calibrated the interval quantile on this same test window.",
+  "m2_csv_sha256": "b349ade2bd78cf9cb838de4a6c724bc8cb2eece780f372e6d01e0d932b19cbfb",
+  "m2_manifest_sha256": "6089bc05472dcb25f426ab4f6f41c0358fa18e828189bae5dfa5edd0f2507b65",
+  "results": [
+    {
+      "exported_test_metrics": {
+        "bias": 19.69,
+        "mae": 129.71,
+        "r2": 0.9165,
+        "rmse": 205.47
+      },
+      "filter_static": "false",
+      "interval_coverage_is_independent": false,
+      "recomputed_test_metrics": {
+        "bias": 19.69,
+        "mae": 129.71,
+        "r2": 0.9165,
+        "rmse": 205.47
+      },
+      "refit_power_law_p": 0.7916,
+      "refit_power_law_q": 2.6733,
+      "region": "GA",
+      "test_interval_coverage": 1.0,
+      "test_interval_covered_months": 72,
+      "test_interval_evaluable_months": 72,
+      "test_months": 72,
+      "train_months": 95
+    },
+    {
+      "exported_test_metrics": {
+        "bias": 66.58,
+        "mae": 125.85,
+        "r2": 0.9085,
+        "rmse": 211.1
+      },
+      "filter_static": "true",
+      "interval_coverage_is_independent": false,
+      "recomputed_test_metrics": {
+        "bias": 66.58,
+        "mae": 125.85,
+        "r2": 0.9085,
+        "rmse": 211.1
+      },
+      "refit_power_law_p": 0.9517,
+      "refit_power_law_q": 1.6322,
+      "region": "GA",
+      "test_interval_coverage": 1.0,
+      "test_interval_covered_months": 72,
+      "test_interval_evaluable_months": 72,
+      "test_months": 72,
+      "train_months": 95
+    }
+  ],
+  "schema_version": 1
+}
