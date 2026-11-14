@@ -118,7 +118,8 @@ function createAtmosphere(): THREE.Mesh {
 
 function createGabonOutline(): THREE.Group {
   const group = new THREE.Group()
-  if (!countryFeature) return group
+  const ga = countryFeature.value
+  if (!ga) return group
   const material = new THREE.LineBasicMaterial({
     color: 0x8ef7e4,
     transparent: true,
@@ -132,7 +133,7 @@ function createGabonOutline(): THREE.Group {
     depthWrite: false,
   })
 
-  const polygons = countryFeature.geometry.coordinates
+  const polygons = ga.geometry.coordinates
   for (const polygon of polygons) {
     for (const ring of polygon) {
       const points = ring.map(([lon, lat]) => lonLatToVector3(lon, lat, R * 1.012))

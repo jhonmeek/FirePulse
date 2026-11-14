@@ -127,10 +127,20 @@ const areaD = computed(() => {
 })
 
 const yearTicks = computed(() => {
-  const years = [2000, 2005, 2010, 2012, 2015, 2020, 2025]
-  return years
+  const points = props.points
+  if (!points.length) return []
+  const firstYear = Number(points[0]!.month.slice(0, 4))
+  const lastYear = Number(points[points.length - 1]!.month.slice(0, 4))
+  const span = lastYear - firstYear
+  const step = span > 15 ? 5 : span > 8 ? 2 : 1
+  const years = new Set<number>()
+  for (let year = firstYear; year <= lastYear; year += step) years.add(year)
+  years.add(lastYear)
+  if (props.highlight2012 && firstYear <= 2012 && lastYear >= 2012) years.add(2012)
+  return [...years]
+    .sort((a, b) => a - b)
     .map((year) => {
-      const i = props.points.findIndex((p) => Number(p.month.slice(0, 4)) >= year)
+      const i = points.findIndex((p) => Number(p.month.slice(0, 4)) >= year)
       return i === -1 ? null : { year, i, x: x(i) }
     })
     .filter((t): t is { year: number; i: number; x: number } => t !== null)

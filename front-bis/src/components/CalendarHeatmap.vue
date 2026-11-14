@@ -19,12 +19,14 @@ import type { CalendarPoint } from '@/lib/types'
 
 const props = defineProps<{ reducedMotion?: boolean }>()
 
-const byMonth = new Map(staticSeries.map((p) => [p.month, p]))
-const maxValue = Math.max(...staticSeries.map((p) => p.harmonized_value ?? 0))
-const maxMedian = Math.max(...monthlyMedians)
+const byMonth = computed(() => new Map(staticSeries.value.map((p) => [p.month, p])))
+const maxValue = computed(() =>
+  Math.max(...staticSeries.value.map((p) => p.harmonized_value ?? 0), 1),
+)
+const maxMedian = computed(() => Math.max(...monthlyMedians.value, 1))
 
 const hovered = ref<string | null>(null)
-const selected = ref<string | null>(featuredMonth.month)
+const selected = ref<string | null>(featuredMonth.value.month)
 const grid = useTemplateRef<HTMLDivElement>('grid')
 
 const REGIME_LABELS: Record<string, string> = {
@@ -56,15 +58,15 @@ function ordinal(value: number): string {
   return value === 1 ? '1er' : `${value}e`
 }
 
-const activeMonth = computed(() => selected.value ?? hovered.value ?? featuredMonth.month)
+const activeMonth = computed(() => selected.value ?? hovered.value ?? featuredMonth.value.month)
 const active = computed<CalendarPoint>(
-  () => byMonth.get(activeMonth.value) ?? featuredMonth,
+  () => byMonth.value.get(activeMonth.value) ?? featuredMonth.value,
 )
-const rank = computed(() => historicalRank(active.value))
+const rankInfo = computed(() => historicalRank(active.value))
 const isPinned = computed(() => selected.value !== null && selected.value === active.value.month)
 
 function cell(month: string): CalendarPoint | undefined {
-  return byMonth.get(month)
+  return byMonth.value.get(month)
 }
 
 function monthId(year: number, month: number): string {
@@ -87,7 +89,7 @@ function mix(a: [number, number, number], b: [number, number, number], t: number
 
 function colorFor(value: number | null | undefined): string {
   if (value === null || value === undefined) return 'rgba(244, 241, 232, 0.04)'
-  const t = Math.sqrt(Math.max(0, Math.min(1, value / maxValue)))
+  const t = Math.sqrt(Math.max(0, Math.min(1, value / maxValue.value)))
   for (let i = 1; i < STOPS.length; i++) {
     const [p1, c1] = STOPS[i]!
     const [p0, c0] = STOPS[i - 1]!
@@ -256,7 +258,7 @@ onMounted(async () => {
 
         <div class="detail-value">
           <span class="stat">{{ formatCount(active.harmonized_value) }}</span>
-          <span class="detail-unit">détections équivalentes VIIRS</span>
+          <span class="detail-unit">détections équivalentes VIIRS S-NPP</span>
         </div>
 
         <div class="detail-bar" aria-hidden="true">
@@ -277,7 +279,9 @@ onMounted(async () => {
         <dl class="detail-grid">
           <div>
             <dt>Rang historique</dt>
-            <dd>{{ ordinal(rank) }} depuis 2001</dd>
+            <dd>
+              {{ ordinal(rankInfo.rank) }} / {{ rankInfo.total }} ({{ rankInfo.minYear }}–{{ rankInfo.maxYear }})
+            </dd>
           </div>
           <div>
             <dt>Régime</dt>

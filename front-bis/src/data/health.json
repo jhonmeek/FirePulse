@@ -1,0 +1,11 @@
+{
+  "status": "ok",
+  "database": "connected",
+  "postgis_version": "3.4 USE_GEOS=1 USE_PROJ=1 USE_STATS=1",
+  "counts": {
+    "regions": 10,
+    "hotspots": 292589,
+    "grid_cell_months": 42482,
+    "harmonized_months": 6011
+  }
+}

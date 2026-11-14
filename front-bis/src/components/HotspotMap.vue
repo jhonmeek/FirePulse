@@ -19,7 +19,9 @@ import {
   buildGrid,
   cellCentroid,
   countryFeature,
+  dataSourceMode,
   formatCount,
+  loadHotspotsGrid,
   provinceFeatures,
 } from '@/lib/data'
 import { provenance } from '@/lib/provenance'
@@ -34,6 +36,8 @@ const yearStart = ref(2000)
 const yearEnd = ref(2025)
 const filterStatic = ref(true)
 const mapReady = ref(false)
+const loadingLive = ref(false)
+const gridSource = ref<'live' | 'snapshot'>('snapshot')
 const stats = ref({ cells: 0, total: 0, max: 1 })
 const showStatic = ref(true)
 
@@ -42,6 +46,7 @@ let popup: Popup | null = null
 let resizeObserver: ResizeObserver | null = null
 let bundle: GridBundle | null = null
 let unmounted = false
+let loadSeq = 0
 
 const START_OPTIONS = YEARS.filter((y) => y <= 2024)
 const END_OPTIONS = YEARS.filter((y) => y >= 2001)
@@ -104,17 +109,35 @@ function gridColorExpression(max: number) {
   return expression as never
 }
 
-function updateData() {
-  if (!map || !mapReady.value) return
-  if (yearStart.value > yearEnd.value) yearEnd.value = yearStart.value
-  bundle = buildGrid(yearStart.value, yearEnd.value, filterStatic.value)
-  stats.value = { cells: bundle.cells, total: bundle.total, max: bundle.max }
-  ;(map.getSource('grid') as GeoJSONSource | undefined)?.setData(bundle.grid)
-  ;(map.getSource('static') as GeoJSONSource | undefined)?.setData(bundle.statics)
+function applyBundle(nextBundle: GridBundle) {
+  if (!map || !mapReady.value || unmounted) return
+  bundle = nextBundle
+  stats.value = { cells: nextBundle.cells, total: nextBundle.total, max: nextBundle.max }
+  ;(map.getSource('grid') as GeoJSONSource | undefined)?.setData(nextBundle.grid)
+  ;(map.getSource('static') as GeoJSONSource | undefined)?.setData(nextBundle.statics)
   if (map.getLayer('grid-fill')) {
-    map.setPaintProperty('grid-fill', 'fill-color', gridColorExpression(bundle.max))
+    map.setPaintProperty('grid-fill', 'fill-color', gridColorExpression(nextBundle.max))
   }
   updateLegend()
+}
+
+async function updateData() {
+  if (!map || !mapReady.value || unmounted) return
+  if (yearStart.value > yearEnd.value) yearEnd.value = yearStart.value
+  const currentSeq = ++loadSeq
+
+  // Premier affichage immédiat depuis l'instantané DB local, puis rafraîchissement PostGIS.
+  applyBundle(buildGrid(yearStart.value, yearEnd.value, filterStatic.value))
+  gridSource.value = 'snapshot'
+  loadingLive.value = true
+
+  const liveBundle = await loadHotspotsGrid(yearStart.value, yearEnd.value, filterStatic.value)
+  if (currentSeq !== loadSeq || !map || !mapReady.value || unmounted) return
+  loadingLive.value = false
+  gridSource.value = liveBundle.source
+  if (liveBundle.source === 'live') {
+    applyBundle(liveBundle)
+  }
 }
 
 const legendColors = computed(() => {
@@ -264,7 +287,7 @@ onMounted(() => {
     if (unmounted || !map) return
     const regions = {
       type: 'FeatureCollection' as const,
-      features: [countryFeature, ...provinceFeatures].filter(Boolean),
+      features: [countryFeature.value, ...provinceFeatures.value].filter(Boolean),
     }
 
     map.addSource('graticule', { type: 'geojson', data: buildGraticule() })
@@ -397,6 +420,14 @@ watch([yearStart, yearEnd, filterStatic], updateData)
 watch(yearStart, (value) => {
   if (value > yearEnd.value) yearEnd.value = value
 })
+watch([countryFeature, provinceFeatures], () => {
+  if (!map || !mapReady.value || unmounted) return
+  const regions = {
+    type: 'FeatureCollection' as const,
+    features: [countryFeature.value, ...provinceFeatures.value].filter(Boolean),
+  }
+  ;(map.getSource('regions') as GeoJSONSource | undefined)?.setData(regions as never)
+})
 </script>
 
 <template>
@@ -473,9 +504,10 @@ watch(yearStart, (value) => {
     </div>
 
     <p class="map-caption">
-      Agrégat {{ String(provenance.gridDeg).replace('.', ',') }}° sur la période. Une cellule
-      colorée n'est pas un incendie unique. Les sites statiques (bleu) sont des torchères ou des
-      sources industrielles persistantes.
+      Agrégat {{ String(provenance.gridDeg).replace('.', ',') }}° sur le polygone GA
+      ({{ loadingLive ? 'synchro PostGIS…' : gridSource === 'live' && dataSourceMode === 'live' ? 'données PostGIS en direct' : 'instantané DB local' }}).
+      Une cellule colorée n'est pas un incendie unique. Les sites statiques (bleu) sont des
+      torchères ou sources persistantes.
     </p>
   </div>
 </template>

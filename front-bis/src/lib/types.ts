@@ -140,3 +140,60 @@ export interface RegionFeatureProps {
 }
 
 export type RegionFeature = Feature<MultiPolygon, RegionFeatureProps>
+
+export type DataSourceMode = 'live' | 'snapshot'
+
+export interface HealthResponse {
+  status: string
+  database: string
+  postgis_version: string
+  counts: {
+    regions: number
+    hotspots: number
+    grid_cell_months: number
+    harmonized_months: number
+  }
+}
+
+export interface CoverageSensor {
+  source: string
+  label: string
+  min_date: string | null
+  max_date: string | null
+  operational_end_date: string | null
+  processing_levels: string[]
+  product_versions: string[]
+  notes: string
+}
+
+export interface CoverageResponse {
+  region: string
+  sensors: CoverageSensor[]
+}
+
+export interface HotspotApiGridCellProps {
+  layer: 'grid_cell_summary'
+  cell_id: string
+  months_count: number
+  modis_count: number
+  viirs_snpp_count: number
+  viirs_noaa20_count: number
+  frp_sum_modis: number
+  frp_sum_snpp: number
+  frp_sum_noaa20: number
+}
+
+export interface HotspotApiStaticMaskProps {
+  layer: 'static_flare_mask'
+  cell_id: string
+  type23_count: number
+  active_months_snpp: number
+  reason: string
+}
+
+export interface HotspotsApiResponse {
+  type: 'FeatureCollection'
+  mode: string
+  agg: string
+  features: Array<Feature<Polygon, HotspotApiGridCellProps | HotspotApiStaticMaskProps>>
+}

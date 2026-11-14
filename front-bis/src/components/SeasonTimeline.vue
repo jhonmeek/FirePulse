@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { nextTick, onMounted, useTemplateRef } from 'vue'
+import { computed, nextTick, onMounted, useTemplateRef } from 'vue'
 import { gsap, ScrollTrigger } from '@/lib/motion'
 
-const props = withDefaults(defineProps<{ reducedMotion?: boolean }>(), { reducedMotion: false })
+const props = withDefaults(
+  defineProps<{
+    reducedMotion?: boolean
+    archiveEnd?: string
+    noaaBridgeRatio?: number
+  }>(),
+  {
+    reducedMotion: false,
+    archiveEnd: '2025-12',
+    noaaBridgeRatio: 1.0381,
+  },
+)
 
 const wrapper = useTemplateRef<HTMLDivElement>('wrapper')
 
-const regimes = [
+const regimes = computed(() => [
   {
     id: 'terra',
     label: 'MODIS Terra seul',
     range: '2000-11 → 2002-06',
     width: 6.5,
     tone: 'gold',
-    note: 'Aqua n’est pas encore là.',
+    note: 'Aqua n’est pas encore lancé (modèle dédié).',
   },
   {
     id: 'modis',
@@ -21,12 +32,12 @@ const regimes = [
     range: '2002-07 → 2012-01',
     width: 38,
     tone: 'ember',
-    note: 'Reconstitué sur l’échelle VIIRS.',
+    note: 'Reconstitué sur l’échelle VIIRS S-NPP.',
   },
   {
     id: 'snpp',
     label: 'VIIRS S-NPP',
-    range: '2012-02 → 2026-11-02',
+    range: `2012-02 → ${props.archiveEnd} (arch. SP) · arrêt 2026-11-02`,
     width: 39,
     tone: 'teal',
     note: 'L’échelle de référence.',
@@ -37,9 +48,9 @@ const regimes = [
     range: '2026-11-03 → …',
     width: 16.5,
     tone: 'cyan',
-    note: 'La continuité après S-NPP.',
+    note: `Continuité calibrée sur 2019–2025 (ratio ${props.noaaBridgeRatio.toFixed(3).replace('.', ',')}).`,
   },
-]
+])
 
 onMounted(async () => {
   if (props.reducedMotion) return

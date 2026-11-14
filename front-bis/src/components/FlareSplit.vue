@@ -9,19 +9,21 @@ const props = withDefaults(
     share: number
     staticCount: number
     totalCount: number
+    type23Count?: number
+    type23Share?: number
+    maskedCells?: number
     reducedMotion?: boolean
   }>(),
-  { reducedMotion: false },
+  { reducedMotion: false, type23Count: 31_110, type23Share: 21.6, maskedCells: 183 },
 )
 
 const filtered = ref(false)
 const wrapper = useTemplateRef<HTMLDivElement>('wrapper')
-const staticCount = Math.round((props.share / 100) * 100)
+const dotCount = computed(() => Math.min(100, Math.max(0, Math.round(props.share))))
 
-// 21 points cyan répartis de façon déterministe parmi les 100 points.
-const staticFlags = Array.from(
-  { length: 100 },
-  (_, index) => (index * 37 + 11) % 100 < staticCount,
+// Répartition déterministe des points statiques parmi les 100 points.
+const staticFlags = computed(() =>
+  Array.from({ length: 100 }, (_, index) => (index * 37 + 11) % 100 < dotCount.value),
 )
 
 const removed = computed(() => (filtered.value ? 0 : props.staticCount))
@@ -50,7 +52,7 @@ onMounted(async () => {
     <div class="flare-top">
       <div class="flare-number">
         <span class="stat">{{ visibleShare.toFixed(1).replace('.', ',') }}<small>%</small></span>
-        <span class="flare-caption">des détections VIIRS S-NPP<br />sont des sources statiques</span>
+        <span class="flare-caption">des détections VIIRS S-NPP (GA)<br />écartées par le filtre statique</span>
       </div>
       <button
         type="button"
@@ -88,10 +90,12 @@ onMounted(async () => {
     </div>
 
     <p class="flare-note">
-      Le type FIRMS ne suffit pas : en 2017, MODIS n'a signalé aucune source type 2 au Gabon.
-      D'où un masque spatial de
-      {{ String(provenance.staticGridDeg).replace('.', ',') }}° basé sur la persistance, appliqué
-      à tous les capteurs.
+      Seules {{ props.type23Share.toFixed(1).replace('.', ',') }} %
+      ({{ formatCount(props.type23Count) }}) portent le tag FIRMS type 2/3 en GA — et en 2017,
+      MODIS n'a signalé aucune source type 2 au Gabon. Le masque de
+      {{ String(provenance.staticGridDeg).replace('.', ',') }}° ({{ props.maskedCells }} mailles
+      persistantes) écarte aussi les détections type 0 situées sur ces mêmes sites, d'où
+      {{ props.share.toFixed(1).replace('.', ',') }} % retirés sur S-NPP.
     </p>
   </div>
 </template>

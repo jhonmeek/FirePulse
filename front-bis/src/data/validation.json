@@ -1,0 +1,1134 @@
+{
+  "artifact_kind": "firepulse-harmonization-validation",
+  "by_season": {
+    "basse_saison_nov_mai": {
+      "anomaly": {
+        "bias": -7.95006230921975,
+        "mae": 63.94017979283925,
+        "n": 42,
+        "r2": 0.5488490585915349,
+        "rmse": 77.61542912176839
+      },
+      "raw": {
+        "bias": -7.95006230921975,
+        "mae": 63.94017979283925,
+        "n": 42,
+        "r2": 0.7861725403811213,
+        "rmse": 77.61542912176839
+      }
+    },
+    "haute_saison_juin_octobre": {
+      "anomaly": {
+        "bias": 111.37156210968344,
+        "mae": 200.33132900026476,
+        "n": 30,
+        "r2": 0.796791718577921,
+        "rmse": 303.050828108083
+      },
+      "raw": {
+        "bias": 111.37156210968344,
+        "mae": 200.33132900026476,
+        "n": 30,
+        "r2": 0.8701963477655558,
+        "rmse": 303.050828108083
+      }
+    }
+  },
+  "conformal": {
+    "coverage_test_q80_calibration": 0.6388888888888888,
+    "coverage_test_q80_leaky": 0.7916666666666666,
+    "coverage_test_q90_calibration": 0.6666666666666666,
+    "nominal": 0.8,
+    "note": "Le quantile q80 est appris sur 2018–2019 puis appliqué à 2020–2025. La couverture q80_test_leaky est donnée uniquement pour comparaison : elle est tautologique et ne doit pas être présentée comme une validation.",
+    "q80_calibration": 0.3100908488268278,
+    "q80_test_leaky": 0.4386354092790209,
+    "q90_calibration": 0.360049439283912
+  },
+  "generated_at": "2026-11-14T23:00:18.971142+00:00",
+  "held_out": {
+    "noaa20": {
+      "anomaly": {
+        "bias": -25.405377351887683,
+        "mae": 100.12829089490056,
+        "n": 72,
+        "r2": 0.8670641396622316,
+        "rmse": 156.6998406905632
+      },
+      "calibration_months": 24,
+      "ratio_noaa20_to_snpp_calibration": 0.9400350444545396,
+      "raw": {
+        "bias": -25.40537735188768,
+        "mae": 100.12829089490056,
+        "n": 72,
+        "r2": 0.956079007851867,
+        "rmse": 156.69984069056324
+      },
+      "role": "capteur tenu à l'écart (non utilisé pour entraîner le power-law)"
+    },
+    "terra_to_aqua": {
+      "anomaly": {
+        "bias": 420.0072151181901,
+        "mae": 428.7239193916352,
+        "n": 72,
+        "r2": -0.24057873457915435,
+        "rmse": 495.0167018778597
+      },
+      "raw": {
+        "bias": 420.0072151181901,
+        "mae": 428.7239193916352,
+        "n": 72,
+        "r2": 0.5180759834587182,
+        "rmse": 495.0167018778597
+      },
+      "role": "transfert de plateforme : modèle appris sur Terra, appliqué à Aqua"
+    }
+  },
+  "mask": {
+    "cells_all_years": 183,
+    "cells_frozen": 61,
+    "frozen_on": "2000–2019",
+    "grid_deg": 0.05,
+    "snpp_months_min": 48,
+    "type23_min": 20
+  },
+  "mask_freeze_delta": {
+    "all_years": "2000–2025",
+    "all_years_power_law": {
+      "bias": 30.633300560255723,
+      "mae": 96.74504833124378,
+      "n": 72,
+      "r2": 0.9284384621066836,
+      "rmse": 165.90964318706503
+    },
+    "cells_all": 183,
+    "cells_frozen": 61,
+    "delta_cells": 122,
+    "frozen_on": "2000–2019",
+    "frozen_power_law": {
+      "bias": 41.767281198656576,
+      "mae": 120.76982529593322,
+      "n": 72,
+      "r2": 0.9178298040885671,
+      "rmse": 204.4032179193184
+    },
+    "note": "Le masque all-years connaît les sources statiques de 2018–2025 ; l'écart mesure le look-ahead. Le masque gelé est le seul protocole rigoureux."
+  },
+  "models": {
+    "global_ratio": {
+      "anomaly": {
+        "bias": 57.87690347141566,
+        "mae": 147.36728932765516,
+        "n": 72,
+        "r2": 0.6707701389777112,
+        "rmse": 255.01004941612098
+      },
+      "raw": {
+        "bias": 57.87690347141566,
+        "mae": 147.36728932765516,
+        "n": 72,
+        "r2": 0.8721050324605044,
+        "rmse": 255.01004941612098
+      }
+    },
+    "naive": {
+      "anomaly": {
+        "bias": -460.27777777777777,
+        "mae": 460.27777777777777,
+        "n": 72,
+        "r2": -1.3708073542032353,
+        "rmse": 684.3146206241687
+      },
+      "raw": {
+        "bias": -460.27777777777777,
+        "mae": 460.27777777777777,
+        "n": 72,
+        "r2": 0.0790193554536276,
+        "rmse": 684.3146206241687
+      }
+    },
+    "ols_linear": {
+      "anomaly": {
+        "bias": 57.28697608151684,
+        "mae": 133.05321319975326,
+        "n": 72,
+        "r2": 0.7330444430777163,
+        "rmse": 229.62922963737364
+      },
+      "raw": {
+        "bias": 57.28697608151684,
+        "mae": 133.05321319975326,
+        "n": 72,
+        "r2": 0.8962965504372886,
+        "rmse": 229.62922963737364
+      }
+    },
+    "power_law_log1p": {
+      "anomaly": {
+        "bias": 41.767281198656576,
+        "mae": 120.76982529593322,
+        "n": 72,
+        "r2": 0.7884757883711019,
+        "rmse": 204.4032179193184
+      },
+      "raw": {
+        "bias": 41.767281198656576,
+        "mae": 120.76982529593322,
+        "n": 72,
+        "r2": 0.9178298040885671,
+        "rmse": 204.4032179193184
+      }
+    },
+    "seasonal_baseline": {
+      "anomaly": {
+        "bias": 0.5694444444444444,
+        "mae": 238.79166666666666,
+        "n": 72,
+        "r2": -1.6416756192239035e-06,
+        "rmse": 444.43478461724595
+      },
+      "raw": {
+        "bias": 0.5694444444444444,
+        "mae": 238.79166666666666,
+        "n": 72,
+        "r2": 0.6115322677462507,
+        "rmse": 444.43478461724595
+      }
+    },
+    "seasonal_ratio": {
+      "anomaly": {
+        "bias": 66.252788359601,
+        "mae": 147.1272930278614,
+        "n": 72,
+        "r2": 0.6400150479407476,
+        "rmse": 266.65507864137163
+      },
+      "raw": {
+        "bias": 66.252788359601,
+        "mae": 147.1272930278614,
+        "n": 72,
+        "r2": 0.8601576916037758,
+        "rmse": 266.65507864137163
+      }
+    }
+  },
+  "notes": [
+    "Les comptages mesurent des détections thermiques, pas des incendies distincts.",
+    "Le R² sur comptages bruts est gonflé par le cycle saisonnier ; les métriques d'anomalie sont le vrai test.",
+    "Le masque est gelé sur 2000–2019 ; 2018–2019 sert à la calibration, 2020–2025 au test.",
+    "L'intervalle conforme est calibré sur 2018–2019 ; la couverture est mesurée sur 2020–2025.",
+    "NOAA-20 est un capteur tenu à l'écart : le ratio est calibré sur 2018–2019, pas sur le test.",
+    "Le transfert Terra → Aqua teste la robustesse inter-plateformes, pas un nouveau capteur.",
+    "Le pont NOAA-20 post-2026 reste une projection, pas une validation."
+  ],
+  "params": {
+    "global_ratio": 3.9953542392566783,
+    "noaa20_to_snpp_ratio": 0.9400350444545396,
+    "ols_intercept": 31.186629869310536,
+    "ols_slope": 3.811659970074577,
+    "power_law_p": 0.9353849293055841,
+    "power_law_q": 1.7265864214885704,
+    "terra_to_snpp_p": 0.7023832613075791,
+    "terra_to_snpp_q": 3.7378614252107223
+  },
+  "schema_version": 1,
+  "sensitivity": {
+    "permissif_10_24": {
+      "anomaly": {
+        "bias": 19.064020671180867,
+        "mae": 88.4858289528832,
+        "n": 72,
+        "r2": 0.860324426818625,
+        "rmse": 155.56075282644207
+      },
+      "cells": 258,
+      "raw": {
+        "bias": 19.064020671180867,
+        "mae": 88.4858289528832,
+        "n": 72,
+        "r2": 0.9246012311299103,
+        "rmse": 155.56075282644207
+      },
+      "snpp_months_min": 24,
+      "type23_min": 10
+    },
+    "reference_20_48": {
+      "anomaly": {
+        "bias": 41.767281198656576,
+        "mae": 120.76982529593322,
+        "n": 72,
+        "r2": 0.7884757883711019,
+        "rmse": 204.4032179193184
+      },
+      "cells": 61,
+      "raw": {
+        "bias": 41.767281198656576,
+        "mae": 120.76982529593322,
+        "n": 72,
+        "r2": 0.9178298040885671,
+        "rmse": 204.4032179193184
+      },
+      "snpp_months_min": 48,
+      "type23_min": 20
+    },
+    "strict_30_72": {
+      "anomaly": {
+        "bias": 40.666823464817355,
+        "mae": 120.326947230521,
+        "n": 72,
+        "r2": 0.7918602276454915,
+        "rmse": 203.196205783186
+      },
+      "cells": 57,
+      "raw": {
+        "bias": 40.666823464817355,
+        "mae": 120.326947230521,
+        "n": 72,
+        "r2": 0.9195773470760005,
+        "rmse": 203.196205783186
+      },
+      "snpp_months_min": 72,
+      "type23_min": 30
+    }
+  },
+  "source": {
+    "inputs": [
+      {
+        "file": "modis_2000_Gabon.csv",
+        "sha256": "1f8938b515ed74bcc9c510c269b128176409627ce71d0f9d0c29d01afb0c0da2",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2001_Gabon.csv",
+        "sha256": "887674f9a75e31a2603cd1917666608397095d9e15fb7c5cafc51ae9b3ae1634",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2002_Gabon.csv",
+        "sha256": "996e354c9aec54706f09e8203be9530bd9129a9045ac8d3e1beb38becfc3c6a5",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2003_Gabon.csv",
+        "sha256": "04135d065a07214d95c1331c3795e69fe9a04822918d3a1a6d0536d0755c0667",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2004_Gabon.csv",
+        "sha256": "f1beda49054921b05863ad5b14b77a78382b4b1bfc3e2b37a3b5f5b9e2c29e0e",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2005_Gabon.csv",
+        "sha256": "49d2984b26c305fc33edd206b57fd40246c72d51a2c1432fd3686951d55a4e07",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2006_Gabon.csv",
+        "sha256": "b1cdb924f45c636291ca77dfb979878d3e94bd2fca8529a994d28d4c04a64ae0",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2007_Gabon.csv",
+        "sha256": "6303b595db9d0a2cad431fc4c8a76df1a83087a015eccf6a1df0498ce4308be4",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2008_Gabon.csv",
+        "sha256": "01e4e73e87f82de2aa147c71879a5c6c6d97516b4ea50c6d67f7c2e0c1197e8d",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2009_Gabon.csv",
+        "sha256": "2f53f7e7f86ba424ec0a47673f4e7b34182630f0d0baa36592c8f77d4f24a334",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2010_Gabon.csv",
+        "sha256": "8c267d9d8cf259625f5f909cb722afcad750b12b1d725af0d51dac02699dcf11",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2011_Gabon.csv",
+        "sha256": "024e8167ce5f32cfc9b1c01d394e28ee6e5c20792c0d9ac824ffb9713394d9af",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2012_Gabon.csv",
+        "sha256": "23efd90c8ee8cc40448e437e2267c0c3ecb2cd8bd94de3cc314be83861ea120a",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2013_Gabon.csv",
+        "sha256": "9986ad65377f555875ee09ae886b145268bff6362200e2719b314265affff317",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2014_Gabon.csv",
+        "sha256": "28876ff823890c479e058250dea54a60eda5d0a345ca4645ba3b9fa530fe2615",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2015_Gabon.csv",
+        "sha256": "f59a6f4a525e4e1d0ecd7d988ebce90b37ec9a38c7560caaa688bc1ef978bf08",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2016_Gabon.csv",
+        "sha256": "dd17aa6850e92fcbc3378bf13b4d939d3aae17f97e61d5e79fffeee8a0d2badc",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2017_Gabon.csv",
+        "sha256": "80ca0ad128f419c8d11d11410e65274e065a1f6beacb8b2218e4420fa6baa417",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2018_Gabon.csv",
+        "sha256": "17faa9bf6328128f20aa9acbb6834e12b58e063be73a4fb96885e00735807c37",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2019_Gabon.csv",
+        "sha256": "c2498892ec1b57605a5be097524090bec72b5f030b2d7a8ee77f39bf8f5d0a54",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2020_Gabon.csv",
+        "sha256": "5a3f069f87272d248cac49690715c8ce9122836dcab38fbd86ce2f54e0cda81e",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2021_Gabon.csv",
+        "sha256": "0fda93efc9171f973c1268256a2b27f90d9592f92e9cd31dec1933960926ced1",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2022_Gabon.csv",
+        "sha256": "325e635c067dee1f8c7a0069f17a8fbbd3f2bbe2c7ca64e84db55e42a1791c67",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2023_Gabon.csv",
+        "sha256": "6ceb8985e74385cc629bc1ff3dcd6ee9d568efbe30b70e0a4047113dc144a2ef",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2024_Gabon.csv",
+        "sha256": "b41275298e57c4b79607219c58090ea1a0c199853f399236c94a9fb39ea77bad",
+        "source": "modis"
+      },
+      {
+        "file": "modis_2025_Gabon.csv",
+        "sha256": "9a8ad46e2aaaf8a30a9899d9aaf20b07d41b6ed12721f058a28f0c408f4ea56f",
+        "source": "modis"
+      },
+      {
+        "file": "viirs-snpp_2012_Gabon.csv",
+        "sha256": "da72ba2d80709f1fc431de7472edcd4be39c1ca6a3f540366d4bc34c87e14fb6",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2013_Gabon.csv",
+        "sha256": "e137223692bbf4749fe3714ec9a0e2442f53bfc67cd14fc9c4b7889390ff89dc",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2014_Gabon.csv",
+        "sha256": "5c92bef4e4e09c159ac432ef250ff9beb2efa8794ff4fbd32200d7897c8eaf6e",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2015_Gabon.csv",
+        "sha256": "2aa1a4d699dd1bb76072b6610a58ec678370a630c24a98bc12f281856d243c4f",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2016_Gabon.csv",
+        "sha256": "856558237a92292d0998760819915af04aa6da0623af09a9ae91081145f71fa3",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2017_Gabon.csv",
+        "sha256": "fc2b4cc8d2070ab2efddf4614a096030a4e6a262f3158bd7ad5e2b455740101a",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2018_Gabon.csv",
+        "sha256": "9ebce4e28e8ec9af746095f98502ab10d3f582a2abd711a9eeb84bd26e420d74",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2019_Gabon.csv",
+        "sha256": "8cade1969fb9212a20dd7db05e2b012da3ad467cb89c65d6b66bf8ae61e9d246",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2020_Gabon.csv",
+        "sha256": "734b8decbd357af8fea2ad09058acf96470ea5f786666cb9c7eb85ca72772653",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2021_Gabon.csv",
+        "sha256": "1cab1dca19416d2adb5531b510b0acd089fed4f7705c158c0d1d742c7d0f5c66",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2022_Gabon.csv",
+        "sha256": "18ac9a842967236be73e34e3b08dd817f85ea30023ca6d898b8208eebe0e9166",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2023_Gabon.csv",
+        "sha256": "76976ce5939dc42c9b25df709d48c08d626b1faf8c37a36997a505b8e29c5ffd",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2024_Gabon.csv",
+        "sha256": "3ca215ceff303f9c3a740bd5a03d1047f4925603864396a8883f8219f0419ff3",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-snpp_2025_Gabon.csv",
+        "sha256": "ab2f6cfff83d40b0851d0545a30ef79a2a493815d48575dd031fdebf50a4abc3",
+        "source": "snpp"
+      },
+      {
+        "file": "viirs-jpss1_2018_Gabon.csv",
+        "sha256": "dec1407899f55b3d5183e86c310b6630bceda7baa065e3dfaa7659b69bce2d98",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2019_Gabon.csv",
+        "sha256": "9937582a5e34682f448971506d84402132733b52800ff7511c39b1f5d846de86",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2020_Gabon.csv",
+        "sha256": "11544df6030ab5da2f4b280744976322045b451792d52c2b30052c7468b1fe40",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2021_Gabon.csv",
+        "sha256": "39ad6afd1ec91d04f35ee9785bd1dad46a028cfd3f3910616e52e39961b0b7cb",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2022_Gabon.csv",
+        "sha256": "ef800dab2e4014828651942c0629d62d3aec088418f513dcd116fe7f44786950",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2023_Gabon.csv",
+        "sha256": "c6f2652d147ce11737daea38a6f828abcba1a25b70ff8204f3f1bb961b61371b",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2024_Gabon.csv",
+        "sha256": "afc596ca5e11e170b7dbf6d6e8c003c83ef4eac76b9e84b29c73fe2b0fe0d87c",
+        "source": "noaa20"
+      },
+      {
+        "file": "viirs-jpss1_2025_Gabon.csv",
+        "sha256": "1bf54cfe58d677f576470ccde4d73cc0b0e9b84ba140b4afc997e96735ac2373",
+        "source": "noaa20"
+      }
+    ],
+    "raw_dir": "data/raw/gabon",
+    "scope": "48 CSV pays Gabon, 2000–2025 ; géométrie non rejoint, comme M1"
+  },
+  "split": {
+    "calibration": [
+      "2018-01",
+      "2019-12"
+    ],
+    "n_calibration": 24,
+    "n_test": 72,
+    "n_train": 71,
+    "test": [
+      "2020-01",
+      "2025-12"
+    ],
+    "train": [
+      "2012-02",
+      "2017-12"
+    ]
+  },
+  "test_series": [
+    {
+      "month": "2020-01",
+      "noaa20_observed": 391,
+      "observed": 388,
+      "power_law": 298.036,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 263.599
+    },
+    {
+      "month": "2020-02",
+      "noaa20_observed": 395,
+      "observed": 428,
+      "power_law": 365.475,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 354.191
+    },
+    {
+      "month": "2020-03",
+      "noaa20_observed": 535,
+      "observed": 568,
+      "power_law": 521.051,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 576.269
+    },
+    {
+      "month": "2020-04",
+      "noaa20_observed": 255,
+      "observed": 278,
+      "power_law": 302.03,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 303.621
+    },
+    {
+      "month": "2020-05",
+      "noaa20_observed": 315,
+      "observed": 268,
+      "power_law": 172.023,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 174.601
+    },
+    {
+      "month": "2020-06",
+      "noaa20_observed": 699,
+      "observed": 729,
+      "power_law": 763.7,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 678.185
+    },
+    {
+      "month": "2020-07",
+      "noaa20_observed": 1499,
+      "observed": 1788,
+      "power_law": 1841.409,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 1875.478
+    },
+    {
+      "month": "2020-08",
+      "noaa20_observed": 2165,
+      "observed": 2147,
+      "power_law": 1493.617,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 1631.078
+    },
+    {
+      "month": "2020-09",
+      "noaa20_observed": 1120,
+      "observed": 980,
+      "power_law": 871.798,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 851.414
+    },
+    {
+      "month": "2020-10",
+      "noaa20_observed": 355,
+      "observed": 259,
+      "power_law": 225.449,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 224.29
+    },
+    {
+      "month": "2020-11",
+      "noaa20_observed": 50,
+      "observed": 59,
+      "power_law": 51.96,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 37.407
+    },
+    {
+      "month": "2020-12",
+      "noaa20_observed": 73,
+      "observed": 76,
+      "power_law": 29.041,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 26.188
+    },
+    {
+      "month": "2021-01",
+      "noaa20_observed": 88,
+      "observed": 126,
+      "power_law": 87.303,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 68.765
+    },
+    {
+      "month": "2021-02",
+      "noaa20_observed": 338,
+      "observed": 303,
+      "power_law": 349.69,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 337.717
+    },
+    {
+      "month": "2021-03",
+      "noaa20_observed": 334,
+      "observed": 254,
+      "power_law": 241.703,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 251.546
+    },
+    {
+      "month": "2021-04",
+      "noaa20_observed": 618,
+      "observed": 504,
+      "power_law": 369.413,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 377.358
+    },
+    {
+      "month": "2021-05",
+      "noaa20_observed": 231,
+      "observed": 212,
+      "power_law": 163.71,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 165.412
+    },
+    {
+      "month": "2021-06",
+      "noaa20_observed": 347,
+      "observed": 350,
+      "power_law": 439.847,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 374.786
+    },
+    {
+      "month": "2021-07",
+      "noaa20_observed": 1829,
+      "observed": 1776,
+      "power_law": 2069.545,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 2125.286
+    },
+    {
+      "month": "2021-08",
+      "noaa20_observed": 1651,
+      "observed": 1553,
+      "power_law": 1992.534,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 2220.776
+    },
+    {
+      "month": "2021-09",
+      "noaa20_observed": 1272,
+      "observed": 1291,
+      "power_law": 1407.63,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 1422.911
+    },
+    {
+      "month": "2021-10",
+      "noaa20_observed": 189,
+      "observed": 166,
+      "power_law": 134.37,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 127.538
+    },
+    {
+      "month": "2021-11",
+      "noaa20_observed": 115,
+      "observed": 89,
+      "power_law": 138.587,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 112.222
+    },
+    {
+      "month": "2021-12",
+      "noaa20_observed": 131,
+      "observed": 90,
+      "power_law": 167.87,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 193.787
+    },
+    {
+      "month": "2022-01",
+      "noaa20_observed": 328,
+      "observed": 295,
+      "power_law": 361.533,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 324.724
+    },
+    {
+      "month": "2022-02",
+      "noaa20_observed": 580,
+      "observed": 541,
+      "power_law": 463.146,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 457.154
+    },
+    {
+      "month": "2022-03",
+      "noaa20_observed": 468,
+      "observed": 603,
+      "power_law": 404.736,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 439.062
+    },
+    {
+      "month": "2022-04",
+      "noaa20_observed": 313,
+      "observed": 196,
+      "power_law": 117.411,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 108.436
+    },
+    {
+      "month": "2022-05",
+      "noaa20_observed": 216,
+      "observed": 261,
+      "power_law": 205.017,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 211.359
+    },
+    {
+      "month": "2022-06",
+      "noaa20_observed": 805,
+      "observed": 742,
+      "power_law": 819.736,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 731.726
+    },
+    {
+      "month": "2022-07",
+      "noaa20_observed": 1699,
+      "observed": 1624,
+      "power_law": 1866.067,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 1902.381
+    },
+    {
+      "month": "2022-08",
+      "noaa20_observed": 2463,
+      "observed": 1870,
+      "power_law": 2569.079,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 2915.03
+    },
+    {
+      "month": "2022-09",
+      "noaa20_observed": 802,
+      "observed": 688,
+      "power_law": 771.188,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 746.445
+    },
+    {
+      "month": "2022-10",
+      "noaa20_observed": 123,
+      "observed": 182,
+      "power_law": 91.643,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 83.559
+    },
+    {
+      "month": "2022-11",
+      "noaa20_observed": 50,
+      "observed": 67,
+      "power_law": 42.897,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 29.926
+    },
+    {
+      "month": "2022-12",
+      "noaa20_observed": 103,
+      "observed": 109,
+      "power_law": 87.303,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 94.275
+    },
+    {
+      "month": "2023-01",
+      "noaa20_observed": 111,
+      "observed": 129,
+      "power_law": 100.281,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 80.226
+    },
+    {
+      "month": "2023-02",
+      "noaa20_observed": 407,
+      "observed": 400,
+      "power_law": 420.365,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 411.85
+    },
+    {
+      "month": "2023-03",
+      "noaa20_observed": 524,
+      "observed": 425,
+      "power_law": 278.009,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 292.708
+    },
+    {
+      "month": "2023-04",
+      "noaa20_observed": 212,
+      "observed": 319,
+      "power_law": 180.31,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 173.498
+    },
+    {
+      "month": "2023-05",
+      "noaa20_observed": 224,
+      "observed": 234,
+      "power_law": 142.794,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 142.438
+    },
+    {
+      "month": "2023-06",
+      "noaa20_observed": 590,
+      "observed": 727,
+      "power_law": 669.66,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 588.95
+    },
+    {
+      "month": "2023-07",
+      "noaa20_observed": 1398,
+      "observed": 1556,
+      "power_law": 1678.783,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 1698.691
+    },
+    {
+      "month": "2023-08",
+      "noaa20_observed": 2010,
+      "observed": 1928,
+      "power_law": 2135.895,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 2392.248
+    },
+    {
+      "month": "2023-09",
+      "noaa20_observed": 1287,
+      "observed": 1143,
+      "power_law": 916.252,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 898.067
+    },
+    {
+      "month": "2023-10",
+      "noaa20_observed": 141,
+      "observed": 165,
+      "power_law": 245.755,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 246.28
+    },
+    {
+      "month": "2023-11",
+      "noaa20_observed": 58,
+      "observed": 36,
+      "power_law": 100.281,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 78.556
+    },
+    {
+      "month": "2023-12",
+      "noaa20_observed": 102,
+      "observed": 104,
+      "power_law": 159.542,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 183.312
+    },
+    {
+      "month": "2024-01",
+      "noaa20_observed": 552,
+      "observed": 576,
+      "power_law": 567.055,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 527.198
+    },
+    {
+      "month": "2024-02",
+      "noaa20_observed": 360,
+      "observed": 407,
+      "power_law": 536.416,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 535.405
+    },
+    {
+      "month": "2024-03",
+      "noaa20_observed": 488,
+      "observed": 499,
+      "power_law": 459.268,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 503.092
+    },
+    {
+      "month": "2024-04",
+      "noaa20_observed": 433,
+      "observed": 390,
+      "power_law": 486.365,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 507.481
+    },
+    {
+      "month": "2024-05",
+      "noaa20_observed": 215,
+      "observed": 196,
+      "power_law": 353.641,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 381.366
+    },
+    {
+      "month": "2024-06",
+      "noaa20_observed": 932,
+      "observed": 904,
+      "power_law": 1008.397,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 913.765
+    },
+    {
+      "month": "2024-07",
+      "noaa20_observed": 2254,
+      "observed": 1199,
+      "power_law": 2229.939,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 2302.073
+    },
+    {
+      "month": "2024-08",
+      "noaa20_observed": 3422,
+      "observed": 3621,
+      "power_law": 3878.427,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 4529.379
+    },
+    {
+      "month": "2024-09",
+      "noaa20_observed": 698,
+      "observed": 635,
+      "power_law": 665.88,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 637.589
+    },
+    {
+      "month": "2024-10",
+      "noaa20_observed": 112,
+      "observed": 136,
+      "power_law": 113.146,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 105.548
+    },
+    {
+      "month": "2024-11",
+      "noaa20_observed": 58,
+      "observed": 39,
+      "power_law": 82.948,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 63.593
+    },
+    {
+      "month": "2024-12",
+      "noaa20_observed": 67,
+      "observed": 55,
+      "power_law": 104.581,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 115.225
+    },
+    {
+      "month": "2025-01",
+      "noaa20_observed": 126,
+      "observed": 77,
+      "power_law": 167.87,
+      "seasonal_baseline": 119,
+      "seasonal_ratio": 141.35
+    },
+    {
+      "month": "2025-02",
+      "noaa20_observed": 330,
+      "observed": 349,
+      "power_law": 381.212,
+      "seasonal_baseline": 342.5,
+      "seasonal_ratio": 370.665
+    },
+    {
+      "month": "2025-03",
+      "noaa20_observed": 248,
+      "observed": 340,
+      "power_law": 349.69,
+      "seasonal_baseline": 387.5,
+      "seasonal_ratio": 375.032
+    },
+    {
+      "month": "2025-04",
+      "noaa20_observed": 183,
+      "observed": 175,
+      "power_law": 253.844,
+      "seasonal_baseline": 383.5,
+      "seasonal_ratio": 251.572
+    },
+    {
+      "month": "2025-05",
+      "noaa20_observed": 207,
+      "observed": 244,
+      "power_law": 282.022,
+      "seasonal_baseline": 228.0,
+      "seasonal_ratio": 298.66
+    },
+    {
+      "month": "2025-06",
+      "noaa20_observed": 485,
+      "observed": 397,
+      "power_law": 597.581,
+      "seasonal_baseline": 636.0,
+      "seasonal_ratio": 521.132
+    },
+    {
+      "month": "2025-07",
+      "noaa20_observed": 1610,
+      "observed": 1561,
+      "power_law": 1450.668,
+      "seasonal_baseline": 2343.0,
+      "seasonal_ratio": 1452.727
+    },
+    {
+      "month": "2025-08",
+      "noaa20_observed": 3249,
+      "observed": 3133,
+      "power_law": 3157.122,
+      "seasonal_baseline": 1463.0,
+      "seasonal_ratio": 3634.377
+    },
+    {
+      "month": "2025-09",
+      "noaa20_observed": 973,
+      "observed": 1091,
+      "power_law": 1400.448,
+      "seasonal_baseline": 1378.0,
+      "seasonal_ratio": 1415.136
+    },
+    {
+      "month": "2025-10",
+      "noaa20_observed": 408,
+      "observed": 421,
+      "power_law": 597.581,
+      "seasonal_baseline": 199.5,
+      "seasonal_ratio": 642.086
+    },
+    {
+      "month": "2025-11",
+      "noaa20_observed": 44,
+      "observed": 43,
+      "power_law": 87.303,
+      "seasonal_baseline": 59.5,
+      "seasonal_ratio": 67.333
+    },
+    {
+      "month": "2025-12",
+      "noaa20_observed": 54,
+      "observed": 81,
+      "power_law": 65.362,
+      "seasonal_baseline": 66.5,
+      "seasonal_ratio": 68.087
+    }
+  ]
+}

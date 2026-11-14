@@ -5,9 +5,9 @@ import CalendarHeatmap from '@/components/CalendarHeatmap.vue'
 import CountUp from '@/components/CountUp.vue'
 import FlareSplit from '@/components/FlareSplit.vue'
 import LineChart from '@/components/LineChart.vue'
-import MetricBars from '@/components/MetricBars.vue'
 import SeasonTimeline from '@/components/SeasonTimeline.vue'
 import TopBar from '@/components/TopBar.vue'
+import ValidationProof from '@/components/ValidationProof.vue'
 
 // Three.js (~600 Ko) et MapLibre (~800 Ko) sont chargés dans des chunks séparés :
 // le récit s'affiche sans attendre les moteurs 3D/carte.
@@ -19,19 +19,33 @@ import { useSmoothScroll } from '@/composables/useSmoothScroll'
 import {
   allSeries,
   buildGlobePoints,
+  buildSeriesCsvFallback,
   composition,
+  dataSourceMode,
   formatCount,
+  formatDecimal,
+  gridCellMonthsDb,
+  initLiveData,
+  maskedCellsCount,
   methodology,
+  methodologyRaw,
   metrics,
   monthlyMedians,
+  params,
+  regionsCount,
   staticSeries,
+  totalDetectionsDb,
 } from '@/lib/data'
+import { USE_MOCKS, exportSeriesEndpoint } from '@/lib/api'
 import { provenance } from '@/lib/provenance'
+import { validation } from '@/lib/validation'
 import { ScrollTrigger, gsap } from '@/lib/motion'
 
 const reducedMotion = useReducedMotion()
 useSmoothScroll()
 useReveal()
+
+void initLiveData()
 
 const chapters = [
   { id: 'top', label: 'Ouverture' },
@@ -41,6 +55,7 @@ const chapters = [
   { id: 'calendar', label: 'Le calendrier' },
   { id: 'map', label: 'La carte' },
   { id: 'proof', label: 'La preuve' },
+  { id: 'contribution', label: 'Notre apport' },
   { id: 'future', label: 'Demain' },
   { id: 'explorer', label: 'Explorer' },
 ]
@@ -49,98 +64,98 @@ const scrollProgress = ref(0)
 const scrolled = ref(false)
 const activeChapter = ref('top')
 const cursor = ref({ x: 0, y: 0 })
-const globePoints = buildGlobePoints()
+const globePoints = computed(() => buildGlobePoints())
+const validationCoverageLabel = `${(validation.conformal.coverage_test_q80_calibration * 100)
+  .toFixed(1)
+  .replace('.', ',')} %`
+const validationAnomalyR2Label = (validation.models.power_law_log1p?.anomaly.r2 ?? 0)
+  .toFixed(2)
+  .replace('.', ',')
 
-const chartPoints = staticSeries.map((p) => ({
-  month: p.month,
-  raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
-  harm: p.harmonized_value,
-  lo: p.ci_low,
-  hi: p.ci_high,
-  anomaly: p.anomaly_percent,
-}))
+const chartPoints = computed(() =>
+  staticSeries.value.map((p) => ({
+    month: p.month,
+    raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
+    harm: p.harmonized_value,
+    lo: p.ci_low,
+    hi: p.ci_high,
+    anomaly: p.anomaly_percent,
+  })),
+)
 
-const rawChartPoints = allSeries.map((p) => ({
-  month: p.month,
-  raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
-  harm: p.harmonized_value,
-  lo: p.ci_low,
-  hi: p.ci_high,
-  anomaly: p.anomaly_percent,
-}))
+const rawChartPoints = computed(() =>
+  allSeries.value.map((p) => ({
+    month: p.month,
+    raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
+    harm: p.harmonized_value,
+    lo: p.ci_low,
+    hi: p.ci_high,
+    anomaly: p.anomaly_percent,
+  })),
+)
 
-const maeBefore = metrics['naive']?.mae ?? 355.6
-const maeAfter = metrics['power_law_log1p']?.mae ?? 100.8
-const r2Before = metrics['naive']?.r2 ?? 0.143
-const r2After = metrics['power_law_log1p']?.r2 ?? 0.919
-const maeReduction = Math.round((1 - maeAfter / maeBefore) * 100)
+const maeBefore = computed(() => metrics.value['naive']?.mae ?? 355.72)
+const maeAfter = computed(() => metrics.value['power_law_log1p']?.mae ?? 100.87)
+const r2Before = computed(() => metrics.value['naive']?.r2 ?? 0.1426)
+const r2After = computed(() => metrics.value['power_law_log1p']?.r2 ?? 0.9189)
+const maeReduction = computed(() => Math.round((1 - maeAfter.value / maeBefore.value) * 100))
 
-const proofItems = [
-  {
-    key: 'naive',
-    label: 'Naïf (V = M)',
-    value: maeBefore,
-    note: 'La cassure de 2012 reste visible',
-  },
-  {
-    key: 'ratio',
-    label: 'Ratio global (×3,93)',
-    value: metrics['global_ratio']?.mae ?? 120.4,
-    note: 'La baseline du guide v1',
-  },
-  {
-    key: 'ols',
-    label: 'Régression linéaire',
-    value: metrics['ols_linear']?.mae ?? 110,
-    note: 'Corrige le biais des mois calmes',
-  },
-  {
-    key: 'power',
-    label: 'Power-law log1p (retenu)',
-    value: maeAfter,
-    note: `−${maeReduction} % vs naïf · R² ${r2After.toFixed(2).replace('.', ',')}`,
-    accent: true,
-  },
-]
+const globalRatioAlpha = computed(() => params.value?.global_ratio_alpha ?? 3.9328)
+const rawGlobalRatioAlpha = computed(
+  () => methodologyRaw.value.active_run?.params?.global_ratio_alpha ?? 4.6494,
+)
+const noaaBridgeRatio = computed(() => params.value?.noaa20_to_snpp_ratio ?? 1.0381)
+const jumpRatioLabel = computed(() => `×${formatDecimal(globalRatioAlpha.value, 1)}`)
+const rawJumpRatioLabel = computed(() => `×${formatDecimal(rawGlobalRatioAlpha.value, 1)}`)
 
-const trainMonths = methodology.active_run?.metrics.train_months ?? 95
-const testMonths = methodology.active_run?.metrics.test_months ?? 72
-const trainWindow = methodology.active_run?.train_window ?? ['2012-02-01', '2019-12-01']
-const testWindow = methodology.active_run?.test_window ?? ['2020-01-01', '2025-12-01']
-const trainYears = `${trainWindow[0].slice(0, 4)}–${trainWindow[1].slice(0, 4)}`
-const testYears = `${testWindow[0].slice(0, 4)}–${testWindow[1].slice(0, 4)}`
+const trainMonths = computed(() => methodology.value.active_run?.metrics.train_months ?? 95)
+const testMonths = computed(() => methodology.value.active_run?.metrics.test_months ?? 72)
+const trainWindow = computed(
+  () => methodology.value.active_run?.train_window ?? ['2012-02-01', '2019-12-01'],
+)
+const testWindow = computed(
+  () => methodology.value.active_run?.test_window ?? ['2020-01-01', '2025-12-01'],
+)
+const trainYears = computed(
+  () => `${trainWindow.value[0].slice(0, 4)}–${trainWindow.value[1].slice(0, 4)}`,
+)
+const testYears = computed(
+  () => `${testWindow.value[0].slice(0, 4)}–${testWindow.value[1].slice(0, 4)}`,
+)
 const gridDegLabel = `${String(provenance.gridDeg).replace('.', ',')}°`
 
-const july = monthlyMedians[6] ?? 0
-const august = monthlyMedians[7] ?? 0
-const february = monthlyMedians[1] ?? 0
-const march = monthlyMedians[2] ?? 0
-const november = monthlyMedians[10] ?? 0
-const december = monthlyMedians[11] ?? 0
-
-const seasonCards = computed(() => [
-  {
-    label: 'Pic principal',
-    months: 'Juillet – Août',
-    values: `${formatCount(july)} · ${formatCount(august)}`,
-    note: 'détections équivalentes VIIRS, médianes 2001–2025',
-    tone: 'hot',
-  },
-  {
-    label: 'Second épisode',
-    months: 'Février – Mars',
-    values: `${formatCount(february)} · ${formatCount(march)}`,
-    note: 'un second souffle, plus faible mais réel',
-    tone: 'warm',
-  },
-  {
-    label: 'Creux',
-    months: 'Novembre – Décembre',
-    values: `${formatCount(november)} · ${formatCount(december)}`,
-    note: 'la saison des pluies coupe l’activité',
-    tone: 'cool',
-  },
-])
+const seasonCards = computed(() => {
+  const m = monthlyMedians.value
+  const july = m[6] ?? 0
+  const august = m[7] ?? 0
+  const february = m[1] ?? 0
+  const march = m[2] ?? 0
+  const november = m[10] ?? 0
+  const december = m[11] ?? 0
+  return [
+    {
+      label: 'Pic principal',
+      months: 'Juillet – Août',
+      values: `${formatCount(july)} · ${formatCount(august)}`,
+      note: 'détections équiv. S-NPP, médianes 2001–2025',
+      tone: 'hot',
+    },
+    {
+      label: 'Second épisode',
+      months: 'Février – Mars',
+      values: `${formatCount(february)} · ${formatCount(march)}`,
+      note: 'un second souffle, plus faible mais réel',
+      tone: 'warm',
+    },
+    {
+      label: 'Creux',
+      months: 'Novembre – Décembre',
+      values: `${formatCount(november)} · ${formatCount(december)}`,
+      note: 'la saison des pluies coupe l’activité',
+      tone: 'cool',
+    },
+  ]
+})
 
 function navigate(id: string) {
   const el = document.getElementById(id)
@@ -177,38 +192,22 @@ function onPointerMove(event: PointerEvent) {
   cursor.value = { x: event.clientX, y: event.clientY }
 }
 
-function downloadCsv() {
-  const columns = [
-    'month',
-    'modis_count',
-    'viirs_snpp_count',
-    'viirs_noaa20_count',
-    'harmonized_value',
-    'ci_low',
-    'ci_high',
-    'baseline_median',
-    'anomaly_percent',
-    'sensor_regime',
-    'coverage_status',
-  ] as const
-  const cell = (value: unknown) => (value === null || value === undefined ? '' : String(value))
-  const rows = staticSeries.map((p) =>
-    [
-      p.month,
-      cell(p.modis_count),
-      cell(p.viirs_snpp_count),
-      cell(p.viirs_noaa20_count),
-      cell(p.harmonized_value),
-      cell(p.ci_low),
-      cell(p.ci_high),
-      cell(p.baseline_median),
-      cell(p.anomaly_percent),
-      p.sensor_regime,
-      p.coverage_status,
-    ].join(','),
-  )
-  const csv = '\ufeff' + [columns.join(','), ...rows].join('\n') + '\n'
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+async function downloadCsv() {
+  let blob: Blob | null = null
+  if (!USE_MOCKS) {
+    try {
+      const res = await fetch(exportSeriesEndpoint('GA', true))
+      if (res.ok) {
+        blob = await res.blob()
+      }
+    } catch {
+      // Repli transparent sur la génération locale aux colonnes exactes du contrat API.
+    }
+  }
+  if (!blob) {
+    const csv = buildSeriesCsvFallback(staticSeries.value, 'GA', true)
+    blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  }
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -275,7 +274,10 @@ onBeforeUnmount(() => {
 
         <div class="shell hero-inner">
           <div class="hero-copy">
-            <p class="kicker hero-kicker">NASA Space Apps 2026 · MODIS × VIIRS</p>
+            <p class="kicker hero-kicker">
+              NASA Space Apps 2026 · MODIS × VIIRS ·
+              <span>{{ dataSourceMode === 'live' ? 'PostGIS en direct' : 'Instantané DB' }}</span>
+            </p>
             <h1 class="display display-xl hero-title">
               <span class="line"><span>One Planet.</span></span>
               <span class="line"><span>One Fire <em>History.</em></span></span>
@@ -297,9 +299,9 @@ onBeforeUnmount(() => {
             <div class="hero-meta">
               <div>
                 <div class="value">
-                  <CountUp :to="provenance.totalDetections" :reduced-motion="reducedMotion" />
+                  <CountUp :to="totalDetectionsDb" :reduced-motion="reducedMotion" />
                 </div>
-                <div class="label">détections</div>
+                <div class="label">détections (archive SP)</div>
               </div>
               <div>
                 <div class="value">{{ provenance.files }}</div>
@@ -310,8 +312,8 @@ onBeforeUnmount(() => {
                 <div class="label">25 ans d’archive</div>
               </div>
               <div>
-                <div class="value">{{ provenance.regions }}</div>
-                <div class="label">régions</div>
+                <div class="value">{{ regionsCount }}</div>
+                <div class="label">régions en base</div>
               </div>
             </div>
           </div>
@@ -339,8 +341,10 @@ onBeforeUnmount(() => {
 
             <div class="stat-row reveal reveal-delay-3">
               <div>
-                <div class="stat">{{ provenance.sensorJump }}</div>
-                <div class="stat-label">le saut artificiel de 2012</div>
+                <div class="stat">{{ jumpRatioLabel }}</div>
+                <div class="stat-label">
+                  ratio VIIRS / MODIS (2012–2019, hors statiques · {{ rawJumpRatioLabel }} en brut)
+                </div>
               </div>
               <div>
                 <div class="stat stat-small">2 capteurs</div>
@@ -383,13 +387,16 @@ onBeforeUnmount(() => {
           <div class="chapter-visual reveal reveal-delay-2">
             <div class="panel panel-pad">
               <div class="panel-label">
-                <span class="tiny-label">VIIRS S-NPP · Gabon · 2000–2025</span>
-                <span class="tag cool">Sources statiques</span>
+                <span class="tiny-label">VIIRS S-NPP · polygone GA · 2012–2025</span>
+                <span class="tag cool">Filtre statique</span>
               </div>
               <FlareSplit
-                :share="composition.snppStaticShare"
-                :static-count="composition.snppStaticCount"
-                :total-count="composition.snppDetections"
+                :share="composition.snppExcludedShare"
+                :static-count="composition.snppExcluded"
+                :total-count="composition.snppTotal"
+                :type23-count="composition.snppType23Count"
+                :type23-share="composition.snppType23Share"
+                :masked-cells="composition.maskedCells"
                 :reduced-motion="reducedMotion"
               />
             </div>
@@ -401,18 +408,22 @@ onBeforeUnmount(() => {
               Tous les points chauds<br /><em>ne sont pas des feux.</em>
             </h2>
             <p class="lede reveal reveal-delay-2">
-              Au Gabon, une part importante des détections vient de <strong>torchères</strong> et de
-              <strong>sites industriels</strong>. Elles brûlent jour et nuit, toute l’année. Si on
-              les compte comme des feux, la saison est faussée.
+              Dans le polygone Gabon ({{ formatCount(composition.gaTotal) }} détections), une forte
+              part provient de <strong>torchères</strong> et de <strong>sites persistants</strong>.
+              Si on les compte comme des feux, la saison est faussée : au total,
+              <strong>{{ formatDecimal(composition.gaExcludedShare, 1) }} %</strong>
+              ({{ formatCount(composition.gaExcluded) }}) sont écartées tous capteurs confondus.
             </p>
 
             <div class="stat-row reveal reveal-delay-3">
               <div>
-                <div class="stat stat-small">{{ formatCount(provenance.snppStaticCount) }}</div>
-                <div class="stat-label">détections industrielles VIIRS S-NPP</div>
+                <div class="stat stat-small">{{ formatCount(composition.snppExcluded) }}</div>
+                <div class="stat-label">
+                  détections S-NPP écartées en GA (dont {{ formatCount(composition.snppType23Count) }} type 2/3)
+                </div>
               </div>
               <div>
-                <div class="stat stat-small">{{ provenance.maskedCells }}</div>
+                <div class="stat stat-small">{{ composition.maskedCells }}</div>
                 <div class="stat-label">
                   cellules masquées à {{ String(provenance.staticGridDeg).replace('.', ',') }}°
                 </div>
@@ -473,11 +484,19 @@ onBeforeUnmount(() => {
               </div>
               <div>
                 <div class="stat stat-small">
-                  R² {{ r2After.toFixed(2).replace('.', ',') }}
+                  R² {{ formatDecimal(r2After, 3) }}
                 </div>
                 <div class="stat-label">sur {{ testMonths }} mois de test</div>
               </div>
             </div>
+
+            <p class="benchmark-note reveal reveal-delay-4">
+              Benchmark DB v2.0 : train 2012–2019, test 2020–2025, masque all-years — MAE
+              {{ formatDecimal(maeBefore, 1) }} → {{ formatDecimal(maeAfter, 1) }}, R²
+              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. La validation
+              renforcée (plus bas) change le protocole : 3 temps et masque gelé, donc les chiffres
+              diffèrent — c’est précisément le sujet de la preuve.
+            </p>
           </div>
 
           <div class="chapter-visual reveal reveal-delay-2">
@@ -500,7 +519,8 @@ onBeforeUnmount(() => {
               />
               <p class="panel-caption">
                 La ligne pointillée est la série brute après retrait des torchères. La ligne
-                lumineuse est l’échelle VIIRS. La bande n’apparaît que sur la période reconstruite.
+                lumineuse est l’échelle VIIRS. La bande est celle de la baseline DB v2.0 ; sa
+                couverture empirique est mesurée dans la preuve renforcée.
               </p>
             </div>
           </div>
@@ -534,6 +554,12 @@ onBeforeUnmount(() => {
             </div>
             <CalendarHeatmap :reduced-motion="reducedMotion" />
           </div>
+
+          <p class="calendar-note reveal reveal-delay-2">
+            Le calendrier et sa bande d’incertitude restent ceux de la baseline DB v2.0 (API live
+            ou instantané), pour rester cohérents avec l’existant. La couverture empirique de cette
+            bande ({{ validationCoverageLabel }}) est mesurée dans la preuve renforcée.
+          </p>
 
           <div class="feature-grid">
             <article
@@ -572,16 +598,16 @@ onBeforeUnmount(() => {
 
           <div class="map-stats-row reveal reveal-delay-3">
             <div>
-              <span class="stat stat-small">{{ provenance.gridCells }}</span>
-              <span class="stat-label">cellules actives</span>
+              <span class="stat stat-small">{{ composition.gaGridCells }}</span>
+              <span class="stat-label">cellules actives dans GA (0,25°)</span>
             </div>
             <div>
-              <span class="stat stat-small">{{ provenance.maskedCells }}</span>
-              <span class="stat-label">sites statiques</span>
+              <span class="stat stat-small">{{ maskedCellsCount }}</span>
+              <span class="stat-label">sites statiques (0,05°)</span>
             </div>
             <div>
-              <span class="stat stat-small">{{ formatCount(provenance.gridCellMonths) }}</span>
-              <span class="stat-label">cellules-mois en base</span>
+              <span class="stat stat-small">{{ formatCount(gridCellMonthsDb) }}</span>
+              <span class="stat-label">cellules-mois en base (filtrées + brutes)</span>
             </div>
             <div>
               <span class="stat stat-small">{{ gridDegLabel }}</span>
@@ -593,86 +619,136 @@ onBeforeUnmount(() => {
 
       <!-- ============================================================ 06 -->
       <section id="proof" class="chapter">
-        <div class="shell chapter-grid">
-          <div class="chapter-copy">
-            <p class="kicker reveal">06 — La preuve</p>
-            <h2 class="display display-lg reveal reveal-delay-1">
-              Le modèle bat la baseline.<br /><em>Sur des données qu’il n’a jamais vues.</em>
-            </h2>
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <p class="kicker reveal">06 — La preuve</p>
+              <h2 class="display display-lg reveal reveal-delay-1">
+                Ce que nous pouvons prouver.<br /><em>Et ce que nous ne pouvons pas.</em>
+              </h2>
+            </div>
             <p class="lede reveal reveal-delay-2">
-              Entraînement <strong>{{ trainYears }}</strong>. Test <strong>{{ testYears }}</strong>.
-              {{ testMonths }} mois. Aucune donnée de test dans la calibration. Le modèle power-law
-              réduit l’erreur moyenne de <strong>{{ maeReduction }} %</strong> par rapport au naïf.
+              Trois temps. Un masque gelé avant le test. Une baseline saisonnière. Un capteur tenu
+              à l’écart. C’est le protocole qui nous différencie d’un simple dashboard : nous
+              mesurons la couverture, nous publions les résultats négatifs, et nous savons ce que
+              le R² brut ne prouve pas.
             </p>
-
-            <div class="protocol reveal reveal-delay-3">
-              <div class="protocol-item">
-                <span class="protocol-value">{{ trainMonths }}</span>
-                <span class="protocol-label">mois d’entraînement</span>
-              </div>
-              <div class="protocol-item">
-                <span class="protocol-value">{{ testMonths }}</span>
-                <span class="protocol-label">mois de test</span>
-              </div>
-              <div class="protocol-item">
-                <span class="protocol-value">80 %</span>
-                <span class="protocol-label">intervalle conforme</span>
-              </div>
-            </div>
-
-            <div class="proof-delta reveal reveal-delay-4">
-              <div>
-                <span class="tiny-label">MAE</span>
-                <span class="proof-number">{{ formatCount(maeBefore) }} → <strong>{{ formatCount(maeAfter) }}</strong></span>
-              </div>
-              <div>
-                <span class="tiny-label">R²</span>
-                <span class="proof-number">{{ r2Before.toFixed(2).replace('.', ',') }} → <strong>{{ r2After.toFixed(2).replace('.', ',') }}</strong></span>
-              </div>
-            </div>
-
-            <ul class="caveats reveal reveal-delay-4">
-              <li>Intervalle calibré sur les résidus de test — point en revue M1.</li>
-              <li>Les comptages ne mesurent pas des incendies distincts.</li>
-              <li>Calibration nationale ; les provinces à faible signal héritent du modèle GA.</li>
-            </ul>
           </div>
 
-          <div class="chapter-visual reveal reveal-delay-2">
-            <div class="panel panel-pad">
-              <div class="panel-label">
-                <span class="tiny-label">Erreur moyenne hors échantillon</span>
-                <span class="tag dot">MAE · plus bas = mieux</span>
-              </div>
-              <MetricBars :items="proofItems" :reduced-motion="reducedMotion" />
-              <div class="proof-foot">
-                <span>Test {{ testYears }} · {{ testMonths }} mois</span>
-                <span>Split temporel strict</span>
-              </div>
-            </div>
+          <div class="proof-context reveal reveal-delay-2">
+            <span class="tag dot">Validation renforcée · 48 CSV pays</span>
+            <span class="tag">
+              {{ validation.split.n_train }} train · {{ validation.split.n_calibration }} calibration ·
+              {{ validation.split.n_test }} test
+            </span>
+            <span class="tag cool">{{ validation.mask.cells_frozen }} cellules gelées</span>
+            <span class="tag">couverture {{ validationCoverageLabel }}</span>
           </div>
+
+          <ValidationProof :reduced-motion="reducedMotion" />
+
+          <p class="proof-disclaimer reveal">
+            La validation renforcée est calculée sur les 48 CSV FIRMS pays (géométrie non rejointe,
+            comme M1) avec
+            {{ validation.split.n_train }} mois de train, {{ validation.split.n_calibration }} mois
+            de calibration et {{ validation.split.n_test }} mois de test. Le calendrier et la carte
+            utilisent PostGIS (polygone GA) : les comptages peuvent différer marginalement. Le
+            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) reste la
+            référence du produit live ; la validation ci-dessus est le protocole de preuve.
+          </p>
         </div>
       </section>
 
       <!-- ============================================================ 07 -->
+      <section id="contribution" class="chapter">
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <p class="kicker reveal">07 — Notre apport</p>
+              <h2 class="display display-lg reveal reveal-delay-1">
+                Ce qui nous démarque,<br /><em>concrètement.</em>
+              </h2>
+            </div>
+            <p class="lede reveal reveal-delay-2">
+              Ce n’est pas seulement un calendrier. C’est un protocole de preuve reproductible,
+              des résultats négatifs assumés, et un produit déjà utilisable.
+            </p>
+          </div>
+
+          <div class="contribution-grid">
+            <article class="contribution-card reveal">
+              <span class="roadmap-horizon">01 — Preuve</span>
+              <h3>Une preuve, pas une promesse</h3>
+              <p>
+                Split 3 temps, masque gelé sur 2000–2019, calibration séparée, couverture mesurée
+                sur 2020–2025. Nous savons ce que le modèle prouve — et ce qu’il ne prouve pas.
+              </p>
+            </article>
+            <article class="contribution-card reveal reveal-delay-1">
+              <span class="roadmap-horizon">02 — Honnêteté</span>
+              <h3>Nous publions les résultats négatifs</h3>
+              <p>
+                Le transfert Terra → Aqua échoue, la couverture 80 % n’est que de 63,9 % hors
+                échantillon, et le masque all-years flatte la MAE de 24 points. C’est rare, et c’est
+                ce qui rend la preuve crédible.
+              </p>
+            </article>
+            <article class="contribution-card reveal reveal-delay-2">
+              <span class="roadmap-horizon">03 — Produit</span>
+              <h3>Un produit complet</h3>
+              <p>
+                Calendrier accessible, carte 0,25°, anomalies, export CSV, API Django/PostGIS,
+                mode snapshot hors-ligne. La science n’est pas déconnectée de l’usage.
+              </p>
+            </article>
+            <article class="contribution-card reveal reveal-delay-3">
+              <span class="roadmap-horizon">04 — Passage à l’échelle</span>
+              <h3>Une méthode transférable</h3>
+              <p>
+                Le protocole s’applique au Bassin du Congo, à la FRP, à NOAA-21 et à la surface
+                brûlée. C’est une brique pour un produit NASA, pas seulement une démo gabonaise.
+              </p>
+            </article>
+          </div>
+
+          <p class="contribution-quote display display-md reveal reveal-delay-4">
+            « La différence n’est pas de promettre R² = 0,92.<br />
+            <em>C’est de savoir ce que ce chiffre prouve — et ce qu’il ne prouve pas.</em> »
+          </p>
+
+          <p class="contribution-note reveal reveal-delay-4">
+            <strong>Pour la NASA</strong> : un benchmark reproductible, un protocole de validation
+            inter-capteurs et un cas d’usage dans un biome sous-surveillé.
+            <strong>Pour les gestionnaires</strong> : un calendrier qui dit quand l’activité est
+            inhabituelle, pas seulement où est le feu.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ 08 -->
       <section id="future" class="chapter">
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">07 — Demain</p>
+              <p class="kicker reveal">08 — Demain</p>
               <h2 class="display display-lg reveal reveal-delay-1">
                 Le 2 novembre 2026,<br /><em>Suomi-NPP s’est tu.</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Le pont NOAA-20 est calibré sur 2019–2025. Le calendrier ne s’arrête pas à un
-              capteur. Le prochain chapitre : l’alerte saisonnière, le Bassin du Congo, l’énergie
-              des feux.
+              Archive SP ingérée jusqu’en déc. 2025 ; le pont NOAA-20 (ratio
+              ×{{ formatDecimal(noaaBridgeRatio, 3) }} calibré sur 2019–2025) prend le relais après
+              l’arrêt des livraisons S-NPP. Le prochain chapitre : flux NRT continu, Bassin du Congo,
+              énergie des feux.
             </p>
           </div>
 
           <div class="reveal reveal-delay-2">
-            <SeasonTimeline :reduced-motion="reducedMotion" />
+            <SeasonTimeline
+              :archive-end="provenance.archiveEnd"
+              :noaa-bridge-ratio="noaaBridgeRatio"
+              :reduced-motion="reducedMotion"
+            />
           </div>
 
           <div class="roadmap">
@@ -680,8 +756,8 @@ onBeforeUnmount(() => {
               <span class="roadmap-horizon">Maintenant</span>
               <h3>Continuité 2026</h3>
               <p>
-                Ingérer le NRT, afficher la transition S-NPP → NOAA-20 sans rupture et alerter
-                quand un mois dépasse la médiane historique.
+                L’archive SP ingérée s’arrête en déc. 2025 ; prochaine étape : brancher le flux NRT
+                NOAA-20 sans rupture et alerter quand un mois dépasse la médiane historique.
               </p>
               <span class="tag">Prototype</span>
             </article>
@@ -710,7 +786,7 @@ onBeforeUnmount(() => {
       <!-- ============================================================ 08 -->
       <section id="explorer" class="chapter explorer">
         <div class="shell-narrow">
-          <p class="kicker reveal">08 — À vous de jouer</p>
+          <p class="kicker reveal">09 — À vous de jouer</p>
           <h2 class="display display-lg reveal reveal-delay-1">
             Explorez 25 ans de feux.<br /><em>Et posez vos propres questions.</em>
           </h2>
@@ -739,17 +815,23 @@ onBeforeUnmount(() => {
             <div>
               <span class="recap-number">02</span>
               <p>
-                {{ provenance.snppStaticShare.toFixed(0) }} % de torchères séparées des feux de
-                végétation.
+                {{ formatDecimal(composition.gaExcludedShare, 1) }} % des détections GA écartées
+                comme sources statiques probables ({{ formatDecimal(composition.snppExcludedShare, 1) }} %
+                sur S-NPP).
               </p>
             </div>
             <div>
               <span class="recap-number">03</span>
-              <p>Une validation hors échantillon, avec ses limites.</p>
+              <p>
+                Trois temps, masque gelé, couverture {{ validationCoverageLabel }} : R²
+                {{ validationAnomalyR2Label }} sur les anomalies.
+              </p>
             </div>
             <div>
               <span class="recap-number">04</span>
-              <p>Un calendrier, une carte, un CSV utilisables.</p>
+              <p>
+                Un capteur tenu à l’écart (NOAA-20), un calendrier, une carte et un CSV utilisables.
+              </p>
             </div>
           </div>
 
@@ -775,9 +857,17 @@ onBeforeUnmount(() => {
               Données NASA FIRMS · MODIS C6.1 · VIIRS C2 · Gabon 2000–2025.
             </p>
             <p class="footer-note">
-              Séries et agrégats : mocks déterministes générés depuis les 48 CSV FIRMS du Gabon,
-              rejouant la baseline M2 v2.0. Aucune valeur inventée ; les chiffres de composition
-              (21,2 %, 31 298, 183 cellules) proviennent de l’audit M1/M2.
+              Source :
+              <strong>{{
+                dataSourceMode === 'live'
+                  ? 'PostgreSQL / PostGIS en direct · API Django v1 (/api/v1/)'
+                  : 'Instantané synchronisé sur PostgreSQL / PostGIS (mode hors-ligne)'
+              }}</strong>
+              — Archive BBox : {{ formatCount(composition.archiveTotal) }} détections
+              ({{ composition.archiveFiles }} fichiers FIRMS SP, 2000-11 → 2025-12). Polygone GA :
+              {{ formatCount(composition.gaTotal) }} détections dont
+              {{ formatCount(composition.gaClean) }} feux de végétation retenus après filtre
+              ({{ composition.maskedCells }} mailles à 0,05° + tag FIRMS type ≠ 0).
             </p>
           </div>
           <div>
@@ -799,6 +889,7 @@ onBeforeUnmount(() => {
               </li>
               <li>Backend PostGIS / Django — API v1</li>
               <li>Baseline harmonisée v2.0, en revue M1</li>
+              <li>Validation renforcée : 3 temps, masque gelé, couverture mesurée</li>
             </ul>
           </div>
           <div>
@@ -863,6 +954,16 @@ onBeforeUnmount(() => {
 .chapter-note strong {
   color: var(--muted);
   font-weight: 500;
+}
+
+.benchmark-note {
+  margin-top: 14px;
+  max-width: 60ch;
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  line-height: 1.65;
+  letter-spacing: 0.02em;
+  color: var(--dim);
 }
 
 .stat-row {
@@ -959,6 +1060,14 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+
+.calendar-note {
+  margin-top: 12px;
+  max-width: 80ch;
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--dim);
 }
 
 .feature-grid {
@@ -1241,13 +1350,92 @@ onBeforeUnmount(() => {
   color: var(--dim);
 }
 
+.proof-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.proof-disclaimer {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-left: 2px solid rgba(94, 234, 212, 0.4);
+  background: rgba(244, 241, 232, 0.02);
+  max-width: 92ch;
+  font-size: 0.66rem;
+  line-height: 1.65;
+  color: var(--dim);
+}
+
+.contribution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 26px;
+}
+
+.contribution-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(160deg, rgba(255, 196, 107, 0.04), transparent 60%),
+    rgba(244, 241, 232, 0.025);
+}
+
+.contribution-card h3 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.contribution-card p {
+  max-width: 52ch;
+  font-size: 0.74rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.contribution-quote {
+  margin-top: 48px;
+  max-width: 900px;
+  color: var(--muted);
+}
+
+.contribution-quote em {
+  color: var(--gold);
+}
+
+.contribution-note {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  max-width: 82ch;
+  font-size: 0.72rem;
+  line-height: 1.65;
+  color: var(--muted);
+}
+
+.contribution-note strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 @media (max-width: 1024px) {
   .section-head {
     grid-template-columns: minmax(0, 1fr);
     gap: 18px;
   }
   .feature-grid,
-  .roadmap {
+  .roadmap,
+  .contribution-grid {
     grid-template-columns: minmax(0, 1fr);
   }
   .map-stats-row {
