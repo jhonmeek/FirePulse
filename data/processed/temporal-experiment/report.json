@@ -38,7 +38,7 @@
   "limitations": [
     "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
     "Unmasked observations; no frozen static mask has been evaluated.",
-    "Observation coverage unknown; requiring positive detections introduces selection bias.",
+    "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
     "2023-2025 was previously inspected, not a blind final holdout.",
     "Time dependence invalidates an automatic exchangeability coverage guarantee.",
     "NOAA-20 bridge and custom-region uncertainty not evaluated."
