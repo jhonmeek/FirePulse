@@ -1,0 +1,7 @@
+# Rapprochement mensuel M1 et M2 — Gabon
+
+`pipeline.compare_m1_m2_monthly` rapproche le calendrier mensuel brut M1 (fichiers pays, géométrie non vérifiée) et l'export de calibration M2 `region=GA`, `filter_static=false` (PostGIS). Les manifestes SHA-256 des deux entrées sont vérifiés. Le rapport conserve, pour chaque mois et plateforme, les valeurs, le statut M1 et la différence ; une valeur absente reste `null`.
+
+Sur l'export local M2 du 14 novembre 2026 (CSV `56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd`), les différences cumulées des lignes comparables sont : MODIS 1 550 sur 584 lignes plateforme-mois, S-NPP 3 851 sur 168 et NOAA-20 2 175 sur 93, soit 7 576 détections au total. Ces valeurs coïncident avec le rapprochement spatial global M2 précédemment communiqué. Cela ne démontre pas à lui seul que chaque différence mensuelle est causée uniquement par la frontière : ingestion, statuts, versions et remplissage des mois peuvent également intervenir.
+
+La couverture réelle d'observation reste inconnue. L'export de séries M2 peut contenir des zéros construits par la baseline ; un zéro n'est pas une preuve de couverture. La comparaison ne valide ni modèle, ni incertitude et ne réutilise pas les valeurs M2 pré-2000 ou avant disponibilité. Les expériences scientifiques M1 ont été calculées avec les fichiers pays ; leur recalcul sur la frontière PostGIS et la vérification des comptes mensuels par source à partir des observations restent à faire.
