@@ -9,6 +9,8 @@ export default mergeConfig(
       environment: 'jsdom',
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
+      // Les tests tournent toujours sur les mocks, même si un .env.local local pointe vers l'API.
+      env: { VITE_USE_MOCKS: 'true' },
     },
   }),
 )
