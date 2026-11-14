@@ -393,7 +393,11 @@ const summary = computed(() => {
     (s, f) => s + (f.properties[MAP_METRICS[metric.value].key] as number),
     0,
   )
-  return `${grid.value.length} cellules de 0,25° · ${formatCount(total)} détections ${MAP_METRICS[metric.value].label} (${yearRange.value[0]}–${yearRange.value[1]}) · ${statics.value.length} sites statiques exclus`
+  // Période réellement couverte par le capteur choisi (S-NPP ne commence qu'en 2012).
+  const from = Math.max(yearRange.value[0], MAP_METRICS[metric.value].since)
+  const to = yearRange.value[1]
+  const period = from >= to ? `${to}` : `${from}–${to}`
+  return `${grid.value.length} cellules de 0,25° (≈ 28 km) · ${formatCount(total)} détections ${MAP_METRICS[metric.value].label} cumulées ${period} · ${statics.value.length} sites industriels exclus`
 })
 </script>
 

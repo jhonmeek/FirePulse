@@ -12,6 +12,8 @@ const props = defineProps<{
   availableYears: number[]
   /** Détections retirées par le filtre torchères sur la période affichée. */
   masked: MaskedSummary | null
+  /** Réglage de couleur du calendrier : masqué sur l'onglet Méthodologie (sans effet). */
+  hideCalendarControls?: boolean
 }>()
 
 /**
@@ -27,12 +29,19 @@ const maskedLabel = computed(() => {
   const [from, to] = yearRange.value
   const period = from === to ? `${from}` : `${from}–${to}`
   return filterStatic.value
-    ? `${n} détections retirées (${share} % du brut, ${period})`
-    : `${n} détections que le filtre retirerait (${share} % du brut, ${period})`
+    ? `${n} détections retirées (${share} % du total, ${period})`
+    : `${n} détections que le filtre retirerait (${share} % du total, ${period})`
 })
 
 const filters = useFiltersStore()
-const { region, bbox, filterStatic, colorMode, yearRange } = storeToRefs(filters)
+const { region, bbox, filterStatic, colorMode, yearRange, harmonizationView } = storeToRefs(filters)
+
+/**
+ * Vue Avant (brut) : l'anomalie est calculée sur la série harmonisée, donc indisponible.
+ * La préférence `colorMode` est conservée et réappliquée au retour en vue Après.
+ */
+const rawView = computed(() => harmonizationView.value === 'before')
+const effectiveMode = computed<ColorMode>(() => (rawView.value ? 'value' : colorMode.value))
 
 const country = computed(() => props.regions.filter((r) => r.region_type === 'country'))
 const provinces = computed(() => props.regions.filter((r) => r.region_type === 'province'))
@@ -48,8 +57,8 @@ function onYear(which: 0 | 1, e: Event) {
 }
 
 const modes: { value: ColorMode; label: string }[] = [
-  { value: 'value', label: 'Intensité' },
-  { value: 'anomaly', label: 'Anomalie' },
+  { value: 'value', label: 'Nombre de points de feu' },
+  { value: 'anomaly', label: 'Écart à la normale' },
 ]
 </script>
 
@@ -90,20 +99,34 @@ const modes: { value: ColorMode; label: string }[] = [
       </div>
     </fieldset>
 
-    <fieldset class="flex flex-col gap-1 text-sm">
-      <legend class="font-medium text-stone-700">Couleur du calendrier</legend>
+    <fieldset v-if="!hideCalendarControls" class="flex flex-col gap-1 text-sm">
+      <legend class="font-medium text-stone-700">Colorer le calendrier selon</legend>
       <div class="segmented">
-        <label v-for="m in modes" :key="m.value" class="segmented-item">
+        <label
+          v-for="m in modes"
+          :key="m.value"
+          class="segmented-item"
+          :title="
+            rawView && m.value === 'anomaly'
+              ? 'Indisponible sur les données brutes : l’écart à la normale se calcule sur les données corrigées'
+              : undefined
+          "
+        >
           <input
-            v-model="colorMode"
             class="sr-only"
             type="radio"
             name="color-mode"
             :value="m.value"
+            :checked="effectiveMode === m.value"
+            :disabled="rawView && m.value === 'anomaly'"
+            @change="colorMode = m.value"
           />
           {{ m.label }}
         </label>
       </div>
+      <p v-if="rawView" class="text-xs text-stone-600">
+        Écart à la normale : données corrigées uniquement
+      </p>
     </fieldset>
 
     <div class="flex flex-col gap-0.5 pb-0.5 text-sm">
@@ -114,7 +137,7 @@ const modes: { value: ColorMode; label: string }[] = [
           class="size-4 accent-orange-700"
           aria-describedby="filter-static-help filter-static-count"
         />
-        <span class="font-medium text-stone-800">Exclure torchères / sources statiques</span>
+        <span class="font-medium text-stone-800">Exclure les sources industrielles (torchères)</span>
       </label>
       <p
         id="filter-static-count"
@@ -124,8 +147,8 @@ const modes: { value: ColorMode; label: string }[] = [
         {{ maskedLabel ?? '' }}
       </p>
       <p v-if="maskedLabel" id="filter-static-help" class="pl-6 text-xs text-stone-500">
-        Retirées = type FIRMS ≠ 0 ou site industriel persistant (cellule 0,05°), dans la zone
-        affichée.
+        Chaleur permanente qui n'est pas un feu : torchères pétrolières, sites industriels. Critère :
+        type FIRMS ≠ 0 ou site industriel persistant (cellule 0,05°), dans la zone affichée.
       </p>
     </div>
   </form>

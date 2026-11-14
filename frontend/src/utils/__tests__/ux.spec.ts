@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import type { CalendarResponse } from '@/types/api'
 import calStatic from '@/mocks/calendar_GA_static.json'
-import YearComparison from '@/components/YearComparison.vue'
+import HarmonizationToggle from '@/components/HarmonizationToggle.vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { useFiltersStore } from '@/stores/filters'
+import { cellColor, displayValue, rawEraValue, valueMax } from '@/utils/calendar'
 import { SERIES_COLORS, buildComparisonOption, clampWindow, inRange } from '@/utils/chart'
-import { compareYear, defaultCompareYear } from '@/utils/comparison'
 
 const series = (calStatic as unknown as CalendarResponse).series
 const months = (from: number, to: number) => inRange(series, [from, to]).map((p) => p.month)
@@ -58,33 +60,61 @@ it('NOAA-20 n’a plus la même teinte que S-NPP (ancien bleu ciel : même teint
   expect(Math.abs(hue(SERIES_COLORS.noaa20) - hue(SERIES_COLORS.snpp))).toBeGreaterThan(30)
 })
 
-describe('comparaison année / médiane', () => {
-  it('cumule uniquement les mois disponibles et calcule l’écart', () => {
-    const c = compareYear(series, 2024)
-    expect(c.months).toHaveLength(12)
-    const expected = c.months.reduce((s, m) => s + (m.value ?? 0), 0)
-    expect(c.total).toBeCloseTo(expected, 6)
-    expect(c.deltaPercent).toBeCloseTo((100 * (c.total - c.medianTotal)) / c.medianTotal, 6)
-    expect(c.peak).not.toBeNull()
+describe('vue Avant : capteur d’époque', () => {
+  const at = (m: string) => series.find((p) => p.month === m)!
+
+  it('MODIS jusqu’à janvier 2012, VIIRS S-NPP à partir de février 2012', () => {
+    expect(rawEraValue(at('2011-12'))).toEqual({
+      value: at('2011-12').modis_count,
+      sensor: 'modis',
+    })
+    expect(rawEraValue(at('2012-01'))).toEqual({
+      value: at('2012-01').modis_count,
+      sensor: 'modis',
+    })
+    expect(rawEraValue(at('2012-02'))).toEqual({
+      value: at('2012-02').viirs_snpp_count,
+      sensor: 'snpp',
+    })
   })
-  it('année partielle (2000 : nov.-déc.) : seulement 2 mois comptés', () => {
-    const c = compareYear(series, 2000)
-    expect(c.months.filter((m) => m.value !== null)).toHaveLength(2)
+
+  it('valeur affichée selon la vue, null si le capteur manque', () => {
+    expect(displayValue(at('2005-08'), 'after')).toBe(at('2005-08').harmonized_value)
+    expect(displayValue(at('2005-08'), 'before')).toBe(at('2005-08').modis_count)
+    expect(displayValue({ ...at('2015-08'), viirs_snpp_count: null }, 'before')).toBeNull()
+    expect(displayValue(null, 'before')).toBeNull()
   })
-  it('année par défaut : celle du mois sélectionné, sinon la dernière complète', () => {
-    expect(defaultCompareYear(series, [2001, 2025], '2007-01')).toBe(2007)
-    expect(defaultCompareYear(series, [2001, 2025], null)).toBe(2025)
-    expect(defaultCompareYear(series, [2001, 2010], '2024-01')).toBe(2010)
+
+  it('même échelle : un mois MODIS paraît plus pâle avant qu’après harmonisation (rupture visible)', () => {
+    const lum = (c: string) =>
+      c
+        .match(/\d+/g)!
+        .slice(0, 3)
+        .map(Number)
+        .reduce((a, b) => a + b, 0)
+    const max = valueMax(inRange(series, [2001, 2025]))
+    const p = at('2005-08')
+    expect(lum(cellColor(p, 'value', max, 'before')!)).toBeGreaterThan(
+      lum(cellColor(p, 'value', max, 'after')!),
+    )
+    // Mois S-NPP observé : brut = harmonisé, même couleur.
+    const q = at('2015-08')
+    expect(cellColor(q, 'value', max, 'before')).toBe(cellColor(q, 'value', max, 'after'))
+    // Le mode anomalie est ignoré en vue Avant.
+    expect(cellColor(p, 'anomaly', max, 'before')).toBe(cellColor(p, 'value', max, 'before'))
   })
 })
 
-describe('YearComparison', () => {
-  it('affiche les indicateurs, un graphe accessible et une table pour lecteur d’écran', async () => {
-    const w = mount(YearComparison, { props: { series, years: [2023, 2024], year: 2024 } })
-    expect(w.text()).toContain('Écart cumulé')
-    expect(w.get('svg[role="img"]').attributes('aria-label')).toMatch(/^2024 comparé à la médiane/)
-    expect(w.findAll('table tbody tr')).toHaveLength(12)
-    await w.get('select').setValue('2023')
-    expect(w.emitted('update:year')).toEqual([[2023]])
+describe('HarmonizationToggle', () => {
+  it('deux bascules (calendrier, graphe) partagent la même vue', async () => {
+    setActivePinia(createPinia())
+    const a = mount(HarmonizationToggle, { props: { name: 'calendar-view' } })
+    const b = mount(HarmonizationToggle, { props: { name: 'chart-view' } })
+    await a.get('input[value="before"]').setValue(true)
+    expect(useFiltersStore().harmonizationView).toBe('before')
+    expect((b.get('input[value="before"]').element as HTMLInputElement).checked).toBe(true)
+    await b.get('input[value="after"]').setValue(true)
+    expect((a.get('input[value="after"]').element as HTMLInputElement).checked).toBe(true)
+    expect(a.get('input').attributes('name')).not.toBe(b.get('input').attributes('name'))
   })
 })

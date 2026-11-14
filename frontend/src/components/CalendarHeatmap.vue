@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { CalendarPoint, YearMonth } from '@/types/api'
+import type { ChartView } from '@/utils/chart'
 import {
   COVERAGE_LABELS,
+  RAW_SENSOR_LABELS,
+  RAW_SWITCH,
   MONTHS_LONG,
   MONTHS_SHORT,
-  REGIME_LABELS,
   buildMatrix,
   cellColor,
   formatAnomaly,
@@ -13,6 +15,7 @@ import {
   isProvisional,
   legendStops,
   monthLabel,
+  rawEraValue,
   valueMax,
   type CalendarCell,
   type ColorMode,
@@ -24,14 +27,12 @@ const props = defineProps<{
   yearRange: [number, number]
   colorMode: ColorMode
   selectedMonth: YearMonth | null
-  /** Année mise en regard de la médiane (comparateur sous le calendrier). */
-  compareYear: number | null
+  /** Avant harmonisation (brut du capteur d'époque) ou après (série harmonisée). */
+  view: ChartView
 }>()
 
 const emit = defineEmits<{
   select: [month: YearMonth]
-  /** Clic sur une année : la placer dans le comparateur. */
-  compare: [year: number]
   /** Survol / focus : null quand le pointeur quitte la grille. */
   preview: [month: YearMonth | null]
 }>()
@@ -46,7 +47,16 @@ const max = computed(() => {
     props.series.filter((p) => +p.month.slice(0, 4) >= from && +p.month.slice(0, 4) <= to),
   )
 })
-const legend = computed(() => legendStops(props.colorMode, max.value))
+const before = computed(() => props.view === 'before')
+/** En vue Avant, l'anomalie n'a pas de sens sur du brut : légende d'intensité. */
+const legend = computed(() => legendStops(before.value ? 'value' : props.colorMode, max.value))
+const legendTitle = computed(() =>
+  before.value
+    ? 'Points de feu (données brutes)'
+    : props.colorMode === 'value'
+      ? 'Points de feu par mois'
+      : 'Par rapport à la normale',
+)
 
 /**
  * Ligne de référence « Médiane 2001-2025 » : même échelle que les années, pour comparer
@@ -60,9 +70,10 @@ const baselineRow = computed(() => {
     return {
       key: name,
       label: b
-        ? `Médiane de ${name} 2001-2025 : ${formatCount(b.median)} détections équivalentes VIIRS`
-        : `${name} : médiane indisponible`,
-      color: cellColor(pseudo, props.colorMode, max.value),
+        ? `Mois normal de ${name} (médiane 2001-2025, données corrigées) : ${formatCount(b.median)} points de feu`
+        : `${name} : normale indisponible`,
+      // Référence commune aux deux vues : toujours la médiane harmonisée, en intensité en vue Avant.
+      color: cellColor(pseudo, before.value ? 'value' : props.colorMode, max.value),
     }
   })
 })
@@ -116,10 +127,21 @@ function onKeydown(e: KeyboardEvent) {
 function cellLabel(c: CalendarCell): string {
   const p = c.point
   if (!p || p.harmonized_value === null) return `${monthLabel(c.month)} : aucune donnée`
+  if (before.value) {
+    const raw = rawEraValue(p)
+    return [
+      raw.value === null
+        ? `${monthLabel(c.month)} : capteur ${RAW_SENSOR_LABELS[raw.sensor]} sans donnée`
+        : `${monthLabel(c.month)} : ${formatCount(raw.value)} points de feu bruts ${RAW_SENSOR_LABELS[raw.sensor]}`,
+      `${formatCount(p.harmonized_value)} après correction`,
+      isProvisional(p.coverage_status) ? COVERAGE_LABELS[p.coverage_status] : null,
+    ]
+      .filter(Boolean)
+      .join(', ')
+  }
   const parts = [
-    `${monthLabel(c.month)} : ${formatCount(p.harmonized_value)} détections équivalentes VIIRS`,
-    p.baseline_median !== null ? `${formatAnomaly(p)} par rapport à la médiane` : null,
-    REGIME_LABELS[p.sensor_regime],
+    `${monthLabel(c.month)} : ${formatCount(p.harmonized_value)} points de feu`,
+    p.baseline_median !== null ? `${formatAnomaly(p)} par rapport à la normale` : null,
     isProvisional(p.coverage_status) ? COVERAGE_LABELS[p.coverage_status] : null,
   ]
   return parts.filter(Boolean).join(', ')
@@ -129,7 +151,7 @@ const HATCH =
   'repeating-linear-gradient(135deg, rgb(255 255 255 / 0.75) 0 2px, transparent 2px 6px)'
 
 function cellStyle(c: CalendarCell) {
-  const color = cellColor(c.point, props.colorMode, max.value)
+  const color = cellColor(c.point, props.colorMode, max.value, props.view)
   const provisional = c.point && isProvisional(c.point.coverage_status)
   return {
     backgroundColor: color ?? undefined,
@@ -143,7 +165,7 @@ function cellStyle(c: CalendarCell) {
     <div
       ref="grid"
       role="grid"
-      aria-label="Calendrier d'activité des points chauds, années en lignes, mois en colonnes"
+      aria-label="Calendrier des points de feu, années en lignes, mois en colonnes"
       aria-describedby="calendar-help"
       class="grid grid-cols-[3.25rem_repeat(12,minmax(0,1fr))] gap-px text-xs"
       @keydown="onKeydown"
@@ -165,24 +187,9 @@ function cellStyle(c: CalendarCell) {
         </span>
       </div>
       <div v-for="row in rows" :key="row[0]!.year" role="row" class="contents">
-        <span role="rowheader" class="block pr-1 text-right">
-          <!-- Raccourci souris vers le comparateur ; au clavier, le sélecteur d'année suffit. -->
-          <button
-            type="button"
-            tabindex="-1"
-            :aria-pressed="row[0]!.year === compareYear"
-            :title="`Comparer ${row[0]!.year} à la médiane`"
-            :class="[
-              'w-full rounded px-1 text-right leading-5 tabular-nums transition-colors duration-150',
-              row[0]!.year === compareYear
-                ? 'bg-orange-100 font-semibold text-orange-900'
-                : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900',
-            ]"
-            @click="emit('compare', row[0]!.year)"
-          >
-            {{ row[0]!.year }}
-          </button>
-        </span>
+        <span role="rowheader" class="pr-2 text-right leading-5 tabular-nums text-stone-700">{{
+          row[0]!.year
+        }}</span>
         <span v-for="c in row" :key="c.month" role="gridcell" class="block">
           <button
             type="button"
@@ -196,6 +203,8 @@ function cellStyle(c: CalendarCell) {
                 ? 'border border-dashed border-stone-300 bg-stone-50'
                 : '',
               c.month === selectedMonth ? 'ring-2 ring-stone-900 ring-offset-1' : '',
+              // Vue Avant : trait du passage MODIS → VIIRS S-NPP (février 2012).
+              before && c.month === RAW_SWITCH ? 'shadow-[inset_3px_0_0_#1c1917]' : '',
             ]"
             :style="cellStyle(c)"
             @click="emit('select', c.month)"
@@ -211,7 +220,7 @@ function cellStyle(c: CalendarCell) {
           role="rowheader"
           class="mt-2 block border-t border-stone-300 pt-1 pr-1 text-right text-xs font-semibold leading-5 text-stone-800"
         >
-          Médiane
+          Normale
         </span>
         <span
           v-for="c in baselineRow"
@@ -233,14 +242,14 @@ function cellStyle(c: CalendarCell) {
     <p id="calendar-help" class="sr-only">
       Flèches pour se déplacer, Début et Fin pour aller en début ou fin d'année, Page précédente et
       Page suivante pour la première ou la dernière année, Entrée pour afficher le détail du mois.
-      La dernière ligne, Médiane, donne le mois type 2001-2025 pour comparaison.
+      La dernière ligne, Normale, donne le mois médian 2001-2025 (données corrigées) pour
+      comparaison. En données brutes, chaque mois montre les points de feu vus par le satellite de
+      l'époque : MODIS jusqu'à janvier 2012, VIIRS S-NPP à partir de février 2012.
     </p>
 
     <div class="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-stone-700">
       <div class="flex items-center gap-2">
-        <span class="font-medium">{{
-          colorMode === 'value' ? 'Détections équivalentes VIIRS' : 'Écart à la médiane'
-        }}</span>
+        <span class="font-medium">{{ legendTitle }}</span>
         <ol class="flex" aria-label="Légende des couleurs">
           <li v-for="s in legend" :key="s.label" class="flex flex-col items-center">
             <span class="block h-3 w-10" :style="{ backgroundColor: s.color }" aria-hidden="true" />
@@ -254,7 +263,7 @@ function cellStyle(c: CalendarCell) {
           :style="{ backgroundImage: HATCH }"
           aria-hidden="true"
         />
-        Mois incomplet ou provisoire (NRT)
+        Mois incomplet ou provisoire
       </span>
       <span class="flex items-center gap-1.5">
         <span
@@ -262,6 +271,14 @@ function cellStyle(c: CalendarCell) {
           aria-hidden="true"
         />
         Aucune donnée
+      </span>
+      <span>
+        <strong class="font-semibold text-stone-800">Normale</strong> : valeur habituelle du mois
+        (médiane 2001-2025)
+      </span>
+      <span v-if="before" class="flex items-center gap-1.5">
+        <span class="block h-3 w-1 rounded-sm bg-stone-900" aria-hidden="true" />
+        Changement de satellite : MODIS → VIIRS (février 2012)
       </span>
     </div>
   </div>

@@ -19,11 +19,13 @@ export const useFiltersStore = defineStore('filters', () => {
   const colorMode = ref<ColorMode>('value')
   /** Mois épinglé (clic / Entrée dans le calendrier). */
   const selectedMonth = ref<YearMonth | null>(null)
-  /** Vue et fenêtre de zoom du graphe : conservées entre bascules et changements de filtre. */
-  const chartView = ref<ChartView>('after')
+  /**
+   * Vue d'harmonisation partagée par le calendrier et le graphe : `before` = capteurs bruts
+   * (rupture 2012 visible), `after` = série harmonisée. Une seule bascule pour les deux vues.
+   */
+  const harmonizationView = ref<ChartView>('after')
+  /** Fenêtre de zoom du graphe : conservée entre bascules et changements de filtre. */
   const chartWindow = ref<ChartWindow | null>(null)
-  /** Année du comparateur ; null = choix automatique (mois sélectionné ou dernière année). */
-  const compareYear = ref<number | null>(null)
 
   const start = computed<YearMonth>(() => `${yearRange.value[0]}-01`)
   const end = computed<YearMonth>(() => `${yearRange.value[1]}-12`)
@@ -62,9 +64,8 @@ export const useFiltersStore = defineStore('filters', () => {
     filterStatic,
     colorMode,
     selectedMonth,
-    chartView,
+    harmonizationView,
     chartWindow,
-    compareYear,
     start,
     end,
     query,

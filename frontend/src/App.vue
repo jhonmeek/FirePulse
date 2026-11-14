@@ -5,18 +5,20 @@ import AnomaliesPanel from '@/components/AnomaliesPanel.vue'
 import CalendarHeatmap from '@/components/CalendarHeatmap.vue'
 import ControlBar from '@/components/ControlBar.vue'
 import ExportButton from '@/components/ExportButton.vue'
+import HarmonizationToggle from '@/components/HarmonizationToggle.vue'
 import MethodologyPanel from '@/components/MethodologyPanel.vue'
 import MonthDetail from '@/components/MonthDetail.vue'
 import RegimeTimeline from '@/components/RegimeTimeline.vue'
-import YearComparison from '@/components/YearComparison.vue'
+import SummaryBanner from '@/components/SummaryBanner.vue'
 import { useCalendar } from '@/composables/useCalendar'
 import { useRegions } from '@/composables/useRegions'
-import { USE_MOCKS } from '@/services/api'
+import { DEMO_MODE, USE_MOCKS, servedFromFallback } from '@/services/api'
 import { useFiltersStore } from '@/stores/filters'
 import type { YearMonth } from '@/types/api'
 import { maskedSummary } from '@/utils/anomalies'
 import { historicalRank } from '@/utils/calendar'
-import { defaultCompareYear } from '@/utils/comparison'
+import { snppModisRatio } from '@/utils/chart'
+import { lastDataMonth } from '@/utils/summary'
 
 // ECharts (~600 Ko) en chunk séparé : le calendrier s'affiche sans l'attendre.
 const ComparisonChart = defineAsyncComponent(() => import('@/components/ComparisonChart.vue'))
@@ -24,8 +26,16 @@ const ComparisonChart = defineAsyncComponent(() => import('@/components/Comparis
 const MapExplorer = defineAsyncComponent(() => import('@/components/MapExplorer.vue'))
 
 const filters = useFiltersStore()
-const { yearRange, colorMode, selectedMonth, region, filterStatic, bbox, query, compareYear } =
-  storeToRefs(filters)
+const {
+  yearRange,
+  colorMode,
+  selectedMonth,
+  region,
+  filterStatic,
+  bbox,
+  query,
+  harmonizationView,
+} = storeToRefs(filters)
 const { regions } = useRegions()
 const { data, filtered, unfiltered, loading, error, reload } = useCalendar()
 
@@ -45,19 +55,18 @@ const regionName = computed(() => {
     region.value
   )
 })
-/** Années affichées ayant des données, pour le comparateur. */
-const displayedYears = computed(() =>
-  availableYears.value.filter((y) => y >= yearRange.value[0] && y <= yearRange.value[1]),
-)
-const effectiveCompareYear = computed(() => {
-  const chosen = compareYear.value
-  if (chosen !== null && displayedYears.value.includes(chosen)) return chosen
-  return defaultCompareYear(series.value, yearRange.value, selectedMonth.value)
-})
 const masked = computed(() => maskedSummary(unfiltered.value, filtered.value, yearRange.value))
 
+/** Saut instrumental 2012 arrondi (« environ 4 fois »), même fenêtre que le graphe. */
+const jumpFactor = computed(() => {
+  const r = snppModisRatio(series.value, '2012-02', '2019-12')
+  return r && r >= 1.5 ? Math.round(r) : null
+})
+
 const preview = ref<YearMonth | null>(null)
-const shownMonth = computed(() => selectedMonth.value ?? preview.value)
+/** Par défaut, la colonne de droite montre le dernier mois disponible de la plage affichée. */
+const latestMonth = computed(() => lastDataMonth(series.value, yearRange.value[1]))
+const shownMonth = computed(() => selectedMonth.value ?? preview.value ?? latestMonth.value)
 const shownPoint = computed(() => series.value.find((p) => p.month === shownMonth.value) ?? null)
 const shownRank = computed(() =>
   shownMonth.value ? historicalRank(series.value, shownMonth.value) : null,
@@ -79,6 +88,12 @@ const tabs = [
 ] as const
 type TabId = (typeof tabs)[number]['id']
 const tab = ref<TabId>('explore')
+/** « Comment c'est calculé ? » : ouvre l'onglet Méthodologie et y place le focus. */
+function openMethod() {
+  tab.value = 'method'
+  document.getElementById('tab-method')?.focus()
+  window.scrollTo({ top: 0 })
+}
 function onTabKey(e: KeyboardEvent) {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
   const i = tabs.findIndex((t) => t.id === tab.value)
@@ -122,17 +137,34 @@ function onTabKey(e: KeyboardEvent) {
           </span>
           <div>
             <h1 class="text-lg font-semibold leading-tight tracking-tight">FirePulse</h1>
-            <p class="text-xs text-stone-600">
-              Indicateur harmonisé d'activité des points chauds - échelle VIIRS 375 m (MODIS
-              2000-2012 reconstitué)
+            <p
+              class="text-xs text-stone-700"
+              title="Indicateur harmonisé d'activité des points chauds - échelle VIIRS 375 m (MODIS 2000-2012 reconstitué)"
+            >
+              Les feux vus par satellite, mois par mois depuis 2001
             </p>
           </div>
         </div>
+        <!-- Provenance des données : visible pendant la démo, annoncée aux lecteurs d'écran. -->
         <span
-          v-if="USE_MOCKS"
+          v-if="DEMO_MODE"
+          role="status"
+          class="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-900"
+          title="Build de démonstration autonome : données FIRMS du Gabon embarquées, aucun serveur requis"
+          >Démo hors ligne · Gabon</span
+        >
+        <span
+          v-else-if="USE_MOCKS"
           class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
           title="Données générées localement depuis les CSV FIRMS (src/mocks)"
           >Mode mocks</span
+        >
+        <span
+          v-else-if="servedFromFallback"
+          role="status"
+          class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+          title="Base de données indisponible : l'API sert l'instantané de secours vérifié (SHA-256)"
+          >Données de secours</span
         >
       </div>
       <div
@@ -154,7 +186,7 @@ function onTabKey(e: KeyboardEvent) {
             '-mb-px min-h-10 cursor-pointer border-b-2 px-3 py-2 text-sm transition-colors duration-150 focus-visible:outline-2',
             tab === t.id
               ? 'border-orange-600 font-semibold text-stone-900'
-              : 'border-transparent text-stone-600 hover:text-stone-900',
+              : 'border-transparent text-stone-700 hover:text-stone-900',
           ]"
           @click="tab = t.id"
         >
@@ -164,11 +196,32 @@ function onTabKey(e: KeyboardEvent) {
     </header>
 
     <main id="main" tabindex="-1" class="mx-auto max-w-7xl space-y-5 px-4 py-5 outline-none">
+      <SummaryBanner
+        v-if="tab === 'explore' && series.length"
+        :series="series"
+        :year-range="yearRange"
+        :region-name="regionName"
+      />
+
       <section aria-label="Filtres" class="card">
-        <ControlBar :regions="regions" :available-years="availableYears" :masked="masked" />
-        <div class="mt-4">
-          <RegimeTimeline :year-range="yearRange" />
-        </div>
+        <ControlBar
+          :regions="regions"
+          :available-years="availableYears"
+          :masked="masked"
+          :hide-calendar-controls="tab !== 'explore'"
+        />
+        <!-- Détail technique replié : utile aux curieux, pas nécessaire pour lire la page. -->
+        <details class="group mt-4">
+          <summary
+            class="cursor-pointer text-sm text-stone-700 hover:text-stone-900 focus-visible:outline-2 focus-visible:outline-orange-600"
+          >
+            Quels satellites ont observé ?
+            <span class="text-stone-600">MODIS jusqu'en 2012, VIIRS ensuite</span>
+          </summary>
+          <div class="mt-3">
+            <RegimeTimeline :year-range="yearRange" />
+          </div>
+        </details>
       </section>
 
       <div
@@ -191,21 +244,45 @@ function onTabKey(e: KeyboardEvent) {
           <section aria-labelledby="calendar-title" class="card">
             <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <h2 id="calendar-title" class="card-title">
-                Calendrier d'activité - {{ regionName }}
+                Points de feu chaque mois - {{ regionName }}
               </h2>
               <div class="flex items-center gap-3">
-                <p v-if="data?.method" class="text-xs text-stone-500">
-                  Méthode {{ data.method.name }} ({{ data.method.version }})
-                </p>
+                <button
+                  type="button"
+                  class="btn-ghost text-xs underline"
+                  :title="
+                    data?.method ? `Méthode ${data.method.name} (${data.method.version})` : undefined
+                  "
+                  @click="openMethod"
+                >
+                  Comment c'est calculé ?
+                </button>
                 <ExportButton :query="query" :data="data" />
               </div>
+            </div>
+            <!-- Même bascule que le graphe (état partagé) : basculer ici bascule aussi le graphe. -->
+            <div class="mb-3 space-y-1.5">
+              <HarmonizationToggle name="calendar-view" />
+              <p class="max-w-prose text-xs text-stone-700">
+                <template v-if="harmonizationView === 'before'">
+                  Chaque mois tel que vu par le satellite de l'époque. En 2012, un satellite plus
+                  précis (VIIRS) a remplacé l'ancien (MODIS)<template v-if="jumpFactor">
+                    : il repère environ {{ jumpFactor }} fois plus de points de feu</template
+                  >. La hausse brutale de 2012 vient de ce changement d'instrument, pas des feux.
+                </template>
+                <template v-else>
+                  Les années avant 2012 sont recalculées comme si le satellite actuel les avait
+                  observées : toutes les années se comparent entre elles.
+                </template>
+              </p>
             </div>
             <p
               v-if="bbox"
               class="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"
+              title="Série agrégée depuis la grille 0,25° avec la courbe nationale ; pas d'intervalle d'incertitude propre à la zone."
             >
-              Zone dessinée : série agrégée depuis la grille 0,25° avec la courbe nationale ; pas
-              d'intervalle d'incertitude propre à la zone.
+              Zone dessinée : estimation à partir de carrés d'environ 28 km de côté ; pas de marge
+              d'erreur propre à cette zone.
             </p>
 
             <p v-if="loading && !series.length" class="py-10 text-center text-sm text-stone-600">
@@ -224,17 +301,9 @@ function onTabKey(e: KeyboardEvent) {
               :year-range="yearRange"
               :color-mode="colorMode"
               :selected-month="selectedMonth"
-              :compare-year="effectiveCompareYear"
+              :view="harmonizationView"
               @select="toggle"
               @preview="preview = $event"
-              @compare="compareYear = $event"
-            />
-            <YearComparison
-              v-if="series.length && effectiveCompareYear !== null"
-              :series="series"
-              :years="displayedYears"
-              :year="effectiveCompareYear"
-              @update:year="compareYear = $event"
             />
           </section>
 
@@ -244,22 +313,22 @@ function onTabKey(e: KeyboardEvent) {
               :point="shownPoint"
               :rank="shownRank"
               :pinned="selectedMonth !== null && shownMonth === selectedMonth"
+              :latest="selectedMonth === null && preview === null"
+              :view="harmonizationView"
               @unpin="selectedMonth = null"
             />
           </aside>
         </div>
 
         <section aria-labelledby="map-title" class="card">
-          <h2 id="map-title" class="card-title mb-3">
-            Carte : empreinte spatiale et sites statiques
-          </h2>
+          <h2 id="map-title" class="card-title mb-3">Carte : où sont repérés les points de feu</h2>
           <MapExplorer />
         </section>
 
         <template v-if="series.length">
           <section aria-labelledby="chart-title" class="card">
             <h2 id="chart-title" class="card-title mb-3">
-              Séries comparées : capteurs bruts et série harmonisée
+              Évolution mois par mois : données brutes et corrigées
             </h2>
             <ComparisonChart
               :series="series"
@@ -271,7 +340,7 @@ function onTabKey(e: KeyboardEvent) {
 
           <section aria-labelledby="anom-title" class="card">
             <h2 id="anom-title" class="card-title mb-3">
-              Anomalies par rapport à la médiane du même mois
+              Mois inhabituels : écart à la normale du même mois
             </h2>
             <AnomaliesPanel
               :series="series"

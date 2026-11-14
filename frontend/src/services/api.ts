@@ -1,3 +1,4 @@
+import { ref } from 'vue'
 import type {
   AnomaliesResponse,
   AreaQuery,
@@ -13,7 +14,13 @@ import type {
 import type { Feature, Polygon } from 'geojson'
 
 /** Mocks par défaut en dev (désactiver avec VITE_USE_MOCKS=false), jamais en production. */
-export const USE_MOCKS = import.meta.env.DEV && import.meta.env.VITE_USE_MOCKS !== 'false'
+/**
+ * Mode démo autonome (`vite build --mode demo`) : mocks embarqués dans le build, aucun backend
+ * requis. Sert de plan de secours si la stack Docker est indisponible le jour de la démo.
+ */
+export const DEMO_MODE = import.meta.env.MODE === 'demo'
+export const USE_MOCKS =
+  DEMO_MODE || (import.meta.env.DEV && import.meta.env.VITE_USE_MOCKS !== 'false')
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 /** Seule la région nationale est disponible en mock (provinces et zones libres : API réelle). */
@@ -42,6 +49,12 @@ export function toSearchParams(query: AreaQuery): URLSearchParams {
 }
 
 /** Les routes Django finissent par `/` : sans lui, GET part en redirection 301. */
+/**
+ * Vrai si la dernière réponse de l'API venait de l'instantané de secours de M2
+ * (base indisponible : en-tête `X-FirePulse-Cache: FALLBACK`). Affiché dans l'en-tête de l'app.
+ */
+export const servedFromFallback = ref(false)
+
 async function getJson<T>(path: string, params?: URLSearchParams): Promise<T> {
   const url = `${API_BASE}/${path}/${params && params.toString() ? `?${params}` : ''}`
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
@@ -49,6 +62,7 @@ async function getJson<T>(path: string, params?: URLSearchParams): Promise<T> {
     const body = await res.json().catch(() => null)
     throw new ApiError(res.status, url, body?.detail ?? body?.error)
   }
+  servedFromFallback.value = res.headers.get('X-FirePulse-Cache') === 'FALLBACK'
   return (await res.json()) as T
 }
 
