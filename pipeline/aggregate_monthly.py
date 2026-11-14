@@ -80,10 +80,10 @@ def aggregate(input_dir:Path,output_dir:Path):
     try:
         with (tmp/"monthly_counts.csv").open("w",encoding="utf-8",newline="") as f:
             w=csv.DictWriter(f,fieldnames=FIELDS,lineterminator="\n"); w.writeheader();w.writerows(rows)
-        (tmp/"calendar.json").write_text(json.dumps({"schema_version":1,"artifact_kind":"firepulse-monthly-calendar","start":"2000-11","end":"2025-12","sources":SATS,"source_starts":{k:v.isoformat() for k,v in STARTS.items()},"rows":rows},indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        (tmp/"calendar.json").write_text(json.dumps({"schema_version":1,"artifact_kind":"firepulse-monthly-calendar","start":"2000-11","end":"2025-12","sources":SATS,"source_starts":{k:v.isoformat() for k,v in STARTS.items()},"rows":rows},indent=2,sort_keys=True)+"\n",encoding="utf-8",newline="\n")
         out_manifest["monthly_csv_sha256"]=hashlib.sha256((tmp/"monthly_counts.csv").read_bytes()).hexdigest()
         out_manifest["calendar_sha256"]=hashlib.sha256((tmp/"calendar.json").read_bytes()).hexdigest()
-        (tmp/"manifest.json").write_text(json.dumps(out_manifest,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        (tmp/"manifest.json").write_text(json.dumps(out_manifest,indent=2,sort_keys=True)+"\n",encoding="utf-8",newline="\n")
         if dst.exists():
             try: old=json.loads((dst/"manifest.json").read_text(encoding="utf-8"))
             except (OSError,json.JSONDecodeError) as exc: raise ValueError("refusing to replace unrecognized output directory") from exc

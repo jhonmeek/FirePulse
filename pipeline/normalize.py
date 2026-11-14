@@ -90,7 +90,7 @@ def normalize(input_dir: Path, output_dir: Path):
                 w=csv.DictWriter(f,fieldnames=OUT_FIELDS,lineterminator="\n"); w.writeheader(); w.writerows(rows)
             mm=PRODUCT.fullmatch(name); manifests.append({"source_file":name,"product":"viirs-noaa20" if mm.group(1).lower()=="viirs-jpss1" else mm.group(1).lower(),"year":int(mm.group(2)),"source_sha256":digest,"output_file":outname,"input_rows":len(rows),"output_rows":len(rows),"duplicate_exact_rows":dups,"output_sha256":hashlib.sha256(p.read_bytes()).hexdigest()})
         code_hash=hashlib.sha256(Path(__file__).read_bytes().replace(b"\r\n",b"\n")).hexdigest()
-        (temp/"manifest.json").write_text(json.dumps({"schema_version":1,"artifact_kind":"firepulse-normalized","normalizer":"pipeline.normalize","normalizer_sha256":code_hash,"files":manifests,"input_rows":total["rows"],"output_rows":total["rows"],"duplicate_exact_rows":total["duplicate_exact_rows"]},indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        (temp/"manifest.json").write_text(json.dumps({"schema_version":1,"artifact_kind":"firepulse-normalized","normalizer":"pipeline.normalize","normalizer_sha256":code_hash,"files":manifests,"input_rows":total["rows"],"output_rows":total["rows"],"duplicate_exact_rows":total["duplicate_exact_rows"]},indent=2,sort_keys=True)+"\n",encoding="utf-8",newline="\n")
         if dst.exists():
             try: old=json.loads((dst/"manifest.json").read_text(encoding="utf-8"))
             except (OSError,json.JSONDecodeError) as exc: raise ValueError("refusing to replace unrecognized output directory") from exc
