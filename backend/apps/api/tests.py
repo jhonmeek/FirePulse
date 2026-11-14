@@ -1,15 +1,19 @@
 """Integration tests for PostGIS models, FIRMS ingestion helpers, and API v1 endpoints."""
 
+import hashlib
 import json
 import tempfile
 from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError
 from django.test import TestCase
+from django.urls import resolve
 from rest_framework.test import APIClient
 
 from apps.harmonization.models import (
@@ -359,3 +363,134 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(cal.status_code, 200)
         self.assertEqual(cal.json()["series"][0]["harmonized_value"], 3000.0)
         self.assertAlmostEqual(cal.json()["series"][0]["anomaly_percent"], 76.47, places=2)
+
+    def test_api_contract_routes_resolve_and_respond(self) -> None:
+        contract_path = next(
+            (
+                p
+                for p in (
+                    Path(settings.BASE_DIR).parent / "docs" / "api-contract.json",
+                    Path("/docs/api-contract.json"),
+                )
+                if p.exists()
+            ),
+            None,
+        )
+        self.assertIsNotNone(contract_path, "docs/api-contract.json must exist")
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        endpoints = contract["endpoints"]
+        self.assertGreaterEqual(len(endpoints), 8)
+
+        sample_queries = {
+            "/api/v1/regions/": {"include_geom": "false"},
+            "/api/v1/calendar/": {"region": "GA", "start": "2024-08", "end": "2024-08"},
+            "/api/v1/anomalies/": {"region": "GA", "top_n": "1"},
+            "/api/v1/hotspots/": {"mode": "grid", "month": "2024-08", "limit": "1"},
+            "/api/v1/methodology/": {"region": "GA"},
+            "/api/v1/export/": {"region": "GA", "start": "2024-08", "end": "2024-08"},
+        }
+
+        for endpoint_key in endpoints:
+            method, path = endpoint_key.split(" ", 1)
+            self.assertEqual(method, "GET")
+            match = resolve(path)
+            self.assertIsNotNone(match)
+            res = self.client.get(path, sample_queries.get(path, {}))
+            self.assertEqual(res.status_code, 200, f"Unexpected status for {path}: {res.content}")
+
+    def test_build_baseline_series_from_m1_directory_csv_and_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mdir = Path(tmpdir)
+            csv_path = mdir / "monthly_counts.csv"
+            csv_path.write_text(
+                "\n".join(
+                    [
+                        "region,dataset_scope,month,source,satellite,count_raw,count_type0_candidate,harmonized_value,status,observation_coverage",
+                        "GA,country_file_unverified_geometry,2000-11,modis,Terra,37,10,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2000-11,modis,Aqua,,,,not_available,unknown",
+                        "GA,country_file_unverified_geometry,2000-11,viirs-snpp,N,,,,not_available,unknown",
+                        "GA,country_file_unverified_geometry,2012-01,modis,Terra,50,20,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2012-01,modis,Aqua,60,30,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2012-01,viirs-snpp,N,12,10,,partial_period,unknown",
+                        "GA,country_file_unverified_geometry,2024-08,modis,Terra,100,80,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2024-08,modis,Aqua,200,120,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2024-08,viirs-snpp,N,400,320,,observed_detections_recorded,unknown",
+                        "GA,country_file_unverified_geometry,2024-08,viirs-noaa20,N20,390,300,,observed_detections_recorded,unknown",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            csv_sha = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+            manifest_path = mdir / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "artifact_kind": "firepulse-monthly",
+                        "schema_version": 1,
+                        "scope": "GA country-file; geometry unverified",
+                        "monthly_csv_sha256": csv_sha,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            call_command("build_baseline_series", from_pipeline=str(mdir), stdout=StringIO())
+
+            run_filt = CalibrationRun.objects.get(region=self.region, filter_static=True, is_active=True)
+            self.assertEqual(run_filt.method_name, "m1_monthly_type0_candidate_power_law")
+            self.assertEqual(run_filt.metrics_json["m1_provenance"]["static_flare_mask_applied"], False)
+            self.assertEqual(run_filt.metrics_json["m1_provenance"]["input_sha256"], csv_sha)
+
+            row_aug = HarmonizedMonthSeries.objects.get(
+                region=self.region,
+                calibration_run=run_filt,
+                month=date(2024, 8, 1),
+            )
+            self.assertEqual(row_aug.viirs_snpp_count, 320)
+            self.assertEqual(row_aug.harmonized_value, 320.0)
+
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "artifact_kind": "firepulse-monthly",
+                        "schema_version": 1,
+                        "monthly_csv_sha256": "0" * 64,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(CommandError):
+                call_command("build_baseline_series", from_pipeline=str(mdir), stdout=StringIO())
+
+    def test_build_baseline_series_from_repo_m1_monthly_dir(self) -> None:
+        monthly_dir = next(
+            (
+                p
+                for p in (
+                    Path(settings.BASE_DIR).parent / "data" / "processed" / "monthly",
+                    Path("/data/processed/monthly"),
+                )
+                if p.exists()
+            ),
+            None,
+        )
+        if monthly_dir is None:
+            self.skipTest("data/processed/monthly not mounted in this test environment")
+
+        call_command("build_baseline_series", from_pipeline=str(monthly_dir), stdout=StringIO())
+
+        run_filt = CalibrationRun.objects.get(region=self.region, filter_static=True, is_active=True)
+        run_raw = CalibrationRun.objects.get(region=self.region, filter_static=False, is_active=True)
+        self.assertEqual(run_filt.method_name, "m1_monthly_type0_candidate_power_law")
+        self.assertEqual(run_raw.method_name, "m1_monthly_raw_power_law")
+        self.assertEqual(
+            HarmonizedMonthSeries.objects.filter(region=self.region, calibration_run=run_filt).count(),
+            302,
+        )
+        cal = self.client.get("/api/v1/calendar/?region=GA&start=2000-11&end=2025-12")
+        self.assertEqual(cal.status_code, 200)
+        self.assertEqual(len(cal.json()["series"]), 302)
+        meth = self.client.get("/api/v1/methodology/?region=GA")
+        self.assertEqual(meth.status_code, 200)
+        self.assertFalse(meth.json()["active_run"]["metrics"]["m1_provenance"]["static_flare_mask_applied"])

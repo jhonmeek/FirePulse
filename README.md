@@ -45,7 +45,7 @@ Options utiles :
 - `python manage.py import_firms` : importe uniquement les nouveaux CSV (idempotent via SHA-256).
 - `python manage.py import_firms --rebuild-only` : recalcule uniquement le masque statique `0.05°` et la grille `0.25°`.
 - `python manage.py import_firms --data-dir /data/raw/<dossier>` : pointe vers un autre dossier monté dans `./data`.
-- `python manage.py build_baseline_series --from-pipeline /data/processed/<bundle.json>` : charge un bundle JSON validé par M1.
+- `python manage.py build_baseline_series --from-pipeline /data/processed/monthly` : ingère directement les artefacts mensuels M1 (`calendar.json` ou `monthly_counts.csv` + vérification SHA-256 `manifest.json`) ou un bundle calibré M1 JSON (`regions`).
 
 ### 4. Vérifier que tout tourne
 
@@ -55,6 +55,8 @@ curl http://localhost:8000/api/v1/health/
 ```
 
 Réponse attendue sur `/api/v1/health/` : `"status": "ok"`, `"database": "connected"` et les compteurs (`regions: 10`, `hotspots: 292589`, `grid_cell_months: 42482`, `harmonized_months: 6011`).
+
+Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) exécute automatiquement à chaque PR/push les tests Backend PostGIS (`manage.py test -v 2`), le pipeline M1 (`unittest`) et le build/tests Frontend (`type-check`, `vitest`, `vite build`).
 
 ---
 

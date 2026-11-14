@@ -1,8 +1,11 @@
 """Calibrate MODIS->VIIRS harmonization models, baselines, and anomalies into PostGIS."""
 
+import csv
+import hashlib
 import json
 import math
 import statistics
+from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
@@ -48,6 +51,8 @@ def _parse_iso_month(value: str) -> date:
 
 
 def _fit_linear(xs: list[float], ys: list[float]) -> tuple[float, float]:
+    if not xs or not ys or len(xs) != len(ys):
+        return 1.0, 0.0
     mx = sum(xs) / len(xs)
     my = sum(ys) / len(ys)
     denom = sum((x - mx) ** 2 for x in xs)
@@ -59,6 +64,8 @@ def _fit_linear(xs: list[float], ys: list[float]) -> tuple[float, float]:
 
 
 def _eval_metrics(preds: list[float], actuals: list[float]) -> dict[str, float]:
+    if not actuals or len(preds) != len(actuals):
+        return {"mae": 0.0, "rmse": 0.0, "bias": 0.0, "r2": 0.0}
     errs = [p - a for p, a in zip(preds, actuals)]
     mae = sum(abs(e) for e in errs) / len(errs)
     rmse = math.sqrt(sum(e * e for e in errs) / len(errs))
@@ -126,16 +133,41 @@ def _fetch_region_monthly_counts(region_id: int, filter_static: bool) -> dict[da
     }
 
 
+def _count_or_none(row: dict[str, int | None], key: str) -> float | None:
+    """Return float count when observed, 0.0 when key is omitted (PostGIS), or None when explicit null."""
+    if key not in row:
+        return 0.0
+    val = row[key]
+    return float(val) if val is not None else None
+
+
+def _paired_series(
+    counts: dict[date, dict[str, int | None]],
+    months: list[date],
+    x_key: str,
+    y_key: str,
+) -> tuple[list[float], list[float]]:
+    xs: list[float] = []
+    ys: list[float] = []
+    for m in months:
+        row = counts.get(m, {})
+        xv = _count_or_none(row, x_key)
+        yv = _count_or_none(row, y_key)
+        if xv is not None and yv is not None:
+            xs.append(xv)
+            ys.append(yv)
+    return xs, ys
+
+
 def _calibrate_models(
-    counts: dict[date, dict[str, int]],
+    counts: dict[date, dict[str, int | None]],
     fallback_params: dict | None,
 ) -> tuple[dict, dict, str]:
     train_months = list(_month_range(TRAIN_START, TRAIN_END))
     test_months = list(_month_range(TEST_START, TEST_END))
 
-    x_tr = [float(counts.get(m, {}).get("modis_count", 0)) for m in train_months]
-    xt_tr = [float(counts.get(m, {}).get("modis_terra_count", 0)) for m in train_months]
-    y_tr = [float(counts.get(m, {}).get("viirs_snpp_count", 0)) for m in train_months]
+    x_tr, y_tr = _paired_series(counts, train_months, "modis_count", "viirs_snpp_count")
+    xt_tr, yt_tr = _paired_series(counts, train_months, "modis_terra_count", "viirs_snpp_count")
 
     active_pairs = sum(1 for x, y in zip(x_tr, y_tr) if x > 0 and y > 0)
     if active_pairs < 24 and fallback_params is not None:
@@ -148,11 +180,10 @@ def _calibrate_models(
     alpha = sum(y_tr) / sum(x_tr) if sum(x_tr) > 0 else 1.0
     ols_a, ols_b = _fit_linear(x_tr, y_tr)
     p_pow, q_pow = _fit_linear([math.log1p(x) for x in x_tr], [math.log1p(y) for y in y_tr])
-    pt_pow, qt_pow = _fit_linear([math.log1p(x) for x in xt_tr], [math.log1p(y) for y in y_tr])
+    pt_pow, qt_pow = _fit_linear([math.log1p(x) for x in xt_tr], [math.log1p(y) for y in yt_tr])
 
-    x_te = [float(counts.get(m, {}).get("modis_count", 0)) for m in test_months]
-    xt_te = [float(counts.get(m, {}).get("modis_terra_count", 0)) for m in test_months]
-    y_te = [float(counts.get(m, {}).get("viirs_snpp_count", 0)) for m in test_months]
+    x_te, y_te = _paired_series(counts, test_months, "modis_count", "viirs_snpp_count")
+    xt_te, yt_te = _paired_series(counts, test_months, "modis_terra_count", "viirs_snpp_count")
 
     pred_ratio = [alpha * x for x in x_te]
     pred_ols = [max(0.0, ols_a * x + ols_b) for x in x_te]
@@ -163,14 +194,15 @@ def _calibrate_models(
         abs(math.log1p(y) - (p_pow * math.log1p(x) + q_pow)) for x, y in zip(x_te, y_te)
     ]
     res_log_terra = [
-        abs(math.log1p(y) - (pt_pow * math.log1p(x) + qt_pow)) for x, y in zip(xt_te, y_te)
+        abs(math.log1p(y) - (pt_pow * math.log1p(x) + qt_pow)) for x, y in zip(xt_te, yt_te)
     ]
     q80_log = _conformal_quantile(res_log_main, 0.80)
     q80_terra_log = _conformal_quantile(res_log_terra, 0.80)
 
     n20_months = list(_month_range(date(2019, 1, 1), TEST_END))
-    snpp_sum = sum(counts.get(m, {}).get("viirs_snpp_count", 0) for m in n20_months)
-    n20_sum = sum(counts.get(m, {}).get("viirs_noaa20_count", 0) for m in n20_months)
+    snpp_pairs, n20_pairs = _paired_series(counts, n20_months, "viirs_snpp_count", "viirs_noaa20_count")
+    snpp_sum = sum(snpp_pairs)
+    n20_sum = sum(n20_pairs)
     bridge_n20_over_snpp = (n20_sum / snpp_sum) if snpp_sum > 0 and n20_sum > 0 else 1.0
 
     params = {
@@ -186,23 +218,24 @@ def _calibrate_models(
         "noaa20_to_snpp_ratio": round(bridge_n20_over_snpp, 4),
     }
     metrics = {
-        "train_months": len(train_months),
-        "test_months": len(test_months),
+        "train_months": len(x_tr),
+        "test_months": len(x_te),
         "models_out_of_sample": {
             "naive": _eval_metrics(x_te, y_te),
             "global_ratio": _eval_metrics(pred_ratio, y_te),
             "ols_linear": _eval_metrics(pred_ols, y_te),
             "power_law_log1p": _eval_metrics(pred_pow, y_te),
-            "terra_only_power_law": _eval_metrics(pred_terra, y_te),
+            "terra_only_power_law": _eval_metrics(pred_terra, yt_te),
         },
     }
     return params, metrics, ""
 
 
 def _build_series_from_params(
-    counts: dict[date, dict[str, int]],
+    counts: dict[date, dict[str, int | None]],
     params: dict,
     note: str = "",
+    partial_snpp_months: set[date] | None = None,
 ) -> list[dict]:
     """Reconstruct monthly series from observed counts and calibrated model parameters."""
     min_m = min(counts.keys())
@@ -216,6 +249,7 @@ def _build_series_from_params(
     q80 = float(params.get("conformal_q80_log", 0.25))
     q80_t = float(params.get("conformal_q80_terra_log", q80))
     n20_ratio = float(params.get("noaa20_to_snpp_ratio", 1.0)) or 1.0
+    partial_snpp = partial_snpp_months or set()
 
     reconstructed: list[dict] = []
     for m_date in all_months:
@@ -226,30 +260,34 @@ def _build_series_from_params(
         snpp = row.get("viirs_snpp_count", 0) if date(2012, 1, 1) <= m_date <= SNPP_END else None
         n20 = row.get("viirs_noaa20_count", 0) if m_date >= date(2018, 4, 1) else None
 
-        if m_date < date(2001, 1, 1):
+        if m_date < date(2001, 1, 1) and terra is not None:
             regime = SensorRegimeChoices.PARTIAL_YEAR
             cov = CoverageStatusChoices.PARTIAL_SP
-            mu = pt_pow * math.log1p(terra or 0) + qt_pow
+            mu = pt_pow * math.log1p(terra) + qt_pow
             hval = max(0.0, math.expm1(mu))
             ci_lo = max(0.0, math.expm1(mu - q80_t))
             ci_hi = max(0.0, math.expm1(mu + q80_t))
-        elif m_date < TERRA_ONLY_CUTOFF:
+        elif date(2001, 1, 1) <= m_date < TERRA_ONLY_CUTOFF and terra is not None:
             regime = SensorRegimeChoices.MODIS_TERRA_ONLY
             cov = CoverageStatusChoices.COMPLETE_SP
-            mu = pt_pow * math.log1p(terra or 0) + qt_pow
+            mu = pt_pow * math.log1p(terra) + qt_pow
             hval = max(0.0, math.expm1(mu))
             ci_lo = max(0.0, math.expm1(mu - q80_t))
             ci_hi = max(0.0, math.expm1(mu + q80_t))
-        elif m_date < SNPP_START:
+        elif TERRA_ONLY_CUTOFF <= m_date < SNPP_START and mod is not None:
             regime = SensorRegimeChoices.MODIS_TERRA_AQUA
             cov = CoverageStatusChoices.COMPLETE_SP
-            mu = p_pow * math.log1p(mod or 0) + q_pow
+            mu = p_pow * math.log1p(mod) + q_pow
             hval = max(0.0, math.expm1(mu))
             ci_lo = max(0.0, math.expm1(mu - q80))
             ci_hi = max(0.0, math.expm1(mu + q80))
-        elif m_date <= SNPP_END and snpp is not None:
+        elif SNPP_START <= m_date <= SNPP_END and snpp is not None:
             regime = SensorRegimeChoices.VIIRS_SNPP_OBSERVED
-            cov = CoverageStatusChoices.COMPLETE_SP
+            cov = (
+                CoverageStatusChoices.PARTIAL_SP
+                if m_date in partial_snpp
+                else CoverageStatusChoices.COMPLETE_SP
+            )
             hval = float(snpp)
             ci_lo = hval
             ci_hi = hval
@@ -400,15 +438,356 @@ def _persist_region_calibration(
         HarmonizedMonthSeries.objects.bulk_create(series_objs)
 
 
-def _ingest_pipeline_bundle(bundle_path: Path, stdout, style) -> None:
-    """Import an M1-validated calibration JSON bundle into PostGIS."""
-    if not bundle_path.exists():
-        raise CommandError(f"Pipeline bundle not found: {bundle_path}")
-    try:
-        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise CommandError(f"Failed to read pipeline bundle {bundle_path}: {exc}") from exc
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
+
+def _parse_m1_int(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise CommandError(f"Invalid integer count in M1 artifact: {value!r}") from exc
+
+
+def _parse_m1_float(value) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise CommandError(f"Invalid numeric value in M1 artifact: {value!r}") from exc
+
+
+def _verify_manifest_checksum(data_path: Path, manifest: dict | None, key: str) -> str:
+    actual = _sha256_file(data_path)
+    if manifest and key in manifest:
+        expected = manifest[key]
+        if actual != expected:
+            raise CommandError(
+                f"SHA-256 mismatch for {data_path.name}: expected {expected}, got {actual}."
+            )
+    return actual
+
+
+def _load_json_object(path: Path, label: str) -> dict:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CommandError(f"Failed to read {label} {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CommandError(f"Expected JSON object in {path}.")
+    return payload
+
+
+def _resolve_pipeline_input(
+    bundle_path: Path,
+) -> tuple[str, Path, dict | None, str | None, dict | None]:
+    """Identify calibrated bundle JSON vs M1 monthly artifact (dir, manifest, calendar JSON, or CSV)."""
+    if not bundle_path.exists():
+        raise CommandError(f"Pipeline artifact not found: {bundle_path}")
+
+    if bundle_path.is_dir():
+        manifest_path = bundle_path / "manifest.json"
+        if manifest_path.exists():
+            return _resolve_pipeline_input(manifest_path)
+        for name, kind in (
+            ("calendar.json", "m1_calendar_json"),
+            ("monthly_counts.csv", "m1_monthly_csv"),
+            ("pipeline_bundle.json", "bundle"),
+            ("bundle.json", "bundle"),
+        ):
+            candidate = bundle_path / name
+            if candidate.exists():
+                return _resolve_pipeline_input(candidate)
+        raise CommandError(
+            f"Directory {bundle_path} contains neither manifest.json, calendar.json, "
+            "monthly_counts.csv, nor a calibrated bundle JSON."
+        )
+
+    if bundle_path.suffix.lower() == ".csv":
+        sibling_manifest = bundle_path.parent / "manifest.json"
+        manifest = None
+        manifest_sha = None
+        if sibling_manifest.exists():
+            parsed = _load_json_object(sibling_manifest, "manifest")
+            if parsed.get("artifact_kind") == "firepulse-monthly":
+                manifest = parsed
+                manifest_sha = _sha256_file(sibling_manifest)
+        return "m1_monthly_csv", bundle_path, manifest, manifest_sha, None
+
+    payload = _load_json_object(bundle_path, "pipeline artifact")
+    kind = payload.get("artifact_kind")
+
+    if kind == "firepulse-monthly":
+        manifest_sha = _sha256_file(bundle_path)
+        cal_path = bundle_path.parent / "calendar.json"
+        csv_path = bundle_path.parent / "monthly_counts.csv"
+        if cal_path.exists():
+            return "m1_calendar_json", cal_path, payload, manifest_sha, None
+        if csv_path.exists():
+            return "m1_monthly_csv", csv_path, payload, manifest_sha, None
+        raise CommandError(
+            f"M1 manifest {bundle_path} found, but neither calendar.json nor monthly_counts.csv "
+            f"exists in {bundle_path.parent}."
+        )
+
+    if kind == "firepulse-monthly-calendar":
+        sibling_manifest = bundle_path.parent / "manifest.json"
+        manifest = None
+        manifest_sha = None
+        if sibling_manifest.exists():
+            parsed = _load_json_object(sibling_manifest, "manifest")
+            if parsed.get("artifact_kind") == "firepulse-monthly":
+                manifest = parsed
+                manifest_sha = _sha256_file(sibling_manifest)
+        return "m1_calendar_json", bundle_path, manifest, manifest_sha, payload
+
+    return "bundle", bundle_path, None, None, payload
+
+
+def _read_m1_rows(
+    source_kind: str,
+    source_path: Path,
+    manifest: dict | None,
+    cached_payload: dict | None,
+) -> tuple[list[dict], str, str]:
+    """Read and checksum-verify M1 calendar.json or monthly_counts.csv rows."""
+    if source_kind == "m1_calendar_json":
+        input_sha = _verify_manifest_checksum(source_path, manifest, "calendar_sha256")
+        payload = cached_payload or _load_json_object(source_path, "M1 calendar")
+        rows = payload.get("rows")
+        if not isinstance(rows, list) or not rows:
+            raise CommandError(f"M1 calendar {source_path} must contain a non-empty 'rows' list.")
+        normalized = [
+            {
+                "region": str(r.get("region", "")).strip(),
+                "dataset_scope": str(r.get("dataset_scope", "")).strip(),
+                "month": str(r.get("month", "")).strip(),
+                "source": str(r.get("source", "")).strip(),
+                "satellite": str(r.get("satellite", "")).strip(),
+                "count_raw": _parse_m1_int(r.get("count_raw")),
+                "count_type0_candidate": _parse_m1_int(r.get("count_type0_candidate")),
+                "harmonized_value": _parse_m1_float(r.get("harmonized_value")),
+                "status": str(r.get("status", "")).strip(),
+                "observation_coverage": str(r.get("observation_coverage", "unknown")).strip(),
+            }
+            for r in rows
+        ]
+        return normalized, "firepulse-monthly-calendar", input_sha
+
+    input_sha = _verify_manifest_checksum(source_path, manifest, "monthly_csv_sha256")
+    with source_path.open("r", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        required = {"region", "month", "source", "satellite", "count_raw", "count_type0_candidate"}
+        fieldnames = set(reader.fieldnames or [])
+        missing = sorted(required - fieldnames)
+        if missing:
+            raise CommandError(
+                f"M1 monthly CSV {source_path} is missing required columns: {', '.join(missing)}"
+            )
+        normalized = [
+            {
+                "region": str(r.get("region", "")).strip(),
+                "dataset_scope": str(r.get("dataset_scope", "")).strip(),
+                "month": str(r.get("month", "")).strip(),
+                "source": str(r.get("source", "")).strip(),
+                "satellite": str(r.get("satellite", "")).strip(),
+                "count_raw": _parse_m1_int(r.get("count_raw")),
+                "count_type0_candidate": _parse_m1_int(r.get("count_type0_candidate")),
+                "harmonized_value": _parse_m1_float(r.get("harmonized_value")),
+                "status": str(r.get("status", "")).strip(),
+                "observation_coverage": str(r.get("observation_coverage", "unknown")).strip(),
+            }
+            for r in reader
+        ]
+    if not normalized:
+        raise CommandError(f"M1 monthly CSV {source_path} contains no data rows.")
+    return normalized, "firepulse-monthly-csv", input_sha
+
+
+def _pivot_m1_rows_by_region(rows: list[dict], count_field: str) -> dict[str, dict]:
+    """Pivot long M1 (region, month, source, satellite) rows into monthly sensor counts per region."""
+    by_region_month: dict[str, dict[date, dict]] = defaultdict(dict)
+    scopes_by_region: dict[str, set[str]] = defaultdict(set)
+    cov_by_region: dict[str, set[str]] = defaultdict(set)
+    partial_snpp_by_region: dict[str, set[date]] = defaultdict(set)
+    pre_harmonized_by_region: dict[str, dict[date, float]] = defaultdict(dict)
+
+    for row in rows:
+        reg = row["region"]
+        if not reg or not row["month"]:
+            continue
+        m_date = _parse_iso_month(row["month"])
+        bucket = by_region_month[reg].setdefault(
+            m_date,
+            {
+                "modis_terra_count": None,
+                "modis_aqua_count": None,
+                "modis_count": None,
+                "viirs_snpp_count": None,
+                "viirs_noaa20_count": None,
+            },
+        )
+        val = row[count_field]
+        src = row["source"]
+        sat = row["satellite"]
+        if src == "modis" and sat == "Terra":
+            bucket["modis_terra_count"] = val
+        elif src == "modis" and sat == "Aqua":
+            bucket["modis_aqua_count"] = val
+        elif src == "viirs-snpp" and sat in ("N", "S-NPP", ""):
+            bucket["viirs_snpp_count"] = val
+            if row["status"] == "partial_period":
+                partial_snpp_by_region[reg].add(m_date)
+        elif src == "viirs-noaa20" and sat in ("N20", "NOAA-20", ""):
+            bucket["viirs_noaa20_count"] = val
+
+        if row["dataset_scope"]:
+            scopes_by_region[reg].add(row["dataset_scope"])
+        if row["observation_coverage"]:
+            cov_by_region[reg].add(row["observation_coverage"])
+        if row["harmonized_value"] is not None:
+            pre_harmonized_by_region[reg][m_date] = float(row["harmonized_value"])
+
+    pivoted: dict[str, dict] = {}
+    for reg, month_map in by_region_month.items():
+        for bucket in month_map.values():
+            terra = bucket["modis_terra_count"]
+            aqua = bucket["modis_aqua_count"]
+            if terra is not None or aqua is not None:
+                bucket["modis_count"] = (terra or 0) + (aqua or 0)
+        pivoted[reg] = {
+            "counts": month_map,
+            "partial_snpp": partial_snpp_by_region[reg],
+            "pre_harmonized": pre_harmonized_by_region[reg],
+            "scopes": sorted(scopes_by_region[reg]),
+            "coverages": sorted(cov_by_region[reg]),
+        }
+    return pivoted
+
+
+def _ingest_m1_monthly(
+    *,
+    source_kind: str,
+    source_path: Path,
+    manifest: dict | None,
+    manifest_sha: str | None,
+    cached_payload: dict | None,
+    stdout,
+    style,
+) -> None:
+    """Import M1 monthly calendar/CSV artifacts, preserving scientific provenance and caveats."""
+    rows, artifact_kind, input_sha = _read_m1_rows(source_kind, source_path, manifest, cached_payload)
+    loaded = 0
+
+    for filter_static, count_field in (
+        (True, "count_type0_candidate"),
+        (False, "count_raw"),
+    ):
+        by_region = _pivot_m1_rows_by_region(rows, count_field)
+        national_params: dict | None = None
+        for region_code, reg_data in by_region.items():
+            region = Region.objects.filter(code=region_code).first()
+            if not region:
+                stdout.write(style.WARNING(f"Skipping unknown region in M1 artifact: {region_code!r}"))
+                continue
+
+            counts = reg_data["counts"]
+            if not counts:
+                continue
+
+            params, metrics, note = _calibrate_models(counts, national_params)
+            if region.code == "GA":
+                national_params = params
+
+            caveat = (
+                "Source: M1 monthly counts (type=0 candidates without 0.05 deg static flare mask; "
+                "harmonized on M2 power-law)."
+                if filter_static
+                else "Source: M1 raw monthly counts (all FIRMS types, unfiltered; harmonized on M2 power-law)."
+            )
+            full_note = f"{note} {caveat}".strip()
+            reconstructed = _build_series_from_params(
+                counts,
+                params,
+                full_note,
+                partial_snpp_months=reg_data["partial_snpp"],
+            )
+            pre_harm = reg_data["pre_harmonized"] if filter_static else {}
+            for item in reconstructed:
+                if item["month"] in pre_harm:
+                    item["harmonized_value"] = round(pre_harm[item["month"]], 2)
+
+            baselines_map = _compute_baselines_map(reconstructed)
+            metrics["m1_provenance"] = {
+                "artifact_kind": artifact_kind,
+                "source_file": source_path.name,
+                "count_field": count_field,
+                "input_sha256": input_sha,
+                "manifest_sha256": manifest_sha,
+                "manifest_scope": manifest.get("scope") if manifest else None,
+                "dataset_scopes": reg_data["scopes"],
+                "observation_coverages": reg_data["coverages"],
+                "static_flare_mask_applied": False,
+                "precomputed_harmonized_months": len(pre_harm),
+            }
+
+            _persist_region_calibration(
+                region=region,
+                filter_static=filter_static,
+                method_name=(
+                    "m1_monthly_type0_candidate_power_law"
+                    if filter_static
+                    else "m1_monthly_raw_power_law"
+                ),
+                method_version="v2.0-m1-monthly",
+                reference_scale="VIIRS_375m_SNPP_equiv",
+                train_start=TRAIN_START,
+                train_end=TRAIN_END,
+                test_start=TEST_START,
+                test_end=TEST_END,
+                params=params,
+                metrics=metrics,
+                baselines_map=baselines_map,
+                reconstructed=reconstructed,
+            )
+            loaded += 1
+            stdout.write(
+                f"Loaded M1 monthly run for {region.code} (filter_static={filter_static}, "
+                f"field={count_field}, source={source_path.name}): {len(reconstructed)} months."
+            )
+
+    if loaded == 0:
+        raise CommandError(
+            "No matching Region rows found in database for M1 artifact regions; run load_regions first."
+        )
+    stdout.write(style.SUCCESS(f"M1 monthly artifact import complete ({loaded} region-runs updated)."))
+
+
+def _ingest_pipeline_bundle(bundle_path: Path, stdout, style) -> None:
+    """Import an M1-validated calibration bundle JSON or M1 monthly artifact into PostGIS."""
+    source_kind, resolved_path, manifest, manifest_sha, cached_payload = _resolve_pipeline_input(
+        bundle_path
+    )
+    if source_kind != "bundle":
+        _ingest_m1_monthly(
+            source_kind=source_kind,
+            source_path=resolved_path,
+            manifest=manifest,
+            manifest_sha=manifest_sha,
+            cached_payload=cached_payload,
+            stdout=stdout,
+            style=style,
+        )
+        return
+
+    bundle = cached_payload or _load_json_object(resolved_path, "pipeline bundle")
     entries = bundle.get("regions")
     if not isinstance(entries, list) or not entries:
         raise CommandError("Pipeline bundle must contain a non-empty 'regions' list.")
@@ -500,13 +879,16 @@ def _ingest_pipeline_bundle(bundle_path: Path, stdout, style) -> None:
 class Command(BaseCommand):
     """Build CalibrationRun, MonthlyBaseline, and HarmonizedMonthSeries for all regions."""
 
-    help = "Calibrate MODIS->VIIRS models or load M1 validated pipeline JSON outputs."
+    help = "Calibrate MODIS->VIIRS models or load M1 monthly artifacts / calibration bundles."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
             "--from-pipeline",
             default=None,
-            help="Optional path to an M1 JSON calibration bundle (e.g. /data/processed/calibration/bundle.json)",
+            help=(
+                "Optional path to M1 monthly directory/calendar.json/monthly_counts.csv/manifest.json "
+                "(e.g. /data/processed/monthly) or a calibrated JSON bundle"
+            ),
         )
 
     def handle(self, *args, **options) -> None:

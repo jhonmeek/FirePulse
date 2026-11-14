@@ -34,7 +34,9 @@ Tu travailles dans **`pipeline/`** et **`data/processed/`** (sans avoir besoin d
 3. **Documentation jury :**
    - Rédiger `docs/methodology.md` et `docs/limitations.md`.
 4. **Livraison directe vers PostGIS (`--from-pipeline`) :**
-   - Le chargeur [build_baseline_series.py](../backend/apps/harmonization/management/commands/build_baseline_series.py) accepte déjà `--from-pipeline /data/processed/calibration/pipeline_bundle.json` :
+   - Le chargeur [build_baseline_series.py](../backend/apps/harmonization/management/commands/build_baseline_series.py) accepte désormais **deux formats** :
+     1. **Artefacts mensuels M1 actuels (`/data/processed/monthly`)** : dossier, `manifest.json` (`firepulse-monthly` avec vérification SHA-256), `calendar.json` (`firepulse-monthly-calendar`), ou `monthly_counts.csv`. Pivote `count_type0_candidate` (`filter_static=True`) et `count_raw` (`filter_static=False`), conserve les `null` (`not_available` / `missing_input`) sans les transformer en `0`, calibre si `harmonized_value` est `null` et journalise la provenance exacte dans `metrics_json.m1_provenance` (y compris l'absence de masque statique `0.05°`).
+     2. **Bundle calibré M1 JSON (`/data/processed/calibration/pipeline_bundle.json`)** :
 
 ```json
 {
