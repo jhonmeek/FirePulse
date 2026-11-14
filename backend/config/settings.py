@@ -105,6 +105,12 @@ CACHES = {
 
 API_CACHE_SECONDS = int(os.environ.get("API_CACHE_SECONDS", "300"))
 HTTP_CACHE_MAX_AGE = int(os.environ.get("HTTP_CACHE_MAX_AGE", "60"))
+DEMO_SNAPSHOT_DIR = Path(
+    os.environ.get("FIREPULSE_SNAPSHOT_DIR")
+    or ("/data/backups/demo_snapshot" if Path("/data").exists() else str(BASE_DIR.parent / "data" / "backups" / "demo_snapshot"))
+)
+API_SNAPSHOT_FALLBACK = _env_bool("API_SNAPSHOT_FALLBACK", True)
+FORCE_SNAPSHOT_FALLBACK = _env_bool("FORCE_SNAPSHOT_FALLBACK", False)
 
 CORS_ALLOWED_ORIGINS = _env_list(
     "CORS_ALLOWED_ORIGINS",

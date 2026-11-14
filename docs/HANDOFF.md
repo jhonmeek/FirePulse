@@ -21,6 +21,8 @@ Pour que la base PostGIS et l'API servent de vraies données dès H12, M2 a int�
 
 > **Tu gardes la main scientifique totale :** considère ces scripts Django comme un *baseline de démonstration* sur `2000–2025`, pas comme une vérité figée.
 
+- **Export mensuel réel utilisé par la calibration M2 :** générable via `python manage.py export_calibration_series` (`--verify`) dans `data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv` + `.sha256` + `manifest.json` (`6 011` lignes, `GA` + `GA-1..GA-9` × `filter_static` `true/false`, `calibration_split` `train`/`test`/`other`, comptes `modis_count`, `modis_terra_count`, `modis_aqua_count`, `viirs_snpp_count`, `viirs_noaa20_count`, régimes, valeurs harmonisées, provenance base/commit et paramètres par run).
+
 ### Où M1 doit intervenir en priorité
 Tu travailles dans **`pipeline/`** et **`data/processed/`** (sans avoir besoin de modifier les vues Django) :
 
@@ -124,7 +126,9 @@ curl "http://localhost:8000/api/v1/export/?dataset=points&region=GA&month=2024-0
   - `load_regions.py` : charge [data/boundaries/gabon_adm0.geojson](../data/boundaries/gabon_adm0.geojson) + [gabon_adm1.geojson](../data/boundaries/gabon_adm1.geojson) (avec `.strip()` sur les noms contenant des tabulations comme `Ogooué-Ivindo`).
   - `import_firms.py` : déduplication fichier (`ImportBatch.file_sha256`) + ligne (`HotspotObservation.original_hash`) et détection NRT par colonne `version` en plus du nom de fichier. Attention côté SQL : `ROUND()` Postgres exige un cast `::numeric`.
   - `build_baseline_series.py` : conserve `2012-01` en régime `modis_terra_aqua` (`SNPP_START = 2012-02-01`) et supporte `--from-pipeline <bundle.json>` pour ingérer les sorties M1.
-- **Chantiers H24–H34 M2 (en place) :**
-  - Cache API v1 avec invalidation inter-processus (`apps/api/cache.py`), compression `GZipMiddleware`, requêtes `AsGeoJSON` PostGIS (`views.py`), détection `mixed_sp_nrt` / `nrt_only` 2026 (`build_baseline_series.py`) et `/health/` structuré (`503` si DB indisponible).
-  - Déploiement HTTPS (`docker-compose.prod.yml`, `deploy/Caddyfile`, `gunicorn` par défaut dans `backend/Dockerfile`).
-  - Plan de secours démo : `python manage.py export_demo_snapshot`, `scripts/db_backup.sh` et `scripts/db_restore.sh`.
+  - `export_calibration_series.py` : exporte l'ensemble des `HarmonizedMonthSeries` / `CalibrationRun` actives dans `data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv` + `.sha256` + `manifest.json` (`--verify`, `--source-commit`, `--db-source`).
+- **Chantiers H24–H48 M2 (terminés) :**
+  - Cache API v1 avec invalidation inter-processus (`apps/api/cache.py`), compression `GZipMiddleware`, requêtes `AsGeoJSON` PostGIS (`views.py`), détection `mixed_sp_nrt` / `nrt_only` 2026 (`build_baseline_series.py`) et `/health/` structuré (`503` si DB indisponible, en-tête `X-FirePulse-Fallback: ready|none`).
+  - Déploiement HTTPS (`docker-compose.prod.yml`, `deploy/Caddyfile`, `gunicorn` par défaut dans `backend/Dockerfile`, option `FIREPULSE_DOMAIN=http://localhost` en démo locale sans avertissement TLS).
+  - Plan de secours démo, preflight & reprise sur incident : `apps/api/fallback.py` (`API_SNAPSHOT_FALLBACK=true`, `FORCE_SNAPSHOT_FALLBACK=false`, en-tête `X-FirePulse-Cache: FALLBACK`, grille MapLibre `start`/`end`/`month`/`bbox` filtrée avec la géométrie exacte de `GA` et `GA-1..GA-9`, contrôle complétude/unicité du manifeste, cohérence `regions.json` et SHA-256 runtime sur chaque fichier + `/health/` → fail-closed `503 BYPASS` si un fichier ou une entrée manque, est dupliqué ou diverge), `python manage.py export_demo_snapshot --verify` (`86` fichiers JSON SHA-256), `scripts/preflight_demo.sh` (contrôle pré-démo non bloquant au runtime), `scripts/db_backup.sh` et `scripts/db_restore.sh`.
+  - Note vulgarisation scientifique : [docs/principe-harmonisation.md](principe-harmonisation.md).

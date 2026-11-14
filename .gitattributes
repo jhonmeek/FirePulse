@@ -3,3 +3,4 @@ data/processed/monthly/*.csv text eol=lf
 data/processed/monthly/*.json text eol=lf
 data/processed/normalized/*.json text eol=lf
 pipeline/*.py text eol=lf
+scripts/*.sh text eol=lf

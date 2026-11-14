@@ -1,5 +1,6 @@
 """Integration tests for PostGIS models, FIRMS ingestion helpers, and API v1 endpoints."""
 
+import csv
 import hashlib
 import json
 import tempfile
@@ -14,7 +15,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import DatabaseError, IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import resolve
 from rest_framework.test import APIClient
 
@@ -652,6 +653,17 @@ class FirePulseModelsAndApiTests(TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["artifact_kind"], "firepulse-demo-snapshot")
             self.assertIn("GA", manifest["regions"])
+            exported_names = {entry["file"] for entry in manifest["files"]}
+            for expected_file in (
+                "calendar_GA_static.json",
+                "anomalies_GA_static.json",
+                "methodology_GA_static.json",
+                "hotspots_grid_cell_GA_static.json",
+                "hotspots_grid_monthly_static.json",
+                "hotspots_grid_monthly_raw.json",
+                "hotspots_static_mask_GA.json",
+            ):
+                self.assertIn(expected_file, exported_names)
             for entry in manifest["files"]:
                 fpath = out / entry["file"]
                 self.assertTrue(fpath.exists(), f"Missing snapshot file {entry['file']}")
@@ -659,3 +671,316 @@ class FirePulseModelsAndApiTests(TestCase):
                     hashlib.sha256(fpath.read_bytes()).hexdigest(),
                     entry["sha256"],
                 )
+
+            call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+            (out / "coverage.json").write_text('{"corrupted": true}\n', encoding="utf-8")
+            with self.assertRaises(CommandError):
+                call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+
+    def test_export_calibration_series_writes_verified_csv_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "m2_calibration_monthly_series.csv"
+            sha_path = Path(f"{csv_path}.sha256")
+            call_command(
+                "export_calibration_series",
+                output=str(csv_path),
+                source_commit="deadbeef",
+                db_source="test-postgis",
+                stdout=StringIO(),
+            )
+            manifest_path = Path(tmpdir) / "manifest.json"
+            self.assertTrue(csv_path.exists())
+            self.assertTrue(sha_path.exists())
+            self.assertTrue(manifest_path.exists())
+
+            raw_bytes = csv_path.read_bytes()
+            expected_sha = hashlib.sha256(raw_bytes).hexdigest()
+            self.assertNotIn(b"\r\n", raw_bytes)
+            self.assertEqual(sha_path.read_text(encoding="utf-8"), f"{expected_sha}  {csv_path.name}\n")
+            with csv_path.open("r", encoding="utf-8", newline="") as fh:
+                rows = list(csv.DictReader(fh))
+            self.assertEqual(len(rows), HarmonizedMonthSeries.objects.filter(calibration_run__is_active=True).count())
+            first = rows[0]
+            self.assertEqual(first["region"], "GA")
+            self.assertIn(first["filter_static"], {"true", "false"})
+            self.assertIn("modis_terra_count", first)
+            self.assertIn("modis_aqua_count", first)
+            self.assertIn("calibration_split", first)
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["artifact_kind"], "firepulse-m2-calibration-series")
+            self.assertEqual(manifest["source_commit"], "deadbeef")
+            self.assertEqual(manifest["db_provenance"]["db_source"], "test-postgis")
+            self.assertEqual(manifest["csv_sha256"], expected_sha)
+            self.assertEqual(manifest["row_count"], len(rows))
+            self.assertTrue(manifest["runs"])
+            self.assertIn("params", manifest["runs"][0])
+
+            call_command("export_calibration_series", output=str(csv_path), verify=True, stdout=StringIO())
+            csv_path.write_text("tampered\n", encoding="utf-8")
+            with self.assertRaises(CommandError):
+                call_command("export_calibration_series", output=str(csv_path), verify=True, stdout=StringIO())
+
+    def test_offline_snapshot_fallback_serves_api_without_database(self) -> None:
+        live_csv = self.client.get("/api/v1/export/?dataset=series&region=GA")
+        self.assertEqual(live_csv.status_code, 200)
+        live_csv_text = live_csv.content.decode("utf-8")
+
+        GridCellMonth.objects.create(
+            cell_id="-4.00_5.00",
+            geom=Polygon.from_bbox((5.0, -4.0, 5.25, -3.75)),
+            centroid=Point(5.125, -3.875, srid=4326),
+            month=date(2024, 8, 1),
+            filter_static=True,
+            modis_count=5,
+            viirs_snpp_count=9,
+        )
+        online_ga_cells = {
+            f["properties"]["cell_id"]
+            for f in self.client.get(
+                "/api/v1/hotspots/?region=GA&start=2001-01&end=2025-12&filter_static=true&mode=grid&agg=cell&include_static_cells=true&limit=5000"
+            ).json()["features"]
+        }
+        self.assertNotIn("-4.00_5.00", online_ga_cells)
+        online_no_region_cells = {
+            f["properties"]["cell_id"]
+            for f in self.client.get(
+                "/api/v1/hotspots/?month=2024-08&filter_static=true&mode=grid&agg=month"
+            ).json()["features"]
+        }
+        self.assertIn("-4.00_5.00", online_no_region_cells)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir)
+            call_command("export_demo_snapshot", output=tmpdir, stdout=StringIO())
+            cache.clear()
+            invalidate_api_cache()
+
+            with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=True):
+                health = self.client.get("/api/v1/health/")
+                self.assertEqual(health.status_code, 200)
+                self.assertEqual(health["X-FirePulse-Fallback"], "ready")
+
+                with self.assertNumQueries(0):
+                    reg_no_geom = self.client.get("/api/v1/regions/?include_geom=false")
+                    self.assertEqual(reg_no_geom.status_code, 200)
+                    self.assertEqual(reg_no_geom["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertIsNone(reg_no_geom.json()["regions"][0]["geometry"])
+
+                    cov = self.client.get("/api/v1/coverage/?region=GA")
+                    self.assertEqual(cov.status_code, 200)
+                    self.assertEqual(cov["X-FirePulse-Cache"], "FALLBACK")
+
+                    cal = self.client.get("/api/v1/calendar/?region=GA&start=2024-08&end=2024-08")
+                    self.assertEqual(cal.status_code, 200)
+                    self.assertEqual(cal["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(cal.json()["period"], {"start": "2024-08", "end": "2024-08"})
+
+                    anom = self.client.get("/api/v1/anomalies/?region=GA&start=2024-08&end=2024-08&top_n=1")
+                    self.assertEqual(anom.status_code, 200)
+                    self.assertEqual(anom["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(len(anom.json()["top_positive"]), 1)
+
+                    meth = self.client.get("/api/v1/methodology/?region=GA&filter_static=true")
+                    self.assertEqual(meth.status_code, 200)
+                    self.assertEqual(meth["X-FirePulse-Cache"], "FALLBACK")
+
+                    spots = self.client.get("/api/v1/hotspots/?mode=grid&agg=cell&region=GA&include_static_cells=true")
+                    self.assertEqual(spots.status_code, 200)
+                    self.assertEqual(spots["X-FirePulse-Cache"], "FALLBACK")
+                    layers = {f["properties"]["layer"] for f in spots.json()["features"]}
+                    self.assertIn("grid_cell_summary", layers)
+                    self.assertIn("static_flare_mask", layers)
+
+                    spots_range = self.client.get(
+                        "/api/v1/hotspots/?region=GA&start=2001-01&end=2025-12&filter_static=true&mode=grid&agg=cell&include_static_cells=true&limit=5000"
+                    )
+                    self.assertEqual(spots_range.status_code, 200)
+                    self.assertEqual(spots_range["X-FirePulse-Cache"], "FALLBACK")
+                    spots_range_data = spots_range.json()
+                    self.assertEqual(spots_range_data["mode"], "grid")
+                    self.assertEqual(spots_range_data["agg"], "cell")
+                    range_layers = {f["properties"]["layer"] for f in spots_range_data["features"]}
+                    self.assertIn("grid_cell_summary", range_layers)
+                    self.assertIn("static_flare_mask", range_layers)
+                    range_cids = {f["properties"]["cell_id"] for f in spots_range_data["features"]}
+                    self.assertIn("-1.50_11.50", range_cids)
+                    self.assertNotIn("-4.00_5.00", range_cids)
+
+                    spots_month = self.client.get(
+                        "/api/v1/hotspots/?region=GA&month=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_month.status_code, 200)
+                    self.assertEqual(spots_month["X-FirePulse-Cache"], "FALLBACK")
+                    grid_features = [
+                        f for f in spots_month.json()["features"] if f["properties"]["layer"] == "grid_cell_summary"
+                    ]
+                    self.assertEqual(len(grid_features), 1)
+                    self.assertEqual(grid_features[0]["properties"]["cell_id"], "-1.50_11.50")
+                    self.assertEqual(grid_features[0]["properties"]["viirs_snpp_count"], 42)
+
+                    spots_agg_month = self.client.get(
+                        "/api/v1/hotspots/?region=GA&start=2024-08&end=2024-08&filter_static=true&mode=grid&agg=month"
+                    )
+                    self.assertEqual(spots_agg_month.status_code, 200)
+                    self.assertEqual(spots_agg_month["X-FirePulse-Cache"], "FALLBACK")
+                    agg_month_features = spots_agg_month.json()["features"]
+                    self.assertEqual(len(agg_month_features), 1)
+                    self.assertEqual(agg_month_features[0]["properties"]["cell_id"], "-1.50_11.50")
+                    self.assertEqual(agg_month_features[0]["properties"]["layer"], "grid_cell_month")
+                    self.assertEqual(agg_month_features[0]["properties"]["month"], "2024-08")
+
+                    spots_no_region = self.client.get(
+                        "/api/v1/hotspots/?month=2024-08&filter_static=true&mode=grid&agg=month"
+                    )
+                    self.assertEqual(spots_no_region.status_code, 200)
+                    self.assertEqual(spots_no_region["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(
+                        {f["properties"]["cell_id"] for f in spots_no_region.json()["features"]},
+                        {"-1.50_11.50", "-4.00_5.00"},
+                    )
+
+                    spots_bbox = self.client.get(
+                        "/api/v1/hotspots/?bbox=11.0,-2.0,12.0,-1.0&start=2024-08&end=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_bbox.status_code, 200)
+                    self.assertEqual(spots_bbox["X-FirePulse-Cache"], "FALLBACK")
+                    bbox_cell_ids = {f["properties"]["cell_id"] for f in spots_bbox.json()["features"]}
+                    self.assertIn("-1.50_11.50", bbox_cell_ids)
+                    self.assertNotIn("-1.95_9.85", bbox_cell_ids)
+
+                    csv_fb = self.client.get("/api/v1/export/?dataset=series&region=GA")
+                    self.assertEqual(csv_fb.status_code, 200)
+                    self.assertEqual(csv_fb["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(csv_fb.content.decode("utf-8"), live_csv_text)
+
+                    pts_503 = self.client.get("/api/v1/export/?dataset=points&region=GA&month=2024-08")
+                    self.assertEqual(pts_503.status_code, 503)
+                    self.assertEqual(pts_503["X-FirePulse-Cache"], "BYPASS")
+
+            cache.clear()
+            invalidate_api_cache()
+            with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=False):
+                with patch(
+                    "apps.api.views.Region.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ), patch(
+                    "apps.api.views.HarmonizedMonthSeries.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    cal_err = self.client.get("/api/v1/calendar/?region=GA")
+                    self.assertEqual(cal_err.status_code, 200)
+                    self.assertEqual(cal_err["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertIn("no-store", cal_err["Cache-Control"])
+
+                    csv_err = self.client.get("/api/v1/export/?dataset=series&region=GA")
+                    self.assertEqual(csv_err.status_code, 200)
+                    self.assertEqual(csv_err["X-FirePulse-Cache"], "FALLBACK")
+
+                    bad_region = self.client.get("/api/v1/calendar/?region=../../etc/passwd")
+                    self.assertEqual(bad_region.status_code, 503)
+                    self.assertEqual(bad_region["X-FirePulse-Cache"], "BYPASS")
+
+                with patch("apps.api.views.compute_custom_area_series", side_effect=DatabaseError("db offline")):
+                    bbox_err = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0")
+                    self.assertEqual(bbox_err.status_code, 503)
+                    self.assertEqual(bbox_err["Cache-Control"], "no-store")
+
+                (out / "coverage.json").write_text('{"tampered": true}\n', encoding="utf-8")
+                with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")), patch(
+                    "apps.api.views.ImportBatch.objects.values",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    health_tampered = self.client.get("/api/v1/health/")
+                    self.assertEqual(health_tampered.status_code, 503)
+                    self.assertEqual(health_tampered["X-FirePulse-Fallback"], "none")
+                    self.assertFalse(health_tampered.json()["offline_snapshot_ready"])
+
+                    cov_tampered = self.client.get("/api/v1/coverage/?region=GA")
+                    self.assertEqual(cov_tampered.status_code, 503)
+                    self.assertEqual(cov_tampered["X-FirePulse-Cache"], "BYPASS")
+
+                (out / "hotspots_static_mask_GA.json").unlink()
+                with patch("apps.api.views.Region.objects.filter", side_effect=DatabaseError("db offline")), patch(
+                    "apps.api.views.GridCellMonth.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    spots_missing_mask = self.client.get(
+                        "/api/v1/hotspots/?mode=grid&agg=cell&region=GA&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_missing_mask.status_code, 503)
+                    self.assertEqual(spots_missing_mask["X-FirePulse-Cache"], "BYPASS")
+
+    def test_offline_snapshot_rejects_truncated_duplicate_and_mismatched_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir)
+            call_command("export_demo_snapshot", output=tmpdir, stdout=StringIO())
+            manifest_path = out / "snapshot_manifest.json"
+            original_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+            with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=False):
+                # Warm _VERIFIED_FILE_SIGNATURES with a valid export first.
+                with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")):
+                    ready = self.client.get("/api/v1/health/")
+                    self.assertEqual(ready.status_code, 503)
+                    self.assertEqual(ready["X-FirePulse-Fallback"], "ready")
+                    self.assertTrue(ready.json()["offline_snapshot_ready"])
+
+                def _assert_manifest_rejected(candidate: dict) -> None:
+                    cache.clear()
+                    invalidate_api_cache()
+                    manifest_path.write_text(json.dumps(candidate), encoding="utf-8")
+                    with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")):
+                        health = self.client.get("/api/v1/health/")
+                        self.assertEqual(health.status_code, 503)
+                        self.assertEqual(health["X-FirePulse-Fallback"], "none")
+                        self.assertFalse(health.json()["offline_snapshot_ready"])
+                    with patch("apps.api.views.Region.objects.order_by", side_effect=DatabaseError("db offline")):
+                        regs = self.client.get("/api/v1/regions/?include_geom=false")
+                        self.assertEqual(regs.status_code, 503)
+                        self.assertEqual(regs["X-FirePulse-Cache"], "BYPASS")
+                    with patch("apps.api.views.ImportBatch.objects.values", side_effect=DatabaseError("db offline")):
+                        cov = self.client.get("/api/v1/coverage/?region=GA")
+                        self.assertEqual(cov.status_code, 503)
+                        self.assertEqual(cov["X-FirePulse-Cache"], "BYPASS")
+                    with self.assertRaises(CommandError):
+                        call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+
+                # 1. Valid JSON manifest truncated down to health.json only.
+                _assert_manifest_rejected(
+                    {
+                        **original_manifest,
+                        "files": [e for e in original_manifest["files"] if e["file"] == "health.json"],
+                    }
+                )
+
+                # 2. Valid JSON manifest missing a single required endpoint file (coverage.json).
+                _assert_manifest_rejected(
+                    {
+                        **original_manifest,
+                        "files": [e for e in original_manifest["files"] if e["file"] != "coverage.json"],
+                    }
+                )
+
+                # 3. Valid JSON manifest with full coverage set plus a duplicate filename entry.
+                _assert_manifest_rejected(
+                    {
+                        **original_manifest,
+                        "files": [*original_manifest["files"], dict(original_manifest["files"][0])],
+                    }
+                )
+
+                # 4. Modified regions.json advertising GA-1 absent from manifest["regions"] / files.
+                regions_path = out / "regions.json"
+                regions_payload = json.loads(regions_path.read_text(encoding="utf-8"))
+                regions_payload["regions"].append({**regions_payload["regions"][0], "code": "GA-1", "name": "Estuaire"})
+                regions_bytes = (json.dumps(regions_payload) + "\n").encode("utf-8")
+                regions_path.write_bytes(regions_bytes)
+                regions_sha = hashlib.sha256(regions_bytes).hexdigest()
+                rehashed_files = [
+                    {"file": "regions.json", "bytes": len(regions_bytes), "sha256": regions_sha}
+                    if e["file"] == "regions.json"
+                    else e
+                    for e in original_manifest["files"]
+                ]
+                _assert_manifest_rejected({**original_manifest, "files": rehashed_files})

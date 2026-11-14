@@ -79,12 +79,15 @@ Réponse attendue sur `/api/v1/health/` : `"status": "ok"`, `"database": "connec
 
 Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) exécute automatiquement à chaque PR/push les tests Backend PostGIS (`manage.py test -v 2`), le pipeline M1 (`unittest`) et le build/tests Frontend (`type-check`, `vitest`, `vite build`).
 
-### 5. Production HTTPS & plan de secours démo (`H24–H34` M2)
+### 5. Production HTTPS, preflight & plan de secours démo (`H24–H48` M2)
 
-- **Stack production HTTPS (Gunicorn + Caddy) :** [docker-compose.prod.yml](docker-compose.prod.yml) + [deploy/Caddyfile](deploy/Caddyfile) (`DJANGO_SECRET_KEY=... docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`).
-- **Backup PostGIS + snapshot JSON hors ligne :**
-  - `./scripts/db_backup.sh` : dump PostgreSQL/PostGIS (`pg_dump -Fc` + SHA-256) et export complet des réponses `/api/v1/` via `python manage.py export_demo_snapshot` dans `data/backups/`.
-  - `./scripts/db_restore.sh data/backups/<fichier>.dump` : restauration vérifiée + contrôle `/api/v1/health/`.
+- **Stack production HTTPS (Gunicorn + Caddy) :** [docker-compose.prod.yml](docker-compose.prod.yml) + [deploy/Caddyfile](deploy/Caddyfile) (`cd frontend && npm ci && npm run build`, puis `DJANGO_SECRET_KEY=... docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`). Pour une démo locale en navigateur sans alerte sur le certificat interne autosigné, passer `FIREPULSE_DOMAIN=http://localhost` (`http://localhost/`).
+- **Backup PostGIS + snapshot JSON hors ligne (`86` fichiers `GA` + `GA-1..GA-9`) :**
+  - `./scripts/db_backup.sh` : dump PostgreSQL/PostGIS (`pg_dump -Fc` + SHA-256), export des `86` réponses JSON (`/api/v1/regions`, `coverage`, `calendar`, `anomalies`, `hotspots` grille mensuelle + cellulaire + masque statique, `methodology`, `export`) via `python manage.py export_demo_snapshot` et contrôle d'intégrité (`--verify`) dans `data/backups/demo_snapshot`.
+  - `./scripts/db_restore.sh data/backups/<fichier>.dump` : vérification SHA-256, `pg_restore` et contrôle `/api/v1/health/`.
+  - `./scripts/preflight_demo.sh` : vérification pré-démo recommandée (`db` + `backend` healthy, `manage.py check`, `makemigrations --check`, `export_demo_snapshot --verify`, `export_calibration_series --verify`, compteurs `/api/v1/health/`, routes UI `/api/v1/*`, et MIME JS `.mjs`/`.js` sur Caddy si actif) ; non obligatoire au runtime.
+- **Fallback serveur sans base PostGIS :** activé par défaut (`API_SNAPSHOT_FALLBACK=true`, ou simulable via `FORCE_SNAPSHOT_FALLBACK=true`), sert automatiquement les endpoints régionaux/nationaux (y compris la carte MapLibre `/api/v1/hotspots/?mode=grid&start=...&end=...` filtrée avec la géométrie exacte de `GA`, `GA-1..GA-9` ou `bbox`/`polygon`) depuis `DEMO_SNAPSHOT_DIR` (`/data/backups/demo_snapshot`) avec l'en-tête `X-FirePulse-Cache: FALLBACK` (et signale `X-FirePulse-Fallback: ready|none` sur `/api/v1/health/`). À l'exécution, chaque lecture valide l'unicité, la complétude (`86` fichiers attendus) et le SHA-256 du manifeste `snapshot_manifest.json` (et `/api/v1/health/` vérifie la présence, l'empreinte des `86` fichiers et la cohérence des codes régions avec `regions.json`) : tout fichier manquant, dupliqué, tronqué ou modifié après le préflight fait basculer `/api/v1/health/` sur `X-FirePulse-Fallback: none` et renvoie `503` (`X-FirePulse-Cache: BYPASS`).
+- **Export mensuel de calibration pour M1 :** `docker compose exec -T backend python manage.py export_calibration_series` (+ `--verify`) génère `data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv`, son checksum `.sha256` et `manifest.json` (provenance base/commit, comptes `modis_count`, `modis_terra_count`, `modis_aqua_count`, `viirs_snpp_count`, `viirs_noaa20_count`, `region`, `filter_static` et split `train`/`test`).
 
 ---
 
