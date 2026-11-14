@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { AreaQuery, BBox, YearMonth } from '@/types/api'
+import type { ColorMode } from '@/utils/calendar'
 
 export const YEAR_MIN = 2000
 export const YEAR_MAX = 2026
@@ -13,6 +14,10 @@ export const useFiltersStore = defineStore('filters', () => {
   const yearRange = ref<[number, number]>([2001, 2025])
   /** Activé par défaut : feux de végétation uniquement (torchères exclues). */
   const filterStatic = ref(true)
+  /** Coloration du calendrier (et plus tard de la carte) : intensité ou anomalie. */
+  const colorMode = ref<ColorMode>('value')
+  /** Mois épinglé (clic / Entrée dans le calendrier). */
+  const selectedMonth = ref<YearMonth | null>(null)
 
   const start = computed<YearMonth>(() => `${yearRange.value[0]}-01`)
   const end = computed<YearMonth>(() => `${yearRange.value[1]}-12`)
@@ -28,6 +33,7 @@ export const useFiltersStore = defineStore('filters', () => {
   function selectRegion(code: string) {
     region.value = code
     bbox.value = null
+    selectedMonth.value = null
   }
 
   function selectBBox(value: BBox) {
@@ -48,6 +54,8 @@ export const useFiltersStore = defineStore('filters', () => {
     bbox,
     yearRange,
     filterStatic,
+    colorMode,
+    selectedMonth,
     start,
     end,
     query,
