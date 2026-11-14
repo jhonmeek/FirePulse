@@ -24,7 +24,7 @@ class ComparisonTests(unittest.TestCase):
             result=compare(calendar,manifest,export,metadata)
             self.assertEqual(result["rows"][0]["difference"],3)
             self.assertIsNone(result["rows"][1]["difference"])
-            self.assertEqual(result["totals"]["modis_outside_or_difference"],3)
+            self.assertEqual(result["totals"]["modis_count_difference"],3)
             export.write_bytes(export.read_bytes()+b"x")
             with self.assertRaisesRegex(ValueError,"checksum"):
                 compare(calendar,manifest,export,metadata)
