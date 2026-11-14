@@ -1,0 +1,7 @@
+# Expérience temporelle M1 — premier résultat exploratoire
+
+Exécuter `python -m pipeline.temporal_experiment --output data/processed/temporal-experiment/report.json`. Le script vérifie le SHA-256 du calendrier M1 et conserve la liste des mois exclus. Il compare identité, ratio de sommes et loi de puissance ajustés sur 2012-02–2016-12 ; sélectionne la MAE la plus basse sur 2017–2019 ; calibre un intervalle additif en nombre de détections avec les résidus absolus 2020–2022 ; puis évalue 2023–2025.
+
+Sur les fichiers pays fournis, sans masque, 59/36/36/36 mois sont retenus respectivement pour apprentissage/sélection/calibration/évaluation. Le modèle de puissance est sélectionné ; en évaluation : MAE 134,52, RMSE 216,32, biais +14,54, R² 0,934 et couverture 27/36 (75 %) pour une cible nominale de 80 %. Ces chiffres sont des détections mensuelles par fichiers pays, pas des incendies individuels.
+
+Ce résultat **n'est pas un benchmark final aveugle** : 2023–2025 a déjà été utilisé dans la baseline. La couverture d'observation reste inconnue, les mois sans détection recensée dans un des capteurs sont exclus et cette sélection peut biaiser les résultats. Le masque figé à la période d'apprentissage, le pont NOAA-20/S-NPP, les données NRT et les zones personnalisées restent à étudier. La géométrie pays des CSV n'a pas été vérifiée par rapport au PostGIS M2. La dépendance temporelle ne permet pas de garantir une couverture conforme à 80 %.
