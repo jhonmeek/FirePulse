@@ -173,6 +173,24 @@ export interface GridCellMonthProps {
   viirs_noaa20_count: number
 }
 
+/**
+ * `agg=cell` : une cellule 0.25° agrégée sur la plage (start..end ou month).
+ * Renvoyé par views.py mais absent de l'exemple du contrat v2.2.0 (signalé à M2).
+ */
+export interface GridCellSummaryProps {
+  layer: 'grid_cell_summary'
+  /** `lat0_lon0` (coin sud-ouest, 2 décimales), ex. `-2.00_14.00`. */
+  cell_id: string
+  /** Nombre de mois avec au moins une détection dans la plage. */
+  months_count: number
+  modis_count: number
+  viirs_snpp_count: number
+  viirs_noaa20_count: number
+  frp_sum_modis: number
+  frp_sum_snpp: number
+  frp_sum_noaa20: number
+}
+
 export interface HotspotPointProps {
   layer: 'hotspot_point'
   [key: string]: unknown
@@ -180,14 +198,21 @@ export interface HotspotPointProps {
 
 export interface StaticFlareMaskProps {
   layer: 'static_flare_mask'
-  [key: string]: unknown
+  cell_id: string
+  type23_count: number
+  active_months_snpp: number
+  reason:
+    'persistent_type23_and_snpp_frequency' | 'type23_static_threshold' | 'snpp_high_persistence_48m'
 }
 
+export type HotspotProps =
+  GridCellMonthProps | GridCellSummaryProps | HotspotPointProps | StaticFlareMaskProps
+
 /** Filtrer sur `properties.layer` côté MapLibre (réponse mixte si include_static_cells=true). */
-export type HotspotsResponse = FeatureCollection<
-  Polygon | Point,
-  GridCellMonthProps | HotspotPointProps | StaticFlareMaskProps
-> & { mode: 'grid' | 'points' }
+export type HotspotsResponse = FeatureCollection<Polygon | Point, HotspotProps> & {
+  mode: 'grid' | 'points'
+  agg?: 'month' | 'cell'
+}
 
 // ---------------------------------------------------------------- /methodology/
 

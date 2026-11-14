@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import AnomaliesPanel from '@/components/AnomaliesPanel.vue'
 import CalendarHeatmap from '@/components/CalendarHeatmap.vue'
 import ControlBar from '@/components/ControlBar.vue'
+import ExportButton from '@/components/ExportButton.vue'
 import MethodologyPanel from '@/components/MethodologyPanel.vue'
 import MonthDetail from '@/components/MonthDetail.vue'
 import RegimeTimeline from '@/components/RegimeTimeline.vue'
@@ -18,9 +19,12 @@ import type { ChartView } from '@/utils/chart'
 
 // ECharts (~600 Ko) en chunk séparé : le calendrier s'affiche sans l'attendre.
 const ComparisonChart = defineAsyncComponent(() => import('@/components/ComparisonChart.vue'))
+// MapLibre (~800 Ko) idem : chargé quand la section carte est rendue.
+const MapExplorer = defineAsyncComponent(() => import('@/components/MapExplorer.vue'))
 
 const filters = useFiltersStore()
-const { yearRange, colorMode, selectedMonth, region, filterStatic, bbox } = storeToRefs(filters)
+const { yearRange, colorMode, selectedMonth, region, filterStatic, bbox, query } =
+  storeToRefs(filters)
 const { regions } = useRegions()
 const { data, filtered, unfiltered, loading, error, reload } = useCalendar()
 
@@ -29,12 +33,17 @@ const availableYears = computed(() => {
   const years = [...new Set(series.value.map((p) => +p.month.slice(0, 4)))]
   return years.length ? years : Array.from({ length: 25 }, (_, i) => 2001 + i)
 })
-const regionName = computed(
-  () =>
+const regionName = computed(() => {
+  if (bbox.value) {
+    const [w, s, e, n] = bbox.value.map((v) => v.toLocaleString('fr-FR'))
+    return `zone dessinée (lon ${w} → ${e}, lat ${s} → ${n})`
+  }
+  return (
     regions.value.find((r) => r.code === region.value)?.name ??
     data.value?.region.name ??
-    region.value,
-)
+    region.value
+  )
+})
 const masked = computed(() => maskedSummary(unfiltered.value, filtered.value, yearRange.value))
 
 const preview = ref<YearMonth | null>(null)
@@ -146,10 +155,17 @@ function onTabKey(e: KeyboardEvent) {
               <h2 id="calendar-title" class="text-base font-semibold">
                 Calendrier d'activité — {{ regionName }}
               </h2>
-              <p v-if="data?.method" class="text-xs text-stone-500">
-                Méthode {{ data.method.name }} ({{ data.method.version }})
-              </p>
+              <div class="flex items-center gap-3">
+                <p v-if="data?.method" class="text-xs text-stone-500">
+                  Méthode {{ data.method.name }} ({{ data.method.version }})
+                </p>
+                <ExportButton :query="query" :data="data" />
+              </div>
             </div>
+            <p v-if="bbox" class="mb-3 rounded-md bg-amber-50 p-2 text-xs text-amber-900">
+              Zone dessinée : série agrégée depuis la grille 0,25° avec la courbe nationale ; pas
+              d'intervalle d'incertitude propre à la zone.
+            </p>
 
             <p v-if="loading && !series.length" class="py-10 text-center text-sm text-stone-600">
               Chargement…
@@ -181,6 +197,16 @@ function onTabKey(e: KeyboardEvent) {
             />
           </aside>
         </div>
+
+        <section
+          aria-labelledby="map-title"
+          class="rounded-lg border border-stone-200 bg-white p-4"
+        >
+          <h2 id="map-title" class="mb-3 text-base font-semibold">
+            Carte : empreinte spatiale et sites statiques
+          </h2>
+          <MapExplorer />
+        </section>
 
         <template v-if="series.length">
           <section
