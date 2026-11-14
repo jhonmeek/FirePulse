@@ -52,3 +52,11 @@ Aucun coefficient ni gain du guide n'est automatiquement retenu dans le pipeline
 ## Interface avec M2
 
 Les sorties M1 résident dans `data/processed/`. Elles sont consommées par un futur import versionné côté M2 ; la présence d'un fichier ne signifie pas qu'il est déjà chargé en base. L'import devra conserver les statuts, la provenance, la politique de filtrage et la version du traitement, puis vérifier la concordance fichier → DB → API → export. Voir `HANDOFF.md` pour la responsabilité des composants.
+
+## Masque statique et grille 0,25° (lot H3–H12)
+
+`python -m pipeline.static_mask_audit` reproduit le masque de cellules M2 à 0,05° : origine de cellule par `FLOOR(coordonnée × 20)`, seuil de 20 points de type 2/3 ou détections S-NPP dans au moins 48 mois distincts. Le masque est rétrospectif, calculé sur tout l'archive disponible ; toutes les détections d'une cellule signalée sont identifiées, sans supprimer de ligne source. Les fichiers `static_mask_audit.json` et `static_mask_cells.csv` listent les cellules et leur exposition.
+
+`python -m pipeline.grid_025` agrège par mois, source, satellite et cellule 0,25° et conserve quatre vues : détections brutes, type 0, type 0 hors des cellules candidates et toutes détections situées dans une cellule candidate. Les sorties `grid_025_monthly.csv`, `grid_025_monthly.json` et `manifest.json` contiennent les empreintes des entrées et sorties. Elles ne représentent pas encore une série d'harmonisation ni un filtre scientifiquement validé.
+
+Sur l'archive M1 (2000–2025, 292 589 lignes), le masque signale 183 cellules sur 3 227 occupées ; 109 876 détections s'y trouvent, dont 52 023 de type 0 (22,20 % des 234 366 type 0). La grille 0,25° contient 41 957 lignes mois-source-satellite-cellule. Ces mesures portent sur les fichiers pays du Gabon sans vérification de géométrie administrative.

@@ -221,11 +221,15 @@ export interface MethodologyResponse {
     train_window: [IsoDate, IsoDate]
     test_window: [IsoDate, IsoDate]
     params: CalibrationParams
+    /**
+     * Calibration locale : mois train/test + métriques hors échantillon.
+     * Sous-région trop peu échantillonnée : seulement `note` (paramètres nationaux GA hérités).
+     */
     metrics: {
-      train_months: number
-      test_months: number
-      /** null si la sous-région hérite du modèle national. */
-      models_out_of_sample: Record<string, OutOfSampleMetrics> | null
+      train_months?: number
+      test_months?: number
+      models_out_of_sample?: Record<string, OutOfSampleMetrics> | null
+      note?: string
     }
   } | null
   static_mask_summary: { grid_deg: number; masked_cells_count: number }
