@@ -1,0 +1,193 @@
+{
+  "artifact_kind": "firepulse-postgis-frozen-experiment",
+  "calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+  "limitations": [
+    "PostGIS source and geometry must be verified when reproduced.",
+    "Mask thresholds are inherited and unvalidated for this short training period.",
+    "Country calendar status defines eligibility; observational coverage remains unknown.",
+    "2023-2025 already examined; not a blind final evaluation."
+  ],
+  "mask_training": "2012-02 through 2016-12 UTC",
+  "postgis_csv_sha256": "a0d931bb41a863088d7780c1c9854862ec3c902f41c8b12dd2926578bbbd88d2",
+  "schema_version": 1,
+  "variants": {
+    "type0_with_mask": {
+      "artifact_kind": "firepulse-m1-temporal-experiment",
+      "calendar_sha256": "7b700d0192da6c1e0e16063e284250898ba32bc230dae283c3abf25487160705",
+      "eligible_months": {
+        "calibrate": 36,
+        "evaluate": 36,
+        "select": 36,
+        "train": 59
+      },
+      "evaluation": {
+        "coverage": 0.6666666666666666,
+        "covered": 24,
+        "mean_width": 239.74877597108747,
+        "metrics": {
+          "bias": 87.57619488927492,
+          "mae": 120.01395314754791,
+          "n": 36,
+          "r2": 0.9358465721745147,
+          "rmse": 199.20627817683572
+        }
+      },
+      "excluded_months": {
+        "calibrate": [],
+        "evaluate": [],
+        "select": [],
+        "train": []
+      },
+      "fit": {
+        "power_p": 0.9105332994938249,
+        "power_q": 1.8713232040410732,
+        "ratio": 4.042239588485508
+      },
+      "interval": {
+        "calibration_rank": 30,
+        "nominal_level": 0.8,
+        "radius_count_units": 120.7424727462487
+      },
+      "limitations": [
+        "GA ST_Within PostGIS, based on local database and geometry",
+        "type-0 counts; mask fitted to training GA observations",
+        "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+        "2023-2025 was previously inspected, not a blind final holdout.",
+        "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+        "NOAA-20 bridge and custom-region uncertainty not evaluated."
+      ],
+      "schema_version": 1,
+      "selected_model": "power",
+      "selection_metrics": {
+        "identity": {
+          "bias": -491.19444444444446,
+          "mae": 491.19444444444446,
+          "n": 36,
+          "r2": -0.10847395426773665,
+          "rmse": 689.1543328199022
+        },
+        "power": {
+          "bias": -36.92910888491929,
+          "mae": 74.06431858239304,
+          "n": 36,
+          "r2": 0.9765249238384942,
+          "rmse": 100.28991181907564
+        },
+        "ratio": {
+          "bias": -27.0838938899331,
+          "mae": 87.74448786010265,
+          "n": 36,
+          "r2": 0.970332506854072,
+          "rmse": 112.74418974685078
+        }
+      },
+      "windows": {
+        "calibrate": [
+          "2020-01",
+          "2022-12"
+        ],
+        "evaluate": [
+          "2023-01",
+          "2025-12"
+        ],
+        "select": [
+          "2017-01",
+          "2019-12"
+        ],
+        "train": [
+          "2012-02",
+          "2016-12"
+        ]
+      }
+    },
+    "type0_without_mask": {
+      "artifact_kind": "firepulse-m1-temporal-experiment",
+      "calendar_sha256": "ad862c00bb9bf42103cb1cd61f044e7614af1f421c92f374ce5f731fe31b0b27",
+      "eligible_months": {
+        "calibrate": 36,
+        "evaluate": 36,
+        "select": 36,
+        "train": 59
+      },
+      "evaluation": {
+        "coverage": 0.6111111111111112,
+        "covered": 22,
+        "mean_width": 216.87399792217604,
+        "metrics": {
+          "bias": 97.15914357887175,
+          "mae": 132.10873108728154,
+          "n": 36,
+          "r2": 0.9229564400946052,
+          "rmse": 220.21837923228864
+        }
+      },
+      "excluded_months": {
+        "calibrate": [],
+        "evaluate": [],
+        "select": [],
+        "train": []
+      },
+      "fit": {
+        "power_p": 0.9638399611556797,
+        "power_q": 1.5529763591462995,
+        "ratio": 3.9467687710123274
+      },
+      "interval": {
+        "calibration_rank": 30,
+        "nominal_level": 0.8,
+        "radius_count_units": 108.79137979577374
+      },
+      "limitations": [
+        "GA ST_Within PostGIS, based on local database and geometry",
+        "type-0 counts; no mask",
+        "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+        "2023-2025 was previously inspected, not a blind final holdout.",
+        "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+        "NOAA-20 bridge and custom-region uncertainty not evaluated."
+      ],
+      "schema_version": 1,
+      "selected_model": "power",
+      "selection_metrics": {
+        "identity": {
+          "bias": -501.47222222222223,
+          "mae": 501.47222222222223,
+          "n": 36,
+          "r2": -0.12361823332568389,
+          "rmse": 701.476834970336
+        },
+        "power": {
+          "bias": -30.407243736874804,
+          "mae": 85.77599773683517,
+          "n": 36,
+          "r2": 0.9727588272475729,
+          "rmse": 109.22369008829952
+        },
+        "ratio": {
+          "bias": -19.75738284979038,
+          "mae": 90.18653239530154,
+          "n": 36,
+          "r2": 0.9709303767413656,
+          "rmse": 112.82975535167465
+        }
+      },
+      "windows": {
+        "calibrate": [
+          "2020-01",
+          "2022-12"
+        ],
+        "evaluate": [
+          "2023-01",
+          "2025-12"
+        ],
+        "select": [
+          "2017-01",
+          "2019-12"
+        ],
+        "train": [
+          "2012-02",
+          "2016-12"
+        ]
+      }
+    }
+  }
+}
