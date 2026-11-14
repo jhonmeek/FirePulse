@@ -14,14 +14,21 @@ const props = defineProps<{
   masked: MaskedSummary | null
 }>()
 
+/**
+ * Libellé du compteur. Définition explicite (revue M1, PR #9) : ce n'est pas le nombre de
+ * détections situées dans les cellules statiques, mais l'écart entre les séries `/calendar/`
+ * sans et avec filtre — type ≠ 0 OU cellule statique 0.05°, dans la zone, sur la période.
+ */
 const maskedLabel = computed(() => {
   const m = props.masked
   if (!m) return null
   const n = m.masked.toLocaleString('fr-FR')
   const share = (100 * m.share).toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+  const [from, to] = yearRange.value
+  const period = from === to ? `${from}` : `${from}–${to}`
   return filterStatic.value
-    ? `${n} détections masquées (${share} % du brut)`
-    : `${n} détections de sources statiques incluses (${share} %)`
+    ? `${n} détections retirées (${share} % du brut, ${period})`
+    : `${n} détections que le filtre retirerait (${share} % du brut, ${period})`
 })
 
 const filters = useFiltersStore()
@@ -123,10 +130,10 @@ const modes: { value: ColorMode; label: string }[] = [
       >
         {{ maskedLabel ?? '' }}
       </p>
+      <p v-if="maskedLabel" id="filter-static-help" class="pl-6 text-xs text-stone-500">
+        Retirées = type FIRMS ≠ 0 ou site industriel persistant (cellule 0,05°), dans la zone
+        affichée.
+      </p>
     </div>
-    <p id="filter-static-help" class="sr-only">
-      Activé : feux de végétation uniquement (détections de type 0 hors cellules industrielles
-      persistantes). Désactivé : toutes les anomalies thermiques.
-    </p>
   </form>
 </template>

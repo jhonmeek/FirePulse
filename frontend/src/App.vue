@@ -58,7 +58,7 @@ const chartView = ref<ChartView>('after')
 // ---- onglets (motif ARIA tabs, flèches gauche/droite)
 const tabs = [
   { id: 'explore', label: 'Explorer' },
-  { id: 'method', label: 'Méthodologie & preuve' },
+  { id: 'method', label: 'Méthodologie & évaluation' },
 ] as const
 type TabId = (typeof tabs)[number]['id']
 const tab = ref<TabId>('explore')
