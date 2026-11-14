@@ -1,0 +1,53 @@
+{
+  "artifact_kind": "firepulse-m1-bridge-experiment",
+  "calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+  "eligible_months": {
+    "diagnostic": 36,
+    "evaluate": 36,
+    "fit": 21
+  },
+  "excluded_months": {
+    "diagnostic": [],
+    "evaluate": [],
+    "fit": []
+  },
+  "formula": "S-NPP estimated = NOAA-20 count * ratio",
+  "limitations": [
+    "Unmasked country-file detections; geometry unverified and observation coverage unknown.",
+    "Only months with recorded detections in both products are eligible.",
+    "2020-2025 was previously inspected; evaluation is not a blind final holdout.",
+    "Monthly count conversion does not establish physical equivalence or validate 2026 NRT."
+  ],
+  "metrics": {
+    "diagnostic": {
+      "bias": 44.05508553787658,
+      "mae": 94.09940873912423,
+      "n": 36,
+      "r2": 0.9391221067078506,
+      "rmse": 152.6893899198728
+    },
+    "evaluate": {
+      "bias": 41.79235900804915,
+      "mae": 94.5828539687118,
+      "n": 36,
+      "r2": 0.9350747438648368,
+      "rmse": 214.4896272351808
+    }
+  },
+  "periods": {
+    "diagnostic": [
+      "2020-01",
+      "2022-12"
+    ],
+    "evaluate": [
+      "2023-01",
+      "2025-12"
+    ],
+    "fit": [
+      "2018-04",
+      "2019-12"
+    ]
+  },
+  "ratio": 1.0189395760226891,
+  "schema_version": 1
+}
