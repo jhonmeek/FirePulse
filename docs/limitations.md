@@ -17,6 +17,8 @@ Les fichiers contiennent des détections de points chauds observées par des sat
 - Les niveaux de confiance originaux sont conservés. Un niveau « nominal » n'est pas une probabilité identique pour les différents capteurs.
 - Le type 0 signifie une classification du produit, pas une validation terrain. Les sources persistantes ne sont pas toutes des torchères, et un masque spatial peut exclure des feux de végétation voisins.
 - Un avis FIRMS du 15 juin 2025 concerne l'étiquetage de certains produits mensuels VIIRS Collection 2. L'identification des traitements concernés nécessite les métadonnées exactes ; aucune correction automatique n'est déduite de la seule colonne version.
+- Le masque statique M2 est ici évalué rétrospectivement sur toute l'archive 2000–2025. Les cellules signalées sont des candidates persistantes, pas des torchères confirmées ; des feux voisins peuvent être masqués. Les 22,20 % de détections type 0 en cellule signalée mesurent l'exposition au critère, pas un taux de faux positifs ni une amélioration de précision.
+- Les résultats M1 utilisent le périmètre des CSV pays et la règle de grille de M2, mais ne reproduisent pas son filtrage spatial PostGIS. Ils ne sont pas encore une importation/validation API des mêmes points.
 
 ## Harmonisation et incertitude
 
