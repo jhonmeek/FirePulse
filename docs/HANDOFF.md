@@ -124,6 +124,7 @@ curl "http://localhost:8000/api/v1/export/?dataset=points&region=GA&month=2024-0
   - `load_regions.py` : charge [data/boundaries/gabon_adm0.geojson](../data/boundaries/gabon_adm0.geojson) + [gabon_adm1.geojson](../data/boundaries/gabon_adm1.geojson) (avec `.strip()` sur les noms contenant des tabulations comme `Ogooué-Ivindo`).
   - `import_firms.py` : déduplication fichier (`ImportBatch.file_sha256`) + ligne (`HotspotObservation.original_hash`) et détection NRT par colonne `version` en plus du nom de fichier. Attention côté SQL : `ROUND()` Postgres exige un cast `::numeric`.
   - `build_baseline_series.py` : conserve `2012-01` en régime `modis_terra_aqua` (`SNPP_START = 2012-02-01`) et supporte `--from-pipeline <bundle.json>` pour ingérer les sorties M1.
-- **Chantiers H24–H34 purement M2 :**
-  - Cache HTTP / performances GeoJSON & déploiement HTTPS (`gunicorn`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`).
-  - Snapshot DB / JSON de secours pour une démo 100 % reproductible hors ligne à H34–H42.
+- **Chantiers H24–H34 M2 (en place) :**
+  - Cache API v1 avec invalidation inter-processus (`apps/api/cache.py`), compression `GZipMiddleware`, requêtes `AsGeoJSON` PostGIS (`views.py`), détection `mixed_sp_nrt` / `nrt_only` 2026 (`build_baseline_series.py`) et `/health/` structuré (`503` si DB indisponible).
+  - Déploiement HTTPS (`docker-compose.prod.yml`, `deploy/Caddyfile`, `gunicorn` par défaut dans `backend/Dockerfile`).
+  - Plan de secours démo : `python manage.py export_demo_snapshot`, `scripts/db_backup.sh` et `scripts/db_restore.sh`.
