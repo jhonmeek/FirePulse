@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="FirePulse — 25 ans de feux au Gabon, vus par MODIS et VIIRS. Une histoire harmonisée, une preuve scientifique, un calendrier utilisable."
+    />
+    <meta name="theme-color" content="#05070b" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="FirePulse — One Planet. One Fire History." />
+    <meta
+      property="og:description"
+      content="25 ans de feux vus par deux générations de satellites. Une seule histoire, enfin lisible."
+    />
+    <meta property="og:image" content="/og.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>FirePulse — One Planet. One Fire History.</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #05070b;
+      }
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background:
+          radial-gradient(ellipse at 50% 40%, rgba(255, 94, 26, 0.12), transparent 55%),
+          #05070b;
+        color: #f4f1e8;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        text-align: center;
+      }
+      .boot-mark {
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 196, 107, 0.35);
+        box-shadow:
+          0 0 30px rgba(255, 94, 26, 0.35),
+          inset 0 0 20px rgba(255, 94, 26, 0.2);
+        animation: bootPulse 1.8s ease-in-out infinite;
+      }
+      .boot p {
+        margin: 0;
+        font-size: 1.35rem;
+        letter-spacing: -0.02em;
+      }
+      .boot span {
+        font-family: ui-monospace, monospace;
+        font-size: 0.58rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #637080;
+      }
+      @keyframes bootPulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 0.65;
+        }
+        50% {
+          transform: scale(1.12);
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-mark {
+          animation: none;
+        }
+      }
+      .noscript {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #05070b;
+        color: #f4f1e8;
+        font-family: system-ui, sans-serif;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot">
+        <div class="boot-mark" aria-hidden="true"></div>
+        <p>FirePulse</p>
+        <span>Chargement de 25 ans de feux…</span>
+      </div>
+    </div>
+    <noscript>
+      <div class="noscript">
+        <p>
+          FirePulse est une expérience interactive. Activez JavaScript pour explorer le calendrier
+          et la carte.
+        </p>
+      </div>
+    </noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
