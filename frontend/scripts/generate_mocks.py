@@ -5,7 +5,7 @@ Usage (depuis frontend/) :  py -3.12 scripts/generate_mocks.py
 Réplique hors Docker la chaîne baseline de M2 pour la région nationale `GA` :
 - masque statique 0.05° (`import_firms.rebuild_static_mask_and_flag`) ;
 - calibration + intervalles conformes + médianes (`build_baseline_series`) ;
-- formes de réponse de `backend/apps/api/views.py` (contrat docs/api-contract.json v2.1.0).
+- formes de réponse de `backend/apps/api/views.py` (contrat docs/api-contract.json v2.2.0).
 
 Comme le backend (`ST_Within(position, region.geom)`), seules les détections situées dans la
 frontière ADM0 comptent pour `GA` (l'offshore est exclu), mais le masque statique est calculé
@@ -38,9 +38,9 @@ SNPP_START, SNPP_END = "2012-02", "2026-10"
 SNPP_FIRST_COUNT, N20_FIRST_COUNT = "2012-01", "2018-04"
 
 SENSOR_META = {
-    "modis": ("MODIS (Terra + Aqua)", None, "Terra-only from 2000-11 to 2002-06; Aqua starts 2002-07."),
-    "viirs-noaa20": ("VIIRS NOAA-20 375m", None, "Official drop-in continuation after S-NPP retirement."),
-    "viirs-snpp": ("VIIRS Suomi-NPP 375m", "2026-11-02", "Operational FIRMS delivery ended 2026-11-02 13:00 UTC."),
+    "modis": ("MODIS (Terra + Aqua)", None, ["6.03", "6.2", "61.03"], "Terra-only from 2000-11 to 2002-06; Aqua starts 2002-07."),
+    "viirs-noaa20": ("VIIRS NOAA-20 375m", None, ["2"], "Official drop-in continuation after S-NPP retirement."),
+    "viirs-snpp": ("VIIRS Suomi-NPP 375m", "2026-11-02", ["2"], "Operational FIRMS delivery ended 2026-11-02 13:00 UTC."),
 }
 LIMITATIONS = [
     "Hotspot counts measure thermal detections, not distinct individual wildfire events.",
@@ -328,7 +328,7 @@ def coverage_response(obs: pd.DataFrame) -> dict:
     sensors = []
     for src in sorted(obs["source"].unique()):
         dates = obs.loc[obs["source"] == src, "acq_date"]
-        label, end, notes = SENSOR_META[src]
+        label, end, versions, notes = SENSOR_META[src]
         sensors.append(
             {
                 "source": src,
@@ -337,6 +337,7 @@ def coverage_response(obs: pd.DataFrame) -> dict:
                 "max_date": dates.max(),
                 "operational_end_date": end,
                 "processing_levels": ["SP"],
+                "product_versions": versions,
                 "notes": notes,
             }
         )

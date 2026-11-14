@@ -2,18 +2,22 @@
 
 import csv
 import json
-import math
-import statistics
 from datetime import date
 
-from django.contrib.gis.geos import GEOSGeometry, Polygon
 from django.db import connection
-from django.db.models import Max, Min, Sum
+from django.db.models import Count, Max, Min, Sum
 from django.http import HttpResponse
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from apps.api.services import (
+    bad_request,
+    compute_custom_area_series,
+    next_month,
+    parse_area_geometry,
+    parse_bool,
+    parse_month,
+)
 from apps.harmonization.models import (
     CalibrationRun,
     HarmonizedMonthSeries,
@@ -55,167 +59,20 @@ DOCUMENTED_LIMITATIONS = [
     "MODIS Terra operated without Aqua from 2000-11 through 2002-06; calibrated separately.",
     "Suomi-NPP VIIRS operational FIRMS delivery ended 2026-11-02; NOAA-20 VIIRS provides continuity.",
     "Persistent industrial/oil gas flares (~21-24% of raw VIIRS in Gabon) are filtered when filter_static=true.",
+    "NASA FIRMS June 15, 2025 notice: some VIIRS Vxx14IMGML Collection 2 files had type 0/2 differences between versions 1/2 and reprocessed version 3.",
 ]
 
 
-def _parse_bool(value: str | None, default: bool = True) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def _serialize_series_item(item: dict) -> dict:
+    return {k: v for k, v in item.items() if k != "month_date"}
 
 
-def _parse_month(value: str | None) -> date | None:
-    if not value:
-        return None
-    try:
-        year_s, month_s = value.strip().split("-", 1)
-        return date(int(year_s), int(month_s), 1)
-    except ValueError as exc:
-        raise ValueError(f"Invalid YYYY-MM month format: {value!r}") from exc
-
-
-def _parse_bbox(value: str | None) -> Polygon | None:
-    if not value:
-        return None
-    try:
-        parts = [float(p.strip()) for p in value.split(",")]
-        if len(parts) != 4:
-            raise ValueError
-        west, south, east, north = parts
-        if west >= east or south >= north:
-            raise ValueError
-        return Polygon.from_bbox((west, south, east, north))
-    except ValueError as exc:
-        raise ValueError("bbox must be 'west,south,east,north' with west<east and south<north") from exc
-
-
-def _parse_polygon(value: str | None) -> GEOSGeometry | None:
-    if not value:
-        return None
-    try:
-        payload = json.loads(value)
-        if payload.get("type") == "Feature":
-            payload = payload["geometry"]
-        geom = GEOSGeometry(json.dumps(payload), srid=4326)
-        if geom.geom_type not in {"Polygon", "MultiPolygon"} or not geom.valid:
-            raise ValueError
-        return geom
-    except (ValueError, KeyError, TypeError) as exc:
-        raise ValueError("polygon must be a valid GeoJSON Polygon, MultiPolygon, or Feature.") from exc
-
-
-def _bad_request(message: str) -> Response:
-    return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
-
-
-def _custom_area_calendar(
-    custom_geom: GEOSGeometry,
-    area_id: str,
-    area_name: str,
-    filter_static: bool,
-    start_month: date | None,
-    end_month: date | None,
-) -> dict:
-    """Aggregate 0.25 deg GridCellMonth counts for any custom bbox/polygon and harmonize."""
-    qs = GridCellMonth.objects.filter(filter_static=filter_static, geom__intersects=custom_geom)
-
-    agg = list(
-        qs.values("month")
-        .annotate(
-            modis_count=Sum("modis_count"),
-            modis_terra_count=Sum("modis_terra_count"),
-            modis_aqua_count=Sum("modis_aqua_count"),
-            viirs_snpp_count=Sum("viirs_snpp_count"),
-            viirs_noaa20_count=Sum("viirs_noaa20_count"),
-        )
-        .order_by("month")
-    )
-
-    ga_run = CalibrationRun.objects.filter(
-        region__code="GA", filter_static=filter_static, is_active=True
-    ).first()
-    params = ga_run.params_json if ga_run else {}
-    p_pow = params.get("power_law_p", 1.0)
-    q_pow = params.get("power_law_q", 0.0)
-    pt_pow = params.get("terra_only_p", 1.0)
-    qt_pow = params.get("terra_only_q", 0.0)
-    n20_ratio = params.get("noaa20_to_snpp_ratio", 1.0) or 1.0
-
-    interim = []
-    by_cal_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
-    for row in agg:
-        m_date = row["month"]
-        mod = row["modis_count"] or 0
-        terra = row["modis_terra_count"] or 0
-        snpp = row["viirs_snpp_count"] or 0
-        n20 = row["viirs_noaa20_count"] or 0
-
-        if m_date < date(2002, 7, 1):
-            regime = "partial_year" if m_date.year < 2001 else "modis_terra_only"
-            hval = max(0.0, math.expm1(pt_pow * math.log1p(terra) + qt_pow)) if ga_run else float(terra)
-        elif m_date < date(2012, 2, 1):
-            regime = "modis_terra_aqua"
-            hval = max(0.0, math.expm1(p_pow * math.log1p(mod) + q_pow)) if ga_run else float(mod)
-        elif m_date <= date(2026, 10, 1):
-            regime = "viirs_snpp_observed"
-            hval = float(snpp)
-        else:
-            regime = "viirs_noaa20_bridge"
-            hval = float(n20) / n20_ratio
-
-        if 2001 <= m_date.year <= 2025:
-            by_cal_month[m_date.month].append(hval)
-
-        interim.append((row, round(hval, 2), regime))
-
-    medians = {m: round(statistics.median(vals), 2) for m, vals in by_cal_month.items() if vals}
-    series = []
-    for row, hval, regime in interim:
-        m_date = row["month"]
-        if (start_month and m_date < start_month) or (end_month and m_date > end_month):
-            continue
-        med = medians.get(m_date.month)
-        anom_abs = round(hval - med, 2) if med is not None else None
-        anom_pct = round(100.0 * (hval - med) / med, 2) if (med is not None and med > 0) else None
-        series.append(
-            {
-                "month": m_date.strftime("%Y-%m"),
-                "modis_count": row["modis_count"],
-                "modis_terra_count": row["modis_terra_count"],
-                "modis_aqua_count": row["modis_aqua_count"],
-                "viirs_snpp_count": row["viirs_snpp_count"],
-                "viirs_noaa20_count": row["viirs_noaa20_count"],
-                "harmonized_value": hval,
-                "ci_low": None,
-                "ci_high": None,
-                "baseline_median": med,
-                "baseline_iqr": None,
-                "anomaly_percent": anom_pct,
-                "anomaly_absolute": anom_abs,
-                "sensor_regime": regime,
-                "coverage_status": "partial_sp" if m_date.year < 2001 else "complete_sp",
-                "uncertainty_note": "Custom area aggregated from 0.25 deg grid using national GA curve.",
-            }
-        )
-
-    return {
-        "region": {"id": area_id, "name": area_name, "filter_static": filter_static},
-        "period": {
-            "start": series[0]["month"] if series else None,
-            "end": series[-1]["month"] if series else None,
-        },
-        "method": (
-            {
-                "name": ga_run.method_name,
-                "version": ga_run.method_version,
-                "reference_scale": ga_run.reference_scale,
-                "bridge_after_2026_11_02": "VIIRS_NOAA20",
-            }
-            if ga_run
-            else None
-        ),
-        "series": series,
-    }
+def _in_month_window(m_date: date, start_month: date | None, end_month: date | None) -> bool:
+    if start_month and m_date < start_month:
+        return False
+    if end_month and m_date > end_month:
+        return False
+    return True
 
 
 @api_view(["GET"])
@@ -243,7 +100,7 @@ def health_view(request):
 @api_view(["GET"])
 def regions_view(request):
     """Return available precomputed regions with GeoJSON geometries."""
-    include_geom = _parse_bool(request.query_params.get("include_geom"), default=True)
+    include_geom = parse_bool(request.query_params.get("include_geom"), default=True)
     regions = [
         {
             "code": reg.code,
@@ -260,7 +117,7 @@ def regions_view(request):
 
 @api_view(["GET"])
 def coverage_view(request):
-    """Return temporal availability and processing level (SP/NRT) per ingested source."""
+    """Return temporal availability, versions, and processing level (SP/NRT) per source."""
     region_code = request.query_params.get("region", "GA")
     batches = (
         ImportBatch.objects.values("source")
@@ -268,8 +125,13 @@ def coverage_view(request):
         .order_by("source")
     )
     levels_by_src: dict[str, set[str]] = {}
-    for src, lvl in ImportBatch.objects.values_list("source", "processing_level"):
+    versions_by_src: dict[str, set[str]] = {}
+    for src, lvl, ver in ImportBatch.objects.values_list("source", "processing_level", "product_version"):
         levels_by_src.setdefault(src, set()).add(lvl)
+        for token in (ver or "").split(","):
+            tok = token.strip()
+            if tok:
+                versions_by_src.setdefault(src, set()).add(tok)
 
     sensors = []
     for row in batches:
@@ -283,6 +145,7 @@ def coverage_view(request):
                 "max_date": row["max_date"].isoformat() if row["max_date"] else None,
                 "operational_end_date": meta.get("operational_end_date"),
                 "processing_levels": sorted(levels_by_src.get(src, set())),
+                "product_versions": sorted(versions_by_src.get(src, set())),
                 "notes": meta.get("notes", ""),
             }
         )
@@ -293,21 +156,40 @@ def coverage_view(request):
 def calendar_view(request):
     """Return raw vs harmonized monthly series for a region, custom bbox, or polygon."""
     region_code = request.query_params.get("region", "GA")
-    filter_static = _parse_bool(request.query_params.get("filter_static"), default=True)
+    filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
     try:
-        start_month = _parse_month(request.query_params.get("start"))
-        end_month = _parse_month(request.query_params.get("end"))
-        bbox_poly = _parse_bbox(request.query_params.get("bbox"))
-        custom_poly = _parse_polygon(request.query_params.get("polygon"))
+        start_month = parse_month(request.query_params.get("start"))
+        end_month = parse_month(request.query_params.get("end"))
+        custom_geom, area_id, area_name = parse_area_geometry(request)
     except ValueError as exc:
-        return _bad_request(str(exc))
+        return bad_request(str(exc))
 
-    custom_geom = custom_poly or bbox_poly
     if custom_geom is not None:
-        area_id = "CUSTOM_POLYGON" if custom_poly else "CUSTOM_BBOX"
-        area_name = "Custom Polygon" if custom_poly else "Custom BBox"
+        ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
+        series = [
+            _serialize_series_item(item)
+            for item in full_series
+            if _in_month_window(item["month_date"], start_month, end_month)
+        ]
         return Response(
-            _custom_area_calendar(custom_geom, area_id, area_name, filter_static, start_month, end_month)
+            {
+                "region": {"id": area_id, "name": area_name, "filter_static": filter_static},
+                "period": {
+                    "start": series[0]["month"] if series else None,
+                    "end": series[-1]["month"] if series else None,
+                },
+                "method": (
+                    {
+                        "name": ga_run.method_name,
+                        "version": ga_run.method_version,
+                        "reference_scale": ga_run.reference_scale,
+                        "bridge_after_2026_11_02": "VIIRS_NOAA20",
+                    }
+                    if ga_run
+                    else None
+                ),
+                "series": series,
+            }
         )
 
     region = Region.objects.filter(code=region_code).first()
@@ -386,11 +268,48 @@ def calendar_view(request):
 def anomalies_view(request):
     """Return monthly historical baselines (median + IQR) and ranked anomalies."""
     region_code = request.query_params.get("region", "GA")
-    filter_static = _parse_bool(request.query_params.get("filter_static"), default=True)
+    filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
     try:
         top_n = max(1, min(50, int(request.query_params.get("top_n", "10"))))
-    except ValueError:
-        return _bad_request("top_n must be an integer.")
+        start_month = parse_month(request.query_params.get("start"))
+        end_month = parse_month(request.query_params.get("end"))
+        custom_geom, area_id, _ = parse_area_geometry(request)
+    except ValueError as exc:
+        return bad_request(str(exc))
+
+    if custom_geom is not None:
+        _, baselines, full_series = compute_custom_area_series(custom_geom, filter_static)
+        valid = [
+            item
+            for item in full_series
+            if item["anomaly_percent"] is not None
+            and _in_month_window(item["month_date"], start_month, end_month)
+        ]
+        serialize_custom = lambda item: {
+            "month": item["month"],
+            "harmonized_value": item["harmonized_value"],
+            "baseline_median": item["baseline_median"],
+            "anomaly_percent": item["anomaly_percent"],
+            "anomaly_absolute": item["anomaly_absolute"],
+            "sensor_regime": item["sensor_regime"],
+        }
+        top_positive = [
+            serialize_custom(item)
+            for item in sorted(valid, key=lambda x: x["anomaly_percent"], reverse=True)[:top_n]
+        ]
+        top_negative = [
+            serialize_custom(item)
+            for item in sorted(valid, key=lambda x: x["anomaly_percent"])[:top_n]
+        ]
+        return Response(
+            {
+                "region": area_id,
+                "filter_static": filter_static,
+                "monthly_baselines": baselines,
+                "top_positive": top_positive,
+                "top_negative": top_negative,
+            }
+        )
 
     region = Region.objects.filter(code=region_code).first()
     if not region:
@@ -425,6 +344,11 @@ def anomalies_view(request):
         calibration_run__is_active=True,
         anomaly_percent__isnull=False,
     )
+    if start_month:
+        series_qs = series_qs.filter(month__gte=start_month)
+    if end_month:
+        series_qs = series_qs.filter(month__lte=end_month)
+
     serialize_anom = lambda r: {
         "month": r.month.strftime("%Y-%m"),
         "harmonized_value": r.harmonized_value,
@@ -450,16 +374,22 @@ def anomalies_view(request):
 def hotspots_view(request):
     """Return GeoJSON FeatureCollection of 0.25 deg grid cells or filtered detections."""
     mode = request.query_params.get("mode", "grid").lower()
+    agg = request.query_params.get("agg", "month").lower()
     region_code = request.query_params.get("region")
-    filter_static = _parse_bool(request.query_params.get("filter_static"), default=True)
-    include_static_cells = _parse_bool(request.query_params.get("include_static_cells"), default=False)
+    filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
+    include_static_cells = parse_bool(request.query_params.get("include_static_cells"), default=False)
+
+    if agg not in {"month", "cell"}:
+        return bad_request("agg must be 'month' or 'cell'.")
 
     try:
-        month_date = _parse_month(request.query_params.get("month"))
-        bbox_poly = _parse_bbox(request.query_params.get("bbox"))
+        month_date = parse_month(request.query_params.get("month"))
+        start_month = parse_month(request.query_params.get("start"))
+        end_month = parse_month(request.query_params.get("end"))
+        custom_geom, _, _ = parse_area_geometry(request)
         limit = max(1, min(5000, int(request.query_params.get("limit", "2000"))))
     except ValueError as exc:
-        return _bad_request(str(exc))
+        return bad_request(str(exc))
 
     region_geom = None
     if region_code:
@@ -467,17 +397,23 @@ def hotspots_view(request):
         if reg:
             region_geom = reg.geom
 
-    spatial_filter_geom = bbox_poly or region_geom
+    spatial_filter_geom = custom_geom or region_geom
     features: list[dict] = []
 
     if mode == "points":
-        if month_date is None and bbox_poly is None:
-            return _bad_request("mode=points requires at least 'month' (YYYY-MM) or 'bbox'.")
+        has_time = any([month_date, start_month, end_month])
+        if not has_time and custom_geom is None:
+            return bad_request("mode=points requires at least 'month', 'start'/'end', 'bbox', or 'polygon'.")
         qs = HotspotObservation.objects.all()
         if filter_static:
             qs = qs.filter(hotspot_type=0, is_static_masked=False)
         if month_date:
             qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
+        else:
+            if start_month:
+                qs = qs.filter(acquired_at__gte=start_month)
+            if end_month:
+                qs = qs.filter(acquired_at__lt=next_month(end_month))
         if spatial_filter_geom:
             qs = qs.filter(position__within=spatial_filter_geom)
         for obs in qs.order_by("-acquired_at")[:limit]:
@@ -501,25 +437,64 @@ def hotspots_view(request):
         qs = GridCellMonth.objects.filter(filter_static=filter_static)
         if month_date:
             qs = qs.filter(month=month_date)
+        else:
+            if start_month:
+                qs = qs.filter(month__gte=start_month)
+            if end_month:
+                qs = qs.filter(month__lte=end_month)
         if spatial_filter_geom:
             qs = qs.filter(geom__intersects=spatial_filter_geom)
-        for cell in qs.order_by("cell_id", "month")[:limit]:
-            features.append(
-                {
-                    "type": "Feature",
-                    "geometry": json.loads(cell.geom.geojson),
-                    "properties": {
-                        "layer": "grid_cell_month",
-                        "cell_id": cell.cell_id,
-                        "month": cell.month.strftime("%Y-%m"),
-                        "modis_count": cell.modis_count,
-                        "viirs_snpp_count": cell.viirs_snpp_count,
-                        "viirs_noaa20_count": cell.viirs_noaa20_count,
-                    },
-                }
+
+        if agg == "cell":
+            grouped = (
+                qs.values("cell_id", "geom")
+                .annotate(
+                    modis_count=Sum("modis_count"),
+                    viirs_snpp_count=Sum("viirs_snpp_count"),
+                    viirs_noaa20_count=Sum("viirs_noaa20_count"),
+                    frp_sum_modis=Sum("frp_sum_modis"),
+                    frp_sum_snpp=Sum("frp_sum_snpp"),
+                    frp_sum_noaa20=Sum("frp_sum_noaa20"),
+                    months_count=Count("month"),
+                )
+                .order_by("-viirs_snpp_count", "-modis_count", "cell_id")[:limit]
             )
+            for cell in grouped:
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": json.loads(cell["geom"].geojson),
+                        "properties": {
+                            "layer": "grid_cell_summary",
+                            "cell_id": cell["cell_id"],
+                            "months_count": cell["months_count"],
+                            "modis_count": cell["modis_count"],
+                            "viirs_snpp_count": cell["viirs_snpp_count"],
+                            "viirs_noaa20_count": cell["viirs_noaa20_count"],
+                            "frp_sum_modis": round(cell["frp_sum_modis"] or 0.0, 2),
+                            "frp_sum_snpp": round(cell["frp_sum_snpp"] or 0.0, 2),
+                            "frp_sum_noaa20": round(cell["frp_sum_noaa20"] or 0.0, 2),
+                        },
+                    }
+                )
+        else:
+            for cell in qs.order_by("cell_id", "month")[:limit]:
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": json.loads(cell.geom.geojson),
+                        "properties": {
+                            "layer": "grid_cell_month",
+                            "cell_id": cell.cell_id,
+                            "month": cell.month.strftime("%Y-%m"),
+                            "modis_count": cell.modis_count,
+                            "viirs_snpp_count": cell.viirs_snpp_count,
+                            "viirs_noaa20_count": cell.viirs_noaa20_count,
+                        },
+                    }
+                )
     else:
-        return _bad_request("mode must be 'grid' or 'points'.")
+        return bad_request("mode must be 'grid' or 'points'.")
 
     if include_static_cells:
         static_qs = StaticFlareMaskCell.objects.all()
@@ -540,14 +515,14 @@ def hotspots_view(request):
                 }
             )
 
-    return Response({"type": "FeatureCollection", "mode": mode, "features": features})
+    return Response({"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features})
 
 
 @api_view(["GET"])
 def methodology_view(request):
     """Return active calibration parameters, out-of-sample metrics, and limitations."""
     region_code = request.query_params.get("region", "GA")
-    filter_static = _parse_bool(request.query_params.get("filter_static"), default=True)
+    filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
 
     run = CalibrationRun.objects.filter(
         region__code=region_code,
@@ -581,29 +556,12 @@ def methodology_view(request):
     )
 
 
-@api_view(["GET"])
-def export_view(request):
-    """Export monthly harmonized series as CSV with full provenance metadata."""
-    region_code = request.query_params.get("region", "GA")
-    filter_static = _parse_bool(request.query_params.get("filter_static"), default=True)
-    try:
-        start_month = _parse_month(request.query_params.get("start"))
-        end_month = _parse_month(request.query_params.get("end"))
-    except ValueError as exc:
-        return _bad_request(str(exc))
-
-    qs = HarmonizedMonthSeries.objects.filter(
-        region__code=region_code,
-        filter_static=filter_static,
-        calibration_run__is_active=True,
-    ).order_by("month")
-    if start_month:
-        qs = qs.filter(month__gte=start_month)
-    if end_month:
-        qs = qs.filter(month__lte=end_month)
+def _export_series_csv(request, region_code: str, filter_static: bool, start_month: date | None, end_month: date | None):
+    custom_geom, area_id, _ = parse_area_geometry(request)
+    export_id = area_id if custom_geom is not None else region_code
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
-    response["Content-Disposition"] = f'attachment; filename="firepulse_{region_code}_series.csv"'
+    response["Content-Disposition"] = f'attachment; filename="firepulse_{export_id}_series.csv"'
     writer = csv.writer(response)
     writer.writerow(
         [
@@ -624,6 +582,44 @@ def export_view(request):
             "method_version",
         ]
     )
+
+    if custom_geom is not None:
+        ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
+        method_version = ga_run.method_version if ga_run else "v2.0"
+        for item in full_series:
+            if not _in_month_window(item["month_date"], start_month, end_month):
+                continue
+            writer.writerow(
+                [
+                    export_id,
+                    item["month"],
+                    filter_static,
+                    item["modis_count"],
+                    item["viirs_snpp_count"],
+                    item["viirs_noaa20_count"],
+                    item["harmonized_value"],
+                    item["ci_low"],
+                    item["ci_high"],
+                    item["baseline_median"],
+                    item["anomaly_percent"],
+                    item["anomaly_absolute"],
+                    item["sensor_regime"],
+                    item["coverage_status"],
+                    method_version,
+                ]
+            )
+        return response
+
+    qs = HarmonizedMonthSeries.objects.filter(
+        region__code=region_code,
+        filter_static=filter_static,
+        calibration_run__is_active=True,
+    ).order_by("month")
+    if start_month:
+        qs = qs.filter(month__gte=start_month)
+    if end_month:
+        qs = qs.filter(month__lte=end_month)
+
     for row in qs:
         writer.writerow(
             [
@@ -645,3 +641,111 @@ def export_view(request):
             ]
         )
     return response
+
+
+def _export_points_csv(
+    request,
+    region_code: str,
+    filter_static: bool,
+    month_date: date | None,
+    start_month: date | None,
+    end_month: date | None,
+):
+    custom_geom, area_id, _ = parse_area_geometry(request)
+    limit = max(1, min(50000, int(request.query_params.get("limit", "10000"))))
+
+    has_time = any([month_date, start_month, end_month])
+    if not has_time and custom_geom is None:
+        return bad_request("dataset=points requires at least 'month', 'start'/'end', 'bbox', or 'polygon'.")
+
+    reg = None
+    if custom_geom is None:
+        reg = Region.objects.filter(code=region_code).first()
+
+    spatial_geom = custom_geom or (reg.geom if reg else None)
+    export_id = area_id if custom_geom is not None else region_code
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="firepulse_{export_id}_points.csv"'
+    writer = csv.writer(response)
+    writer.writerow(
+        [
+            "region",
+            "source",
+            "satellite",
+            "instrument",
+            "acquired_at",
+            "latitude",
+            "longitude",
+            "frp",
+            "brightness_mir",
+            "brightness_tir",
+            "confidence_raw",
+            "confidence_tier",
+            "daynight",
+            "hotspot_type",
+            "is_static_masked",
+            "product_version",
+            "is_nrt",
+        ]
+    )
+
+    if custom_geom is None and reg is None:
+        return response
+
+    qs = HotspotObservation.objects.all()
+    if filter_static:
+        qs = qs.filter(hotspot_type=0, is_static_masked=False)
+    if month_date:
+        qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
+    else:
+        if start_month:
+            qs = qs.filter(acquired_at__gte=start_month)
+        if end_month:
+            qs = qs.filter(acquired_at__lt=next_month(end_month))
+    if spatial_geom is not None:
+        qs = qs.filter(position__within=spatial_geom)
+
+    for obs in qs.order_by("-acquired_at")[:limit]:
+        writer.writerow(
+            [
+                export_id,
+                obs.source,
+                obs.satellite,
+                obs.instrument,
+                obs.acquired_at.isoformat(),
+                round(obs.position.y, 5),
+                round(obs.position.x, 5),
+                obs.frp,
+                obs.brightness_mir,
+                obs.brightness_tir,
+                obs.confidence_raw,
+                obs.confidence_tier,
+                obs.daynight,
+                obs.hotspot_type,
+                obs.is_static_masked,
+                obs.product_version,
+                obs.is_nrt,
+            ]
+        )
+    return response
+
+
+@api_view(["GET"])
+def export_view(request):
+    """Export monthly harmonized series or bounded raw detections as CSV."""
+    dataset = request.query_params.get("dataset", "series").lower()
+    if dataset not in {"series", "points"}:
+        return bad_request("dataset must be 'series' or 'points'.")
+
+    region_code = request.query_params.get("region", "GA")
+    filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
+    try:
+        month_date = parse_month(request.query_params.get("month"))
+        start_month = parse_month(request.query_params.get("start"))
+        end_month = parse_month(request.query_params.get("end"))
+        if dataset == "points":
+            return _export_points_csv(request, region_code, filter_static, month_date, start_month, end_month)
+        return _export_series_csv(request, region_code, filter_static, start_month, end_month)
+    except ValueError as exc:
+        return bad_request(str(exc))
