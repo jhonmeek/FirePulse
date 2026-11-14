@@ -12,6 +12,7 @@ from django.db.models import Max
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.api.fallback import regions_payload_matches_manifest, validate_snapshot_manifest
 from apps.observations.models import GridCellMonth, Region
 
 
@@ -69,13 +70,26 @@ def _build_grid_monthly_payload(filter_static: bool) -> dict:
 
 
 def _verify_snapshot_manifest(out_dir: Path, manifest: dict) -> None:
-    for entry in manifest.get("files", []):
+    try:
+        validate_snapshot_manifest(manifest)
+    except ValueError as exc:
+        raise CommandError(f"Snapshot verification failed: {exc}") from exc
+    manifest_regions = tuple(manifest["regions"])
+    for entry in manifest["files"]:
         target = out_dir / entry["file"]
         if not target.is_file():
             raise CommandError(f"Snapshot verification failed: missing {entry['file']}")
-        actual_sha = hashlib.sha256(target.read_bytes()).hexdigest()
+        raw_bytes = target.read_bytes()
+        expected_bytes = entry.get("bytes")
+        if isinstance(expected_bytes, int) and len(raw_bytes) != expected_bytes:
+            raise CommandError(f"Snapshot verification failed: byte size mismatch on {entry['file']}")
+        actual_sha = hashlib.sha256(raw_bytes).hexdigest()
         if actual_sha != entry["sha256"]:
             raise CommandError(f"Snapshot verification failed: SHA-256 mismatch on {entry['file']}")
+        if entry["file"] == "regions.json" and not regions_payload_matches_manifest(
+            raw_bytes, manifest_regions
+        ):
+            raise CommandError("Snapshot verification failed: regions.json does not match manifest regions")
 
 
 class Command(BaseCommand):

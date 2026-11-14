@@ -15,8 +15,27 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.http import HttpResponse
 
 _SAFE_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
-# Memoize (st_mtime_ns, st_size) per (resolved_path, expected_sha) so /health/ avoids re-reading all 86 files every 15s.
-_VERIFIED_FILE_SIGNATURES: dict[tuple[str, str], tuple[int, int]] = {}
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_CORE_SNAPSHOT_FILES = (
+    "health.json",
+    "regions.json",
+    "coverage.json",
+    "hotspots_static_mask_GA.json",
+    "hotspots_grid_monthly_static.json",
+    "hotspots_grid_monthly_raw.json",
+)
+_REGION_SNAPSHOT_TEMPLATES = (
+    "calendar_{code}_static.json",
+    "calendar_{code}_raw.json",
+    "anomalies_{code}_static.json",
+    "anomalies_{code}_raw.json",
+    "methodology_{code}_static.json",
+    "methodology_{code}_raw.json",
+    "hotspots_grid_cell_{code}_static.json",
+    "hotspots_grid_cell_{code}_raw.json",
+)
+# Memoize (st_mtime_ns, st_size[, regions]) per (resolved_path, expected_sha) so /health/ avoids re-reading unchanged files every 15s.
+_VERIFIED_FILE_SIGNATURES: dict[tuple[str, str], tuple] = {}
 SERIES_CSV_COLUMNS = [
     "region",
     "month",
@@ -85,28 +104,92 @@ def _resolve_snapshot_file(filename: str) -> Path | None:
     return target
 
 
+def expected_snapshot_files(regions: list[str]) -> set[str]:
+    """Return the exact set of snapshot JSON filenames expected for the declared regions."""
+    expected = set(_CORE_SNAPSHOT_FILES)
+    for code in regions:
+        for template in _REGION_SNAPSHOT_TEMPLATES:
+            expected.add(template.format(code=code))
+    return expected
+
+
+def _validate_manifest_regions(regions: object) -> list[str]:
+    if not isinstance(regions, list) or not regions:
+        raise ValueError("Manifest regions must be a non-empty list.")
+    validated: list[str] = []
+    seen: set[str] = set()
+    for code in regions:
+        if not isinstance(code, str) or not _SAFE_CODE_RE.fullmatch(code):
+            raise ValueError(f"Invalid manifest region code: {code!r}")
+        if code in seen:
+            raise ValueError(f"Duplicate manifest region code: {code}")
+        seen.add(code)
+        validated.append(code)
+    if "GA" not in seen:
+        raise ValueError("Manifest regions must include national region GA.")
+    return validated
+
+
+def validate_snapshot_manifest(manifest: object) -> dict[str, str]:
+    """Validate snapshot manifest schema, regions, unique filenames, and complete file coverage."""
+    if not isinstance(manifest, dict) or manifest.get("artifact_kind") != "firepulse-demo-snapshot":
+        raise ValueError("Unrecognized snapshot manifest artifact_kind.")
+    regions = _validate_manifest_regions(manifest.get("regions"))
+    entries = manifest.get("files")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Manifest files must be a non-empty list.")
+    expected_hashes: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Manifest file entry must be a JSON object.")
+        fname = entry.get("file")
+        sha = entry.get("sha256")
+        byte_size = entry.get("bytes")
+        if not isinstance(fname, str) or not fname:
+            raise ValueError("Manifest file entry missing non-empty filename.")
+        if fname in expected_hashes:
+            raise ValueError(f"Duplicate manifest file entry: {fname}")
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.fullmatch(sha):
+            raise ValueError(f"Invalid sha256 digest for {fname}")
+        if byte_size is not None and (
+            isinstance(byte_size, bool) or not isinstance(byte_size, int) or byte_size < 0
+        ):
+            raise ValueError(f"Invalid byte size for {fname}")
+        expected_hashes[fname] = sha
+    expected = expected_snapshot_files(regions)
+    missing = sorted(expected - expected_hashes.keys())
+    if missing:
+        raise ValueError(f"Missing required snapshot entries: {missing[:5]}")
+    unexpected = sorted(expected_hashes.keys() - expected)
+    if unexpected:
+        raise ValueError(f"Unexpected snapshot entries: {unexpected[:5]}")
+    return expected_hashes
+
+
+def regions_payload_matches_manifest(raw_bytes: bytes, manifest_regions: tuple[str, ...]) -> bool:
+    """Confirm regions.json defines the exact same region codes declared in snapshot_manifest.json."""
+    try:
+        payload = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict) or not isinstance(payload.get("regions"), list):
+        return False
+    codes = {item.get("code") for item in payload["regions"] if isinstance(item, dict)}
+    return codes == set(manifest_regions)
+
+
 def _load_verified_manifest() -> tuple[dict, dict[str, str]] | None:
     manifest_path = _resolve_snapshot_file("snapshot_manifest.json")
     if manifest_path is None:
         return None
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        expected_hashes = validate_snapshot_manifest(manifest)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return None
-    if not isinstance(manifest, dict) or manifest.get("artifact_kind") != "firepulse-demo-snapshot":
+    regions_entry = next((entry for entry in manifest["files"] if entry["file"] == "regions.json"), None)
+    if regions_entry is None or not _verify_snapshot_entry(regions_entry, tuple(manifest["regions"])):
         return None
-    entries = manifest.get("files")
-    if not isinstance(entries, list) or not entries:
-        return None
-    expected_hashes: dict[str, str] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            return None
-        fname = entry.get("file")
-        sha = entry.get("sha256")
-        if not isinstance(fname, str) or not fname or not isinstance(sha, str) or not sha:
-            return None
-        expected_hashes[fname] = sha
     return manifest, expected_hashes
 
 
@@ -134,36 +217,48 @@ def _load_snapshot_json(filename: str) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _verify_snapshot_entry(entry: dict, manifest_regions: tuple[str, ...]) -> bool:
+    fname = entry["file"]
+    target = _resolve_snapshot_file(fname)
+    if target is None:
+        return False
+    expected_sha = entry["sha256"]
+    expected_bytes = entry.get("bytes")
+    sig_key = (str(target), expected_sha)
+    try:
+        st = target.stat()
+        if isinstance(expected_bytes, int) and st.st_size != expected_bytes:
+            _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+            return False
+        sig: tuple = (
+            (st.st_mtime_ns, st.st_size, manifest_regions)
+            if fname == "regions.json"
+            else (st.st_mtime_ns, st.st_size)
+        )
+        if _VERIFIED_FILE_SIGNATURES.get(sig_key) == sig:
+            return True
+        raw_bytes = target.read_bytes()
+    except OSError:
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    if fname == "regions.json" and not regions_payload_matches_manifest(raw_bytes, manifest_regions):
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    _VERIFIED_FILE_SIGNATURES[sig_key] = sig
+    return True
+
+
 def has_offline_snapshot() -> bool:
-    """Verify manifest integrity, file presence, and SHA-256 digests for the offline snapshot."""
+    """Verify manifest completeness, region consistency, file presence, and SHA-256 digests."""
     bundle = _load_verified_manifest()
     if bundle is None:
         return False
     manifest, _ = bundle
-    for entry in manifest["files"]:
-        target = _resolve_snapshot_file(entry["file"])
-        if target is None:
-            return False
-        expected_sha = entry["sha256"]
-        expected_bytes = entry.get("bytes")
-        sig_key = (str(target), expected_sha)
-        try:
-            st = target.stat()
-            if isinstance(expected_bytes, int) and st.st_size != expected_bytes:
-                _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
-                return False
-            sig = (st.st_mtime_ns, st.st_size)
-            if _VERIFIED_FILE_SIGNATURES.get(sig_key) == sig:
-                continue
-            raw_bytes = target.read_bytes()
-        except OSError:
-            _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
-            return False
-        if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
-            _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
-            return False
-        _VERIFIED_FILE_SIGNATURES[sig_key] = sig
-    return True
+    manifest_regions = tuple(manifest["regions"])
+    return all(_verify_snapshot_entry(entry, manifest_regions) for entry in manifest["files"])
 
 
 def _in_month_str_window(month_str: str, start_month: date | None, end_month: date | None) -> bool:
