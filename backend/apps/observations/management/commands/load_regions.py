@@ -6,6 +6,7 @@ from pathlib import Path
 from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Polygon
 from django.core.management.base import BaseCommand, CommandError
 
+from apps.api.cache import invalidate_api_cache
 from apps.observations.models import Region, RegionTypeChoices
 
 
@@ -60,4 +61,5 @@ class Command(BaseCommand):
                 )
                 upserted += 1
 
+        invalidate_api_cache()
         self.stdout.write(self.style.SUCCESS(f"Loaded/updated {upserted} regions cleanly."))

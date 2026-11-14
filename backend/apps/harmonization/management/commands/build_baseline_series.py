@@ -12,6 +12,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
+from apps.api.cache import invalidate_api_cache
 from apps.harmonization.models import (
     CalibrationRun,
     CoverageStatusChoices,
@@ -110,7 +111,9 @@ def _fetch_region_monthly_counts(region_id: int, filter_static: bool) -> dict[da
                 COUNT(*) FILTER (WHERE o.source = 'modis' AND o.satellite = 'Terra') AS modis_terra_count,
                 COUNT(*) FILTER (WHERE o.source = 'modis' AND o.satellite = 'Aqua') AS modis_aqua_count,
                 COUNT(*) FILTER (WHERE o.source = 'viirs-snpp') AS viirs_snpp_count,
-                COUNT(*) FILTER (WHERE o.source = 'viirs-noaa20') AS viirs_noaa20_count
+                COUNT(*) FILTER (WHERE o.source = 'viirs-noaa20') AS viirs_noaa20_count,
+                COUNT(*) FILTER (WHERE o.source = 'viirs-snpp' AND o.is_nrt) AS viirs_snpp_nrt_count,
+                COUNT(*) FILTER (WHERE o.source = 'viirs-noaa20' AND o.is_nrt) AS viirs_noaa20_nrt_count
             FROM observations_hotspotobservation o
             JOIN observations_region r ON r.id = %s
             WHERE ST_Within(o.position, r.geom)
@@ -128,6 +131,8 @@ def _fetch_region_monthly_counts(region_id: int, filter_static: bool) -> dict[da
             "modis_aqua_count": row[3],
             "viirs_snpp_count": row[4],
             "viirs_noaa20_count": row[5],
+            "viirs_snpp_nrt_count": row[6],
+            "viirs_noaa20_nrt_count": row[7],
         }
         for row in rows
     }
@@ -283,17 +288,27 @@ def _build_series_from_params(
             ci_hi = max(0.0, math.expm1(mu + q80))
         elif SNPP_START <= m_date <= SNPP_END and snpp is not None:
             regime = SensorRegimeChoices.VIIRS_SNPP_OBSERVED
-            cov = (
-                CoverageStatusChoices.PARTIAL_SP
-                if m_date in partial_snpp
-                else CoverageStatusChoices.COMPLETE_SP
-            )
+            snpp_nrt = row.get("viirs_snpp_nrt_count", 0) or 0
+            if m_date in partial_snpp:
+                cov = CoverageStatusChoices.PARTIAL_SP
+            elif snpp > 0 and snpp_nrt >= snpp:
+                cov = CoverageStatusChoices.NRT_ONLY
+            elif snpp_nrt > 0:
+                cov = CoverageStatusChoices.MIXED_SP_NRT
+            else:
+                cov = CoverageStatusChoices.COMPLETE_SP
             hval = float(snpp)
             ci_lo = hval
             ci_hi = hval
         elif n20 is not None:
             regime = SensorRegimeChoices.VIIRS_NOAA20_BRIDGE
-            cov = CoverageStatusChoices.NRT_ONLY if m_date.year >= 2026 else CoverageStatusChoices.COMPLETE_SP
+            n20_nrt = row.get("viirs_noaa20_nrt_count", 0) or 0
+            if n20 > 0 and n20_nrt >= n20:
+                cov = CoverageStatusChoices.NRT_ONLY
+            elif n20_nrt > 0:
+                cov = CoverageStatusChoices.MIXED_SP_NRT
+            else:
+                cov = CoverageStatusChoices.NRT_ONLY if m_date.year >= 2026 else CoverageStatusChoices.COMPLETE_SP
             hval = float(n20) / n20_ratio
             ci_lo = hval * 0.90
             ci_hi = hval * 1.10
@@ -895,6 +910,7 @@ class Command(BaseCommand):
         pipeline_path = options.get("from_pipeline")
         if pipeline_path:
             _ingest_pipeline_bundle(Path(pipeline_path), self.stdout, self.style)
+            invalidate_api_cache()
             return
 
         regions = list(Region.objects.order_by("region_type", "code"))
@@ -941,4 +957,5 @@ class Command(BaseCommand):
                     f"test R2={metrics.get('models_out_of_sample', {}).get('power_law_log1p', {}).get('r2')}"
                 )
 
+        invalidate_api_cache()
         self.stdout.write(self.style.SUCCESS("Harmonization & baseline generation complete."))

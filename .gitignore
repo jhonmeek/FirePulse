@@ -20,6 +20,10 @@ npm-debug.log*
 
 # Docker / local volumes & logs
 postgres_data/
+backend/staticfiles/
+data/backups/
+*.dump
+*.dump.sha256
 *.log
 
 # Large generated artifacts (keep small backup JSONs if explicitly committed)

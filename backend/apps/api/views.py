@@ -4,12 +4,14 @@ import csv
 import json
 from datetime import date
 
-from django.db import connection
+from django.contrib.gis.db.models.functions import AsGeoJSON
+from django.db import DatabaseError, connection
 from django.db.models import Count, Max, Min, Sum
 from django.http import HttpResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from apps.api.cache import cached_api_response
 from apps.api.services import (
     bad_request,
     compute_custom_area_series,
@@ -78,12 +80,11 @@ def _in_month_window(m_date: date, start_month: date | None, end_month: date | N
 @api_view(["GET"])
 def health_view(request):
     """Verify PostgreSQL connection and PostGIS extension readiness."""
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT PostGIS_Version();")
-        postgis_version = cursor.fetchone()[0]
-
-    return Response(
-        {
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT PostGIS_Version();")
+            postgis_version = cursor.fetchone()[0]
+        payload = {
             "status": "ok",
             "database": "connected",
             "postgis_version": postgis_version,
@@ -94,62 +95,98 @@ def health_view(request):
                 "harmonized_months": HarmonizedMonthSeries.objects.count(),
             },
         }
-    )
+        res = Response(payload)
+    except DatabaseError as exc:
+        res = Response(
+            {
+                "status": "error",
+                "database": "disconnected",
+                "detail": str(exc),
+            },
+            status=503,
+        )
+    res["Cache-Control"] = "no-store"
+    return res
 
 
 @api_view(["GET"])
 def regions_view(request):
     """Return available precomputed regions with GeoJSON geometries."""
     include_geom = parse_bool(request.query_params.get("include_geom"), default=True)
-    regions = [
-        {
-            "code": reg.code,
-            "name": reg.name,
-            "region_type": reg.region_type,
-            "bbox": reg.bbox_json,
-            "is_custom_supported": reg.is_custom_supported,
-            "geometry": json.loads(reg.geom.geojson) if include_geom else None,
-        }
-        for reg in Region.objects.order_by("region_type", "code")
-    ]
-    return Response({"regions": regions})
+
+    def _produce() -> dict:
+        qs = Region.objects.order_by("region_type", "code")
+        fields = ("code", "name", "region_type", "bbox_json", "is_custom_supported")
+        if include_geom:
+            rows = qs.values(*fields).annotate(geojson_text=AsGeoJSON("geom"))
+            regions = [
+                {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "region_type": row["region_type"],
+                    "bbox": row["bbox_json"],
+                    "is_custom_supported": row["is_custom_supported"],
+                    "geometry": json.loads(row["geojson_text"]),
+                }
+                for row in rows
+            ]
+        else:
+            rows = qs.values(*fields)
+            regions = [
+                {
+                    "code": row["code"],
+                    "name": row["name"],
+                    "region_type": row["region_type"],
+                    "bbox": row["bbox_json"],
+                    "is_custom_supported": row["is_custom_supported"],
+                    "geometry": None,
+                }
+                for row in rows
+            ]
+        return {"regions": regions}
+
+    return cached_api_response("regions", request, _produce)
 
 
 @api_view(["GET"])
 def coverage_view(request):
     """Return temporal availability, versions, and processing level (SP/NRT) per source."""
     region_code = request.query_params.get("region", "GA")
-    batches = (
-        ImportBatch.objects.values("source")
-        .annotate(min_date=Min("min_date"), max_date=Max("max_date"))
-        .order_by("source")
-    )
-    levels_by_src: dict[str, set[str]] = {}
-    versions_by_src: dict[str, set[str]] = {}
-    for src, lvl, ver in ImportBatch.objects.values_list("source", "processing_level", "product_version"):
-        levels_by_src.setdefault(src, set()).add(lvl)
-        for token in (ver or "").split(","):
-            tok = token.strip()
-            if tok:
-                versions_by_src.setdefault(src, set()).add(tok)
 
-    sensors = []
-    for row in batches:
-        src = row["source"]
-        meta = SENSOR_META.get(src, {})
-        sensors.append(
-            {
-                "source": src,
-                "label": meta.get("label", src),
-                "min_date": row["min_date"].isoformat() if row["min_date"] else None,
-                "max_date": row["max_date"].isoformat() if row["max_date"] else None,
-                "operational_end_date": meta.get("operational_end_date"),
-                "processing_levels": sorted(levels_by_src.get(src, set())),
-                "product_versions": sorted(versions_by_src.get(src, set())),
-                "notes": meta.get("notes", ""),
-            }
+    def _produce() -> dict:
+        batches = (
+            ImportBatch.objects.values("source")
+            .annotate(min_date=Min("min_date"), max_date=Max("max_date"))
+            .order_by("source")
         )
-    return Response({"region": region_code, "sensors": sensors})
+        levels_by_src: dict[str, set[str]] = {}
+        versions_by_src: dict[str, set[str]] = {}
+        for src, lvl, ver in ImportBatch.objects.values_list("source", "processing_level", "product_version"):
+            levels_by_src.setdefault(src, set()).add(lvl)
+            for token in (ver or "").split(","):
+                tok = token.strip()
+                if tok:
+                    versions_by_src.setdefault(src, set()).add(tok)
+
+        sensors = []
+        for row in batches:
+            src = row["source"]
+            meta = SENSOR_META.get(src, {})
+            sensors.append(
+                {
+                    "source": src,
+                    "label": meta.get("label", src),
+                    "min_date": row["min_date"].isoformat() if row["min_date"] else None,
+                    "max_date": row["max_date"].isoformat() if row["max_date"] else None,
+                    "operational_end_date": meta.get("operational_end_date"),
+                    "processing_levels": sorted(levels_by_src.get(src, set())),
+                    "product_versions": sorted(versions_by_src.get(src, set())),
+                    "notes": meta.get("notes", ""),
+                }
+            )
+        return {"region": region_code, "sensors": sensors}
+
+    return cached_api_response("coverage", request, _produce)
 
 
 @api_view(["GET"])
@@ -164,15 +201,15 @@ def calendar_view(request):
     except ValueError as exc:
         return bad_request(str(exc))
 
-    if custom_geom is not None:
-        ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
-        series = [
-            _serialize_series_item(item)
-            for item in full_series
-            if _in_month_window(item["month_date"], start_month, end_month)
-        ]
-        return Response(
-            {
+    def _produce() -> dict:
+        if custom_geom is not None:
+            ga_run, _, full_series = compute_custom_area_series(custom_geom, filter_static)
+            series = [
+                _serialize_series_item(item)
+                for item in full_series
+                if _in_month_window(item["month_date"], start_month, end_month)
+            ]
+            return {
                 "region": {"id": area_id, "name": area_name, "filter_static": filter_static},
                 "period": {
                     "start": series[0]["month"] if series else None,
@@ -190,60 +227,56 @@ def calendar_view(request):
                 ),
                 "series": series,
             }
-        )
 
-    region = Region.objects.filter(code=region_code).first()
-    if not region:
-        return Response(
-            {
+        region = Region.objects.filter(code=region_code).first()
+        if not region:
+            return {
                 "region": {"id": region_code, "name": region_code, "filter_static": filter_static},
                 "period": {"start": None, "end": None},
                 "method": None,
                 "series": [],
             }
+
+        qs = HarmonizedMonthSeries.objects.filter(
+            region=region,
+            filter_static=filter_static,
+            calibration_run__is_active=True,
         )
+        if start_month:
+            qs = qs.filter(month__gte=start_month)
+        if end_month:
+            qs = qs.filter(month__lte=end_month)
 
-    qs = HarmonizedMonthSeries.objects.filter(
-        region=region,
-        filter_static=filter_static,
-        calibration_run__is_active=True,
-    )
-    if start_month:
-        qs = qs.filter(month__gte=start_month)
-    if end_month:
-        qs = qs.filter(month__lte=end_month)
-
-    rows = list(qs.select_related("calibration_run").order_by("month"))
-    active_run = rows[0].calibration_run if rows else CalibrationRun.objects.filter(
-        region=region, filter_static=filter_static, is_active=True
-    ).first()
-    series = [
-        {
-            "month": r.month.strftime("%Y-%m"),
-            "modis_count": r.modis_count,
-            "modis_terra_count": r.modis_terra_count,
-            "modis_aqua_count": r.modis_aqua_count,
-            "viirs_snpp_count": r.viirs_snpp_count,
-            "viirs_noaa20_count": r.viirs_noaa20_count,
-            "harmonized_value": r.harmonized_value,
-            "ci_low": r.ci_low,
-            "ci_high": r.ci_high,
-            "baseline_median": r.baseline_median,
-            "baseline_iqr": (
-                [r.baseline_iqr_p25, r.baseline_iqr_p75]
-                if r.baseline_iqr_p25 is not None and r.baseline_iqr_p75 is not None
-                else None
-            ),
-            "anomaly_percent": r.anomaly_percent,
-            "anomaly_absolute": r.anomaly_absolute,
-            "sensor_regime": r.sensor_regime,
-            "coverage_status": r.coverage_status,
-            "uncertainty_note": r.uncertainty_note,
-        }
-        for r in rows
-    ]
-    return Response(
-        {
+        rows = list(qs.select_related("calibration_run").order_by("month"))
+        active_run = rows[0].calibration_run if rows else CalibrationRun.objects.filter(
+            region=region, filter_static=filter_static, is_active=True
+        ).first()
+        series = [
+            {
+                "month": r.month.strftime("%Y-%m"),
+                "modis_count": r.modis_count,
+                "modis_terra_count": r.modis_terra_count,
+                "modis_aqua_count": r.modis_aqua_count,
+                "viirs_snpp_count": r.viirs_snpp_count,
+                "viirs_noaa20_count": r.viirs_noaa20_count,
+                "harmonized_value": r.harmonized_value,
+                "ci_low": r.ci_low,
+                "ci_high": r.ci_high,
+                "baseline_median": r.baseline_median,
+                "baseline_iqr": (
+                    [r.baseline_iqr_p25, r.baseline_iqr_p75]
+                    if r.baseline_iqr_p25 is not None and r.baseline_iqr_p75 is not None
+                    else None
+                ),
+                "anomaly_percent": r.anomaly_percent,
+                "anomaly_absolute": r.anomaly_absolute,
+                "sensor_regime": r.sensor_regime,
+                "coverage_status": r.coverage_status,
+                "uncertainty_note": r.uncertainty_note,
+            }
+            for r in rows
+        ]
+        return {
             "region": {"id": region.code, "name": region.name, "filter_static": filter_static},
             "period": {
                 "start": series[0]["month"] if series else None,
@@ -261,7 +294,8 @@ def calendar_view(request):
             ),
             "series": series,
         }
-    )
+
+    return cached_api_response("calendar", request, _produce)
 
 
 @api_view(["GET"])
@@ -277,97 +311,94 @@ def anomalies_view(request):
     except ValueError as exc:
         return bad_request(str(exc))
 
-    if custom_geom is not None:
-        _, baselines, full_series = compute_custom_area_series(custom_geom, filter_static)
-        valid = [
-            item
-            for item in full_series
-            if item["anomaly_percent"] is not None
-            and _in_month_window(item["month_date"], start_month, end_month)
-        ]
-        serialize_custom = lambda item: {
-            "month": item["month"],
-            "harmonized_value": item["harmonized_value"],
-            "baseline_median": item["baseline_median"],
-            "anomaly_percent": item["anomaly_percent"],
-            "anomaly_absolute": item["anomaly_absolute"],
-            "sensor_regime": item["sensor_regime"],
-        }
-        top_positive = [
-            serialize_custom(item)
-            for item in sorted(valid, key=lambda x: x["anomaly_percent"], reverse=True)[:top_n]
-        ]
-        top_negative = [
-            serialize_custom(item)
-            for item in sorted(valid, key=lambda x: x["anomaly_percent"])[:top_n]
-        ]
-        return Response(
-            {
+    def _produce() -> dict:
+        if custom_geom is not None:
+            _, baselines, full_series = compute_custom_area_series(custom_geom, filter_static)
+            valid = [
+                item
+                for item in full_series
+                if item["anomaly_percent"] is not None
+                and _in_month_window(item["month_date"], start_month, end_month)
+            ]
+            serialize_custom = lambda item: {
+                "month": item["month"],
+                "harmonized_value": item["harmonized_value"],
+                "baseline_median": item["baseline_median"],
+                "anomaly_percent": item["anomaly_percent"],
+                "anomaly_absolute": item["anomaly_absolute"],
+                "sensor_regime": item["sensor_regime"],
+            }
+            top_positive = [
+                serialize_custom(item)
+                for item in sorted(valid, key=lambda x: x["anomaly_percent"], reverse=True)[:top_n]
+            ]
+            top_negative = [
+                serialize_custom(item)
+                for item in sorted(valid, key=lambda x: x["anomaly_percent"])[:top_n]
+            ]
+            return {
                 "region": area_id,
                 "filter_static": filter_static,
                 "monthly_baselines": baselines,
                 "top_positive": top_positive,
                 "top_negative": top_negative,
             }
-        )
 
-    region = Region.objects.filter(code=region_code).first()
-    if not region:
-        return Response(
-            {
+        region = Region.objects.filter(code=region_code).first()
+        if not region:
+            return {
                 "region": region_code,
                 "filter_static": filter_static,
                 "monthly_baselines": [],
                 "top_positive": [],
                 "top_negative": [],
             }
-        )
 
-    baselines = [
-        {
-            "month_num": b.month_num,
-            "median": b.baseline_median,
-            "iqr_p25": b.iqr_p25,
-            "iqr_p75": b.iqr_p75,
-            "reference_years_count": b.reference_years_count,
-            "reference_period": b.reference_period,
-        }
-        for b in MonthlyBaseline.objects.filter(
+        baselines = [
+            {
+                "month_num": b.month_num,
+                "median": b.baseline_median,
+                "iqr_p25": b.iqr_p25,
+                "iqr_p75": b.iqr_p75,
+                "reference_years_count": b.reference_years_count,
+                "reference_period": b.reference_period,
+            }
+            for b in MonthlyBaseline.objects.filter(
+                region=region,
+                filter_static=filter_static,
+                calibration_run__is_active=True,
+            ).order_by("month_num")
+        ]
+        series_qs = HarmonizedMonthSeries.objects.filter(
             region=region,
             filter_static=filter_static,
             calibration_run__is_active=True,
-        ).order_by("month_num")
-    ]
-    series_qs = HarmonizedMonthSeries.objects.filter(
-        region=region,
-        filter_static=filter_static,
-        calibration_run__is_active=True,
-        anomaly_percent__isnull=False,
-    )
-    if start_month:
-        series_qs = series_qs.filter(month__gte=start_month)
-    if end_month:
-        series_qs = series_qs.filter(month__lte=end_month)
+            anomaly_percent__isnull=False,
+        )
+        if start_month:
+            series_qs = series_qs.filter(month__gte=start_month)
+        if end_month:
+            series_qs = series_qs.filter(month__lte=end_month)
 
-    serialize_anom = lambda r: {
-        "month": r.month.strftime("%Y-%m"),
-        "harmonized_value": r.harmonized_value,
-        "baseline_median": r.baseline_median,
-        "anomaly_percent": r.anomaly_percent,
-        "anomaly_absolute": r.anomaly_absolute,
-        "sensor_regime": r.sensor_regime,
-    }
-    top_positive = [serialize_anom(r) for r in series_qs.order_by("-anomaly_percent")[:top_n]]
-    top_negative = [serialize_anom(r) for r in series_qs.order_by("anomaly_percent")[:top_n]]
-    return Response(
-        {
+        serialize_anom = lambda r: {
+            "month": r.month.strftime("%Y-%m"),
+            "harmonized_value": r.harmonized_value,
+            "baseline_median": r.baseline_median,
+            "anomaly_percent": r.anomaly_percent,
+            "anomaly_absolute": r.anomaly_absolute,
+            "sensor_regime": r.sensor_regime,
+        }
+        top_positive = [serialize_anom(r) for r in series_qs.order_by("-anomaly_percent")[:top_n]]
+        top_negative = [serialize_anom(r) for r in series_qs.order_by("anomaly_percent")[:top_n]]
+        return {
             "region": region.code,
             "filter_static": filter_static,
             "monthly_baselines": baselines,
             "top_positive": top_positive,
             "top_negative": top_negative,
         }
-    )
+
+    return cached_api_response("anomalies", request, _produce)
 
 
 @api_view(["GET"])
@@ -381,6 +412,8 @@ def hotspots_view(request):
 
     if agg not in {"month", "cell"}:
         return bad_request("agg must be 'month' or 'cell'.")
+    if mode not in {"grid", "points"}:
+        return bad_request("mode must be 'grid' or 'points'.")
 
     try:
         month_date = parse_month(request.query_params.get("month"))
@@ -391,131 +424,166 @@ def hotspots_view(request):
     except ValueError as exc:
         return bad_request(str(exc))
 
-    region_geom = None
-    if region_code:
-        reg = Region.objects.filter(code=region_code).first()
-        if reg:
-            region_geom = reg.geom
+    if mode == "points" and not any([month_date, start_month, end_month]) and custom_geom is None:
+        return bad_request("mode=points requires at least 'month', 'start'/'end', 'bbox', or 'polygon'.")
 
-    spatial_filter_geom = custom_geom or region_geom
-    features: list[dict] = []
+    def _produce() -> dict:
+        region_geom = None
+        if region_code:
+            reg = Region.objects.filter(code=region_code).only("geom").first()
+            if reg:
+                region_geom = reg.geom
 
-    if mode == "points":
-        has_time = any([month_date, start_month, end_month])
-        if not has_time and custom_geom is None:
-            return bad_request("mode=points requires at least 'month', 'start'/'end', 'bbox', or 'polygon'.")
-        qs = HotspotObservation.objects.all()
-        if filter_static:
-            qs = qs.filter(hotspot_type=0, is_static_masked=False)
-        if month_date:
-            qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
-        else:
-            if start_month:
-                qs = qs.filter(acquired_at__gte=start_month)
-            if end_month:
-                qs = qs.filter(acquired_at__lt=next_month(end_month))
-        if spatial_filter_geom:
-            qs = qs.filter(position__within=spatial_filter_geom)
-        for obs in qs.order_by("-acquired_at")[:limit]:
-            features.append(
-                {
-                    "type": "Feature",
-                    "geometry": json.loads(obs.position.geojson),
-                    "properties": {
-                        "layer": "hotspot_point",
-                        "source": obs.source,
-                        "satellite": obs.satellite,
-                        "acquired_at": obs.acquired_at.isoformat(),
-                        "frp": obs.frp,
-                        "confidence_tier": obs.confidence_tier,
-                        "hotspot_type": obs.hotspot_type,
-                        "is_static_masked": obs.is_static_masked,
-                    },
-                }
-            )
-    elif mode == "grid":
-        qs = GridCellMonth.objects.filter(filter_static=filter_static)
-        if month_date:
-            qs = qs.filter(month=month_date)
-        else:
-            if start_month:
-                qs = qs.filter(month__gte=start_month)
-            if end_month:
-                qs = qs.filter(month__lte=end_month)
-        if spatial_filter_geom:
-            qs = qs.filter(geom__intersects=spatial_filter_geom)
+        spatial_filter_geom = custom_geom or region_geom
+        features: list[dict] = []
 
-        if agg == "cell":
-            grouped = (
-                qs.values("cell_id", "geom")
-                .annotate(
-                    modis_count=Sum("modis_count"),
-                    viirs_snpp_count=Sum("viirs_snpp_count"),
-                    viirs_noaa20_count=Sum("viirs_noaa20_count"),
-                    frp_sum_modis=Sum("frp_sum_modis"),
-                    frp_sum_snpp=Sum("frp_sum_snpp"),
-                    frp_sum_noaa20=Sum("frp_sum_noaa20"),
-                    months_count=Count("month"),
+        if mode == "points":
+            qs = HotspotObservation.objects.all()
+            if filter_static:
+                qs = qs.filter(hotspot_type=0, is_static_masked=False)
+            if month_date:
+                qs = qs.filter(acquired_at__year=month_date.year, acquired_at__month=month_date.month)
+            else:
+                if start_month:
+                    qs = qs.filter(acquired_at__gte=start_month)
+                if end_month:
+                    qs = qs.filter(acquired_at__lt=next_month(end_month))
+            if spatial_filter_geom:
+                qs = qs.filter(position__within=spatial_filter_geom)
+            rows = (
+                qs.annotate(geojson_text=AsGeoJSON("position"))
+                .values(
+                    "geojson_text",
+                    "source",
+                    "satellite",
+                    "acquired_at",
+                    "frp",
+                    "confidence_tier",
+                    "hotspot_type",
+                    "is_static_masked",
                 )
-                .order_by("-viirs_snpp_count", "-modis_count", "cell_id")[:limit]
+                .order_by("-acquired_at")[:limit]
             )
-            for cell in grouped:
+            for obs in rows:
                 features.append(
                     {
                         "type": "Feature",
-                        "geometry": json.loads(cell["geom"].geojson),
+                        "geometry": json.loads(obs["geojson_text"]),
                         "properties": {
-                            "layer": "grid_cell_summary",
+                            "layer": "hotspot_point",
+                            "source": obs["source"],
+                            "satellite": obs["satellite"],
+                            "acquired_at": obs["acquired_at"].isoformat(),
+                            "frp": obs["frp"],
+                            "confidence_tier": obs["confidence_tier"],
+                            "hotspot_type": obs["hotspot_type"],
+                            "is_static_masked": obs["is_static_masked"],
+                        },
+                    }
+                )
+        else:
+            qs = GridCellMonth.objects.filter(filter_static=filter_static)
+            if month_date:
+                qs = qs.filter(month=month_date)
+            else:
+                if start_month:
+                    qs = qs.filter(month__gte=start_month)
+                if end_month:
+                    qs = qs.filter(month__lte=end_month)
+            if spatial_filter_geom:
+                qs = qs.filter(geom__intersects=spatial_filter_geom)
+
+            if agg == "cell":
+                grouped = (
+                    qs.values("cell_id")
+                    .annotate(
+                        geojson_text=Max(AsGeoJSON("geom")),
+                        modis_count=Sum("modis_count"),
+                        viirs_snpp_count=Sum("viirs_snpp_count"),
+                        viirs_noaa20_count=Sum("viirs_noaa20_count"),
+                        frp_sum_modis=Sum("frp_sum_modis"),
+                        frp_sum_snpp=Sum("frp_sum_snpp"),
+                        frp_sum_noaa20=Sum("frp_sum_noaa20"),
+                        months_count=Count("month"),
+                    )
+                    .order_by("-viirs_snpp_count", "-modis_count", "cell_id")[:limit]
+                )
+                for cell in grouped:
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": json.loads(cell["geojson_text"]),
+                            "properties": {
+                                "layer": "grid_cell_summary",
+                                "cell_id": cell["cell_id"],
+                                "months_count": cell["months_count"],
+                                "modis_count": cell["modis_count"],
+                                "viirs_snpp_count": cell["viirs_snpp_count"],
+                                "viirs_noaa20_count": cell["viirs_noaa20_count"],
+                                "frp_sum_modis": round(cell["frp_sum_modis"] or 0.0, 2),
+                                "frp_sum_snpp": round(cell["frp_sum_snpp"] or 0.0, 2),
+                                "frp_sum_noaa20": round(cell["frp_sum_noaa20"] or 0.0, 2),
+                            },
+                        }
+                    )
+            else:
+                rows = (
+                    qs.annotate(geojson_text=AsGeoJSON("geom"))
+                    .values(
+                        "geojson_text",
+                        "cell_id",
+                        "month",
+                        "modis_count",
+                        "viirs_snpp_count",
+                        "viirs_noaa20_count",
+                    )
+                    .order_by("cell_id", "month")[:limit]
+                )
+                for cell in rows:
+                    features.append(
+                        {
+                            "type": "Feature",
+                            "geometry": json.loads(cell["geojson_text"]),
+                            "properties": {
+                                "layer": "grid_cell_month",
+                                "cell_id": cell["cell_id"],
+                                "month": cell["month"].strftime("%Y-%m"),
+                                "modis_count": cell["modis_count"],
+                                "viirs_snpp_count": cell["viirs_snpp_count"],
+                                "viirs_noaa20_count": cell["viirs_noaa20_count"],
+                            },
+                        }
+                    )
+
+        if include_static_cells:
+            static_qs = StaticFlareMaskCell.objects.all()
+            if spatial_filter_geom:
+                static_qs = static_qs.filter(geom__intersects=spatial_filter_geom)
+            static_rows = static_qs.annotate(geojson_text=AsGeoJSON("geom")).values(
+                "geojson_text",
+                "cell_id",
+                "type23_count",
+                "active_months_snpp",
+                "reason",
+            )[:1000]
+            for cell in static_rows:
+                features.append(
+                    {
+                        "type": "Feature",
+                        "geometry": json.loads(cell["geojson_text"]),
+                        "properties": {
+                            "layer": "static_flare_mask",
                             "cell_id": cell["cell_id"],
-                            "months_count": cell["months_count"],
-                            "modis_count": cell["modis_count"],
-                            "viirs_snpp_count": cell["viirs_snpp_count"],
-                            "viirs_noaa20_count": cell["viirs_noaa20_count"],
-                            "frp_sum_modis": round(cell["frp_sum_modis"] or 0.0, 2),
-                            "frp_sum_snpp": round(cell["frp_sum_snpp"] or 0.0, 2),
-                            "frp_sum_noaa20": round(cell["frp_sum_noaa20"] or 0.0, 2),
+                            "type23_count": cell["type23_count"],
+                            "active_months_snpp": cell["active_months_snpp"],
+                            "reason": cell["reason"],
                         },
                     }
                 )
-        else:
-            for cell in qs.order_by("cell_id", "month")[:limit]:
-                features.append(
-                    {
-                        "type": "Feature",
-                        "geometry": json.loads(cell.geom.geojson),
-                        "properties": {
-                            "layer": "grid_cell_month",
-                            "cell_id": cell.cell_id,
-                            "month": cell.month.strftime("%Y-%m"),
-                            "modis_count": cell.modis_count,
-                            "viirs_snpp_count": cell.viirs_snpp_count,
-                            "viirs_noaa20_count": cell.viirs_noaa20_count,
-                        },
-                    }
-                )
-    else:
-        return bad_request("mode must be 'grid' or 'points'.")
 
-    if include_static_cells:
-        static_qs = StaticFlareMaskCell.objects.all()
-        if spatial_filter_geom:
-            static_qs = static_qs.filter(geom__intersects=spatial_filter_geom)
-        for cell in static_qs[:1000]:
-            features.append(
-                {
-                    "type": "Feature",
-                    "geometry": json.loads(cell.geom.geojson),
-                    "properties": {
-                        "layer": "static_flare_mask",
-                        "cell_id": cell.cell_id,
-                        "type23_count": cell.type23_count,
-                        "active_months_snpp": cell.active_months_snpp,
-                        "reason": cell.reason,
-                    },
-                }
-            )
+        return {"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features}
 
-    return Response({"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features})
+    return cached_api_response("hotspots", request, _produce)
 
 
 @api_view(["GET"])
@@ -524,14 +592,14 @@ def methodology_view(request):
     region_code = request.query_params.get("region", "GA")
     filter_static = parse_bool(request.query_params.get("filter_static"), default=True)
 
-    run = CalibrationRun.objects.filter(
-        region__code=region_code,
-        filter_static=filter_static,
-        is_active=True,
-    ).first()
+    def _produce() -> dict:
+        run = CalibrationRun.objects.filter(
+            region__code=region_code,
+            filter_static=filter_static,
+            is_active=True,
+        ).first()
 
-    return Response(
-        {
+        return {
             "region": region_code,
             "filter_static": filter_static,
             "active_run": (
@@ -553,7 +621,8 @@ def methodology_view(request):
             },
             "limitations": DOCUMENTED_LIMITATIONS,
         }
-    )
+
+    return cached_api_response("methodology", request, _produce)
 
 
 def _export_series_csv(request, region_code: str, filter_static: bool, start_month: date | None, end_month: date | None):
@@ -706,7 +775,27 @@ def _export_points_csv(
     if spatial_geom is not None:
         qs = qs.filter(position__within=spatial_geom)
 
-    for obs in qs.order_by("-acquired_at")[:limit]:
+    for obs in (
+        qs.only(
+            "source",
+            "satellite",
+            "instrument",
+            "acquired_at",
+            "position",
+            "frp",
+            "brightness_mir",
+            "brightness_tir",
+            "confidence_raw",
+            "confidence_tier",
+            "daynight",
+            "hotspot_type",
+            "is_static_masked",
+            "product_version",
+            "is_nrt",
+        )
+        .order_by("-acquired_at")[:limit]
+        .iterator(chunk_size=2000)
+    ):
         writer.writerow(
             [
                 export_id,
