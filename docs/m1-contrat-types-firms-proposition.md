@@ -32,3 +32,9 @@ La persistance constitue un indicateur séparé, `in_persistent_cell`, dont les 
 `python -m pipeline.monthly_types --output data/processed/monthly-types/monthly-types.json` vérifie les empreintes du calendrier, du manifeste normalisé et des CSV, puis rapproche les comptes par type des comptes mensuels existants. L'exécution sur l'archive fournie réconcilie 292 589 détections et produit 1 208 lignes mois/plateforme. Les cinq catégories sont des champs exclusifs dans `type_counts` ; elles sont toutes `null` si le compte brut est indisponible. La persistance est `not_evaluated` dans ce premier résultat : aucune estimation par type/cellule n'est encore publiée. La commande refuse de remplacer un fichier existant ; choisir un autre chemin pour une nouvelle exécution.
 
 La structure exacte de l'API et des graphiques reste à décider avec M2/M3. Le normaliseur actuel rejette encore les entrées NRT sans `type` ; la catégorie `unavailable` du contrat et de l'agrégateur ne signifie pas que ces entrées peuvent déjà être importées.
+
+## Précontrôle d'un fichier récent
+
+`python -m pipeline.nrt_preflight --input chemin/fichier.csv --output chemin/rapport.json` inspecte un CSV fourni localement : empreinte, dates, coordonnées, heures, versions et présence du champ type. Un type absent ou vide est compté `type_unavailable`, sans le transformer en type 0 ; un code hors domaine est signalé invalide. La commande refuse de remplacer un rapport existant et renvoie un code d'échec si des anomalies sont détectées.
+
+Ce précontrôle ne télécharge ni ne normalise les observations, ne valide ni frontière ni couverture et ne prouve pas à lui seul le niveau de traitement NRT. Les cas NRT ont été vérifiés sur des données synthétiques ; aucune acquisition 2026 réelle n'est incluse.
