@@ -64,7 +64,7 @@ Réponse attendue sur `/api/v1/health/` : `"status": "ok"`, `"database": "connec
 | :--- | :--- | :--- | :--- |
 | **M1 — Data & Science** | `pipeline/`, `data/processed/`, `docs/methodology.md`, `docs/limitations.md` | Données **2026 YTD / NRT**, pont NOAA-20 post-`2026-11-02`, validation scientifique, provinces bruitées, incertitude `bbox`/`polygon` | [Section M1](docs/HANDOFF.md#pour-m1--data--science) |
 | **M2 — Backend / Geo / Infra** | `backend/`, `docker-compose.yml`, `data/boundaries/`, `docs/api-contract.json` | Modèles PostGIS, ETL idempotent, API `/api/v1/*`, requêtes spatiales, export CSV, déploiement/backup | [Section M2](docs/HANDOFF.md#pour-m2--backend--geo--infra) |
-| **M3 — Frontend / UX / Pitch** | `frontend/` *(à créer)* | UI React/Vite/Tailwind, calendrier heatmap accessible, graphes comparatifs, carte MapLibre, pitch | [Section M3](docs/HANDOFF.md#pour-m3--frontend--ux) |
+| **M3 — Frontend / UX / Pitch** | `frontend/` | UI Vue 3/TypeScript/Vite/Tailwind/Pinia, calendrier heatmap accessible, graphes comparatifs ECharts, carte MapLibre, pitch | [Section M3](docs/HANDOFF.md#pour-m3--frontend--ux) |
 
 ---
 
@@ -117,7 +117,7 @@ Pipeline scientifique pour l'analyse et l'harmonisation des détections de point
 
 ## État du développement
 
-Le premier lot implémente l'inventaire reproductible et les contrôles de qualité des CSV présents dans `data/raw/gabon`. Les données brutes restent inchangées. Les coefficients et benchmarks du guide v2 ne sont pas encore validés par ce pipeline.
+Le pipeline M1 couvre l'inventaire, les contrôles de qualité, la normalisation et les comptages mensuels des CSV présents dans `data/raw/gabon`. Les données brutes restent inchangées. Les coefficients et benchmarks du guide v2 ne sont pas encore validés par ce pipeline.
 
 ## Prérequis
 
@@ -128,9 +128,13 @@ Depuis la racine du dépôt :
 ```powershell
 python -m unittest discover -s tests -v
 python -m pipeline.inventory --input data/raw/gabon --output data/processed/audit
+python -m pipeline.normalize --input data/raw/gabon --output data/processed/normalized
+python -m pipeline.aggregate_monthly --input data/processed/normalized --output data/processed/monthly
 ```
 
 Le manifeste et le rapport qualité JSON sont des résultats d'audit, pas des séries harmonisées utilisables comme résultats scientifiques finaux. Voir `docs/m1-data-audit.md` pour les contrôles, formats, limites et instructions de reproduction.
+
+La normalisation est reproductible depuis les CSV bruts : les gros exports d'observations sont conservés localement et exclus de Git. Leurs manifestes et les petites sorties mensuelles sont versionnés pour le raccordement avec M2. Voir [le contrat M1](docs/m1-normalization.md), [la méthode](docs/methodology.md) et [les limites](docs/limitations.md). Les fichiers mensuels sont des comptages bruts et des statuts de disponibilité, pas des séries harmonisées. L'import DB correspondant reste à raccorder par M2.
 
 ## Sources et limites
 
@@ -143,4 +147,4 @@ La présence de détections ne permet pas de déduire une couverture d'observati
 
 ## Contributions M1
 
-Travail sur `m1/data-science`, contrôles et revue des changements avant proposition d'intégration dans `main`. Les artefacts d'audit sont séparés des fichiers bruts. Les étapes suivantes sont la normalisation, les agrégations mensuelles et l'évaluation de l'harmonisation.
+Travail sur `m1/data-science`, contrôles et revue des changements avant proposition d'intégration dans `main`. Les artefacts d'audit et les résultats de préparation sont séparés des fichiers bruts. Les étapes suivantes sont l'évaluation du filtrage des sources statiques, la calibration et les extensions 2026.

@@ -25,6 +25,9 @@ postgres_data/
 # Large generated artifacts (keep small backup JSONs if explicitly committed)
 data/processed/*.parquet
 data/processed/*.csv
+# Rebuildable observation-level exports; keep manifests and monthly summaries tracked.
+data/processed/normalized/*.csv
+data/processed/*.tmp.*/
 data/raw/*.zip
 
 # OS / IDE
