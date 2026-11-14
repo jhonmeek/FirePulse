@@ -1,5 +1,6 @@
 """Integration tests for PostGIS models, FIRMS ingestion helpers, and API v1 endpoints."""
 
+import csv
 import hashlib
 import json
 import tempfile
@@ -673,6 +674,50 @@ class FirePulseModelsAndApiTests(TestCase):
             (out / "coverage.json").write_text('{"corrupted": true}\n', encoding="utf-8")
             with self.assertRaises(CommandError):
                 call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+
+    def test_export_calibration_series_writes_verified_csv_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "m2_calibration_monthly_series.csv"
+            sha_path = Path(f"{csv_path}.sha256")
+            call_command(
+                "export_calibration_series",
+                output=str(csv_path),
+                source_commit="deadbeef",
+                db_source="test-postgis",
+                stdout=StringIO(),
+            )
+            manifest_path = Path(tmpdir) / "manifest.json"
+            self.assertTrue(csv_path.exists())
+            self.assertTrue(sha_path.exists())
+            self.assertTrue(manifest_path.exists())
+
+            raw_bytes = csv_path.read_bytes()
+            expected_sha = hashlib.sha256(raw_bytes).hexdigest()
+            self.assertNotIn(b"\r\n", raw_bytes)
+            self.assertEqual(sha_path.read_text(encoding="utf-8"), f"{expected_sha}  {csv_path.name}\n")
+            with csv_path.open("r", encoding="utf-8", newline="") as fh:
+                rows = list(csv.DictReader(fh))
+            self.assertEqual(len(rows), HarmonizedMonthSeries.objects.filter(calibration_run__is_active=True).count())
+            first = rows[0]
+            self.assertEqual(first["region"], "GA")
+            self.assertIn(first["filter_static"], {"true", "false"})
+            self.assertIn("modis_terra_count", first)
+            self.assertIn("modis_aqua_count", first)
+            self.assertIn("calibration_split", first)
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["artifact_kind"], "firepulse-m2-calibration-series")
+            self.assertEqual(manifest["source_commit"], "deadbeef")
+            self.assertEqual(manifest["db_provenance"]["db_source"], "test-postgis")
+            self.assertEqual(manifest["csv_sha256"], expected_sha)
+            self.assertEqual(manifest["row_count"], len(rows))
+            self.assertTrue(manifest["runs"])
+            self.assertIn("params", manifest["runs"][0])
+
+            call_command("export_calibration_series", output=str(csv_path), verify=True, stdout=StringIO())
+            csv_path.write_text("tampered\n", encoding="utf-8")
+            with self.assertRaises(CommandError):
+                call_command("export_calibration_series", output=str(csv_path), verify=True, stdout=StringIO())
 
     def test_offline_snapshot_fallback_serves_api_without_database(self) -> None:
         live_csv = self.client.get("/api/v1/export/?dataset=series&region=GA")
