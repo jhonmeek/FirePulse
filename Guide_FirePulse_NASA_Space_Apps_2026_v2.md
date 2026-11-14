@@ -22,7 +22,7 @@
 | **Période** | **2001–2025** (archives complètes) + **2000-11/12** (signalé partiel) + **2026 YTD** (`SP` + `NRT`) |
 | **Capteurs** | **MODIS** (Terra + Aqua, C6.1) + **VIIRS S-NPP** (2012–nov. 2026) + **VIIRS NOAA-20** (pont 2018–présent) |
 | **Livrable** | Application web sans compte + calendrier accessible + pipeline d'harmonisation évalué hors échantillon + export CSV |
-| **Stack** | Django / DRF + PostgreSQL / PostGIS + Python scientifique (`pandas`/`numpy`/`scipy`) + React / TypeScript / Vite / Tailwind + MapLibre GL JS + Recharts |
+| **Stack** | Django / DRF + PostgreSQL / PostGIS + Python scientifique (`pandas`/`numpy`/`scipy`) + **Vue 3** (Composition API, `<script setup>`) / TypeScript / Vite / Tailwind + **Pinia** + MapLibre GL JS + **Apache ECharts** (`vue-echarts`) + `d3-scale-chromatic` |
 
 ---
 
@@ -80,7 +80,7 @@ FirePulse transforme 25+ ans d'observations hétérogènes de points chauds (MOD
             │
             ▼  Django + Django REST Framework (endpoints JSON + GeoJSON + export CSV)
             │
-[4] React + TypeScript + Vite + Tailwind + MapLibre GL JS + Recharts
+[4] Vue 3 + TypeScript + Vite + Tailwind + Pinia + MapLibre GL JS + ECharts (vue-echarts)
 ```
 
 ### 3.2 Ce qui est déjà vérifié dans `data/raw/gabon/`
@@ -110,8 +110,10 @@ modis_viirs/
 ├── frontend/
 │   └── src/
 │       ├── types/api.ts         # Contrats TypeScript verrouillés à H2
-│       ├── services/
-│       ├── components/          # CalendarHeatmap, ComparisonChart, MapExplorer, MethodologyPanel
+│       ├── services/            # Client API (bascule mock ↔ API via VITE_USE_MOCKS)
+│       ├── stores/              # Pinia : filtres partagés (zone, période, filter_static)
+│       ├── composables/         # useMap (MapLibre), useCalendar, useAnomalies
+│       ├── components/          # CalendarHeatmap.vue, ComparisonChart.vue, MapExplorer.vue, MethodologyPanel.vue
 │       └── mocks/               # Jeu JSON réaliste pour dev parallèle H2–H12
 ├── docs/
 │   ├── methodology.md
@@ -244,10 +246,12 @@ Parcours en **1 écran principal + tiroir/onglet Méthodologie**, utilisable **s
 3. **Calendrier d'activité (Années × Mois) :**
    * Palette **accessible aux daltoniens** (ex. *Viridis* ou *Cividis* ou *YlOrRd* à fort contraste, jamais rouge/vert pur) + bordure/hachure distincte pour les mois partiels ou `NRT`.
    * Clic sur une cellule = affichage du détail du mois (valeur harmonisée vs médiane du même mois, rang historique, anomalie `+X%`, statut couverture).
-4. **Graphique comparatif multi-courbes (Recharts) :**
+   * **Implémentation :** composant Vue sur-mesure (grille CSS/SVG + `d3-scale-chromatic`), **pas** la heatmap ECharts (rendu canvas : pas de focus clavier ni d'`aria-label` par cellule).
+4. **Graphique comparatif multi-courbes (ECharts via `vue-echarts`) :**
+   * Ruban d'incertitude = 2 séries `line` empilées (`ci_low` puis `ci_high − ci_low` en aire transparente) ; `dataZoom` pour cadrer la rupture 2012.
    * Courbe MODIS brut, VIIRS brut (S-NPP + NOAA-20), et courbe **Harmonisée** avec **ruban d'incertitude** sur 2001–2011.
    * Bouton « Vue Avant / Après harmonisation » pour le storytelling immédiat face au jury.
-5. **Carte interactive (MapLibre GL JS) :**
+5. **Carte interactive (MapLibre GL JS, encapsulé dans le composable `useMap`, dessin via `terra-draw`) :**
    * Grille `0.25°` colorée par intensité ou anomalie + localisation cliquable des sites statiques masqués (`type=2/3`) + outil de tracé bbox/polygone.
 6. **Onglet Méthodologie & Limites + Bouton Export CSV.**
 
@@ -257,8 +261,8 @@ Parcours en **1 écran principal + tiroir/onglet Méthodologie**, utilisable **s
 
 | Fenêtre | M1 — Data & Science | M2 — Backend / Geo / Infra | M3 — Frontend / UX / Pitch | Critère de sortie |
 | :--- | :--- | :--- | :--- | :--- |
-| **H0–H3** | Compléter acquisition 2026 (`download/` + EULA `nrt3`), figer `api-contract.json` avec M2/M3. | Init repo, `docker-compose.yml` (PostGIS + Django), modèles Django + migrations. | Init React/Vite/Tailwind, génération `mocks/` fidèles au contrat H2. | Contrat JSON figé, Docker up, données 2000–2025 prêtes. |
-| **H3–H12** *(Jalon 1)* | Script `pipeline/` (`normalize`, `static_mask`, `grid_025`), export JSON/CSV propres Gabon. | Chargeur DB idempotent + endpoints `/regions`, `/coverage`, `/calendar` v1. | Squelette UI + Calendrier heatmap branché sur mock puis sur API locale. | **Flux réel bout-en-bout sur le Gabon affiché dans React.** |
+| **H0–H3** | Compléter acquisition 2026 (`download/` + EULA `nrt3`), figer `api-contract.json` avec M2/M3. | Init repo, `docker-compose.yml` (PostGIS + Django), modèles Django + migrations. | Init Vue 3/Vite/TS/Tailwind/Pinia, rédaction `types/api.ts`, génération `mocks/` fidèles au contrat H2. | Contrat JSON figé, Docker up, données 2000–2025 prêtes. |
+| **H3–H12** *(Jalon 1)* | Script `pipeline/` (`normalize`, `static_mask`, `grid_025`), export JSON/CSV propres Gabon. | Chargeur DB idempotent + endpoints `/regions`, `/coverage`, `/calendar` v1. | Squelette UI + Calendrier heatmap branché sur mock puis sur API locale. | **Flux réel bout-en-bout sur le Gabon affiché dans l'UI Vue.** |
 | **H12–H24** *(Jalon 2)* | Calibration Power-Law + `Terra-only` + pont NOAA-20 + intervalles conformes + benchmark `MAE/RMSE/R²`. | Endpoints `/anomalies`, `/methodology`, `/export` CSV + requête spatiale sur `GridCellMonth`. | Graphe 3 courbes + bande incertitude + toggle torchères + panneau anomalie. | **Moteur scientifique validé hors échantillon visible dans l'UI.** |
 | **H24–H34** *(Jalon 3)* | Vérif cas limites (`B=0`, `2000-11/12`, `2026 NRT`), rédaction `methodology.md` & `limitations.md`. | Endpoint `/hotspots` GeoJSON optimisé + cache/précalcul + déploiement HTTPS. | Carte MapLibre grille + dessin zone/bbox + onglet Méthodologie + Export CSV. | **Tout P0 + P1 fonctionnel et déployé en ligne.** |
 | **H34–H42** | Relecture scientifique des chiffres affichés à l'écran (zéro divergence UI/scripts). | Snapshot base / JSON précalculés de secours (démo hors-ligne prête). | Tests parcours complet (utilisateur naïf), accessibilité contrastes, capture démo. | **Démo reproductible même sans réseau NASA.** |

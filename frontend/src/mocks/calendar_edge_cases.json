@@ -1,0 +1,66 @@
+{
+  "region": { "id": "GA", "name": "Gabon", "filter_static": true },
+  "period": { "start": "2026-10", "end": "2026-12" },
+  "method": {
+    "name": "power_law_log1p_static_masked",
+    "version": "v2.0",
+    "reference_scale": "VIIRS_375m_SNPP_equiv",
+    "bridge_after_2026_11_02": "VIIRS_NOAA20"
+  },
+  "series": [
+    {
+      "modis_count": null,
+      "modis_terra_count": null,
+      "modis_aqua_count": null,
+      "viirs_snpp_count": 210,
+      "viirs_noaa20_count": 225,
+      "uncertainty_note": "",
+      "month": "2026-10",
+      "harmonized_value": 210.0,
+      "ci_low": 210.0,
+      "ci_high": 210.0,
+      "baseline_median": 120.0,
+      "baseline_iqr": [90.0, 160.0],
+      "anomaly_percent": 75.0,
+      "anomaly_absolute": 90.0,
+      "sensor_regime": "viirs_snpp_observed",
+      "coverage_status": "mixed_sp_nrt"
+    },
+    {
+      "modis_count": null,
+      "modis_terra_count": null,
+      "modis_aqua_count": null,
+      "viirs_snpp_count": null,
+      "viirs_noaa20_count": 31,
+      "uncertainty_note": "",
+      "month": "2026-11",
+      "harmonized_value": 30.0,
+      "ci_low": 27.0,
+      "ci_high": 33.0,
+      "baseline_median": 0.0,
+      "baseline_iqr": [0.0, 4.0],
+      "anomaly_percent": null,
+      "anomaly_absolute": 30.0,
+      "sensor_regime": "viirs_noaa20_bridge",
+      "coverage_status": "nrt_only"
+    },
+    {
+      "modis_count": null,
+      "modis_terra_count": null,
+      "modis_aqua_count": null,
+      "viirs_snpp_count": null,
+      "viirs_noaa20_count": null,
+      "uncertainty_note": "",
+      "month": "2026-12",
+      "harmonized_value": null,
+      "ci_low": null,
+      "ci_high": null,
+      "baseline_median": 59.0,
+      "baseline_iqr": [40.0, 80.0],
+      "anomaly_percent": null,
+      "anomaly_absolute": null,
+      "sensor_regime": "missing",
+      "coverage_status": "no_data"
+    }
+  ]
+}
