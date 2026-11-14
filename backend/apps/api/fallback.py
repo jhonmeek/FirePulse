@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from datetime import date
@@ -14,6 +15,27 @@ from django.contrib.gis.geos import GEOSGeometry
 from django.http import HttpResponse
 
 _SAFE_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_CORE_SNAPSHOT_FILES = (
+    "health.json",
+    "regions.json",
+    "coverage.json",
+    "hotspots_static_mask_GA.json",
+    "hotspots_grid_monthly_static.json",
+    "hotspots_grid_monthly_raw.json",
+)
+_REGION_SNAPSHOT_TEMPLATES = (
+    "calendar_{code}_static.json",
+    "calendar_{code}_raw.json",
+    "anomalies_{code}_static.json",
+    "anomalies_{code}_raw.json",
+    "methodology_{code}_static.json",
+    "methodology_{code}_raw.json",
+    "hotspots_grid_cell_{code}_static.json",
+    "hotspots_grid_cell_{code}_raw.json",
+)
+# Memoize (st_mtime_ns, st_size[, regions]) per (resolved_path, expected_sha) so /health/ avoids re-reading unchanged files every 15s.
+_VERIFIED_FILE_SIGNATURES: dict[tuple[str, str], tuple] = {}
 SERIES_CSV_COLUMNS = [
     "region",
     "month",
@@ -68,27 +90,175 @@ def _safe_region_code(raw: str | None, default: str = "GA") -> str | None:
     return code
 
 
-def _load_snapshot_json(filename: str) -> dict | None:
+def _resolve_snapshot_file(filename: str) -> Path | None:
     snap_dir = get_snapshot_dir()
     if not snap_dir.is_dir():
         return None
-    target = (snap_dir / filename).resolve()
     try:
         root = snap_dir.resolve()
+        target = (root / filename).resolve()
     except OSError:
         return None
     if target.parent != root or not target.is_file():
         return None
+    return target
+
+
+def expected_snapshot_files(regions: list[str]) -> set[str]:
+    """Return the exact set of snapshot JSON filenames expected for the declared regions."""
+    expected = set(_CORE_SNAPSHOT_FILES)
+    for code in regions:
+        for template in _REGION_SNAPSHOT_TEMPLATES:
+            expected.add(template.format(code=code))
+    return expected
+
+
+def _validate_manifest_regions(regions: object) -> list[str]:
+    if not isinstance(regions, list) or not regions:
+        raise ValueError("Manifest regions must be a non-empty list.")
+    validated: list[str] = []
+    seen: set[str] = set()
+    for code in regions:
+        if not isinstance(code, str) or not _SAFE_CODE_RE.fullmatch(code):
+            raise ValueError(f"Invalid manifest region code: {code!r}")
+        if code in seen:
+            raise ValueError(f"Duplicate manifest region code: {code}")
+        seen.add(code)
+        validated.append(code)
+    if "GA" not in seen:
+        raise ValueError("Manifest regions must include national region GA.")
+    return validated
+
+
+def validate_snapshot_manifest(manifest: object) -> dict[str, str]:
+    """Validate snapshot manifest schema, regions, unique filenames, and complete file coverage."""
+    if not isinstance(manifest, dict) or manifest.get("artifact_kind") != "firepulse-demo-snapshot":
+        raise ValueError("Unrecognized snapshot manifest artifact_kind.")
+    regions = _validate_manifest_regions(manifest.get("regions"))
+    entries = manifest.get("files")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Manifest files must be a non-empty list.")
+    expected_hashes: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError("Manifest file entry must be a JSON object.")
+        fname = entry.get("file")
+        sha = entry.get("sha256")
+        byte_size = entry.get("bytes")
+        if not isinstance(fname, str) or not fname:
+            raise ValueError("Manifest file entry missing non-empty filename.")
+        if fname in expected_hashes:
+            raise ValueError(f"Duplicate manifest file entry: {fname}")
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.fullmatch(sha):
+            raise ValueError(f"Invalid sha256 digest for {fname}")
+        if byte_size is not None and (
+            isinstance(byte_size, bool) or not isinstance(byte_size, int) or byte_size < 0
+        ):
+            raise ValueError(f"Invalid byte size for {fname}")
+        expected_hashes[fname] = sha
+    expected = expected_snapshot_files(regions)
+    missing = sorted(expected - expected_hashes.keys())
+    if missing:
+        raise ValueError(f"Missing required snapshot entries: {missing[:5]}")
+    unexpected = sorted(expected_hashes.keys() - expected)
+    if unexpected:
+        raise ValueError(f"Unexpected snapshot entries: {unexpected[:5]}")
+    return expected_hashes
+
+
+def regions_payload_matches_manifest(raw_bytes: bytes, manifest_regions: tuple[str, ...]) -> bool:
+    """Confirm regions.json defines the exact same region codes declared in snapshot_manifest.json."""
     try:
-        data = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict) or not isinstance(payload.get("regions"), list):
+        return False
+    codes = {item.get("code") for item in payload["regions"] if isinstance(item, dict)}
+    return codes == set(manifest_regions)
+
+
+def _load_verified_manifest() -> tuple[dict, dict[str, str]] | None:
+    manifest_path = _resolve_snapshot_file("snapshot_manifest.json")
+    if manifest_path is None:
+        return None
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_hashes = validate_snapshot_manifest(manifest)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return None
+    regions_entry = next((entry for entry in manifest["files"] if entry["file"] == "regions.json"), None)
+    if regions_entry is None or not _verify_snapshot_entry(regions_entry, tuple(manifest["regions"])):
+        return None
+    return manifest, expected_hashes
+
+
+def _load_snapshot_json(filename: str) -> dict | None:
+    bundle = _load_verified_manifest()
+    if bundle is None:
+        return None
+    _, expected_hashes = bundle
+    expected_sha = expected_hashes.get(filename)
+    if expected_sha is None:
+        return None
+    target = _resolve_snapshot_file(filename)
+    if target is None:
+        return None
+    try:
+        raw_bytes = target.read_bytes()
+    except OSError:
+        return None
+    if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
+        return None
+    try:
+        data = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None
 
 
+def _verify_snapshot_entry(entry: dict, manifest_regions: tuple[str, ...]) -> bool:
+    fname = entry["file"]
+    target = _resolve_snapshot_file(fname)
+    if target is None:
+        return False
+    expected_sha = entry["sha256"]
+    expected_bytes = entry.get("bytes")
+    sig_key = (str(target), expected_sha)
+    try:
+        st = target.stat()
+        if isinstance(expected_bytes, int) and st.st_size != expected_bytes:
+            _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+            return False
+        sig: tuple = (
+            (st.st_mtime_ns, st.st_size, manifest_regions)
+            if fname == "regions.json"
+            else (st.st_mtime_ns, st.st_size)
+        )
+        if _VERIFIED_FILE_SIGNATURES.get(sig_key) == sig:
+            return True
+        raw_bytes = target.read_bytes()
+    except OSError:
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    if hashlib.sha256(raw_bytes).hexdigest() != expected_sha:
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    if fname == "regions.json" and not regions_payload_matches_manifest(raw_bytes, manifest_regions):
+        _VERIFIED_FILE_SIGNATURES.pop(sig_key, None)
+        return False
+    _VERIFIED_FILE_SIGNATURES[sig_key] = sig
+    return True
+
+
 def has_offline_snapshot() -> bool:
-    manifest = _load_snapshot_json("snapshot_manifest.json")
-    return bool(manifest and manifest.get("artifact_kind") == "firepulse-demo-snapshot")
+    """Verify manifest completeness, region consistency, file presence, and SHA-256 digests."""
+    bundle = _load_verified_manifest()
+    if bundle is None:
+        return False
+    manifest, _ = bundle
+    manifest_regions = tuple(manifest["regions"])
+    return all(_verify_snapshot_entry(entry, manifest_regions) for entry in manifest["files"])
 
 
 def _in_month_str_window(month_str: str, start_month: date | None, end_month: date | None) -> bool:
@@ -227,8 +397,6 @@ def fallback_methodology(region_code: str, filter_static: bool) -> dict | None:
 
 
 def _region_geometry(code: str) -> GEOSGeometry | None:
-    if code == "GA":
-        return None
     regions_payload = _load_snapshot_json("regions.json")
     if regions_payload is None:
         return None
@@ -238,17 +406,18 @@ def _region_geometry(code: str) -> GEOSGeometry | None:
     return None
 
 
-def _filter_static_mask_features(filter_geom: GEOSGeometry | None) -> list[dict]:
+def _filter_static_mask_features(filter_geom: GEOSGeometry | None) -> list[dict] | None:
     mask_payload = _load_snapshot_json("hotspots_static_mask_GA.json")
     if mask_payload is None:
-        return []
+        return None
+    prepared_geom = filter_geom.prepared if filter_geom is not None else None
     out: list[dict] = []
     for feat in mask_payload.get("features", []):
         if feat.get("properties", {}).get("layer") != "static_flare_mask":
             continue
-        if filter_geom is not None:
+        if prepared_geom is not None:
             geom_obj = feat.get("geometry")
-            if not geom_obj or not filter_geom.intersects(GEOSGeometry(json.dumps(geom_obj), srid=4326)):
+            if not geom_obj or not prepared_geom.intersects(GEOSGeometry(json.dumps(geom_obj), srid=4326)):
                 continue
         out.append(feat)
         if len(out) >= 1000:
@@ -270,12 +439,23 @@ def fallback_hotspots(
 ) -> dict | None:
     if mode != "grid":
         return None
-    code = _safe_region_code(region_code, default="GA")
-    if code is None:
-        return None
+    has_region = bool(region_code and region_code.strip())
+    code: str | None = None
+    if has_region:
+        code = _safe_region_code(region_code)
+        if code is None:
+            return None
     sfx = _suffix(filter_static)
 
-    if agg == "cell" and custom_geom is None and month_date is None and start_month is None and end_month is None:
+    if (
+        agg == "cell"
+        and has_region
+        and code is not None
+        and custom_geom is None
+        and month_date is None
+        and start_month is None
+        and end_month is None
+    ):
         payload = _load_snapshot_json(f"hotspots_grid_cell_{code}_{sfx}.json")
         if payload is None:
             return None
@@ -285,25 +465,37 @@ def fallback_hotspots(
             if feat.get("properties", {}).get("layer") != "static_flare_mask"
         ][:limit]
         if include_static_cells:
-            features.extend(_filter_static_mask_features(_region_geometry(code)))
+            region_geom = _region_geometry(code)
+            if region_geom is None:
+                return None
+            static_feats = _filter_static_mask_features(region_geom)
+            if static_feats is None:
+                return None
+            features.extend(static_feats)
         return {"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features}
 
     monthly_payload = _load_snapshot_json(f"hotspots_grid_monthly_{sfx}.json")
     if monthly_payload is None:
         return None
 
-    filter_geom = custom_geom if custom_geom is not None else _region_geometry(code)
-    if code != "GA" and custom_geom is None and filter_geom is None:
-        return None
+    if custom_geom is not None:
+        filter_geom = custom_geom
+    elif has_region and code is not None:
+        filter_geom = _region_geometry(code)
+        if filter_geom is None:
+            return None
+    else:
+        filter_geom = None
 
     cells = monthly_payload.get("cells", {})
     if filter_geom is None:
         allowed_cells = set(cells.keys())
     else:
+        prepared_geom = filter_geom.prepared
         allowed_cells = {
             cid
             for cid, poly in cells.items()
-            if filter_geom.intersects(GEOSGeometry(json.dumps(poly), srid=4326))
+            if prepared_geom.intersects(GEOSGeometry(json.dumps(poly), srid=4326))
         }
 
     exact_month_str = month_date.strftime("%Y-%m") if month_date else None
@@ -389,7 +581,10 @@ def fallback_hotspots(
                 break
 
     if include_static_cells:
-        features.extend(_filter_static_mask_features(filter_geom))
+        static_feats = _filter_static_mask_features(filter_geom)
+        if static_feats is None:
+            return None
+        features.extend(static_feats)
 
     return {
         "type": "FeatureCollection",
