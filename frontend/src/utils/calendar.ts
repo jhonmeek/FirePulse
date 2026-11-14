@@ -1,5 +1,6 @@
 import { interpolatePuOr, interpolateYlOrRd } from 'd3-scale-chromatic'
 import type { CalendarPoint, CoverageStatus, SensorRegime, YearMonth } from '@/types/api'
+import type { ChartView } from '@/utils/chart'
 
 export type ColorMode = 'value' | 'anomaly'
 
@@ -106,6 +107,32 @@ export function buildMatrix(
   return rows
 }
 
+/**
+ * Vue « Avant harmonisation » du calendrier : le capteur en service à chaque époque, en brut.
+ * MODIS (Terra + Aqua) jusqu'à janvier 2012, VIIRS S-NPP à partir de février 2012
+ * (même frontière que le backend, `SNPP_START`).
+ */
+export const RAW_SWITCH: YearMonth = '2012-02'
+
+export type RawSensor = 'modis' | 'snpp'
+
+export const RAW_SENSOR_LABELS: Record<RawSensor, string> = {
+  modis: 'MODIS (Terra + Aqua)',
+  snpp: 'VIIRS S-NPP',
+}
+
+export function rawEraValue(p: CalendarPoint): { value: number | null; sensor: RawSensor } {
+  return p.month < RAW_SWITCH
+    ? { value: p.modis_count, sensor: 'modis' }
+    : { value: p.viirs_snpp_count, sensor: 'snpp' }
+}
+
+/** Valeur portée par une cellule selon la vue (harmonisée, ou brute du capteur d'époque). */
+export function displayValue(p: CalendarPoint | null, view: ChartView): number | null {
+  if (!p) return null
+  return view === 'before' ? rawEraValue(p).value : p.harmonized_value
+}
+
 /** Bornes de l'échelle : max des valeurs harmonisées affichées. */
 export function valueMax(series: CalendarPoint[]): number {
   return series.reduce((m, p) => Math.max(m, p.harmonized_value ?? 0), 0)
@@ -128,8 +155,21 @@ export const ANOMALY_CLAMP = 150
  * - `anomaly` : PuOr divergente centrée sur 0 (violet = sous la médiane, orange = au-dessus).
  * Ces deux palettes restent lisibles pour les principales formes de daltonisme.
  */
-export function cellColor(p: CalendarPoint | null, mode: ColorMode, max: number): string | null {
+export function cellColor(
+  p: CalendarPoint | null,
+  mode: ColorMode,
+  max: number,
+  view: ChartView = 'after',
+): string | null {
   if (!p || p.harmonized_value === null) return null
+  // Avant harmonisation : brut du capteur d'époque, sur la MÊME échelle que la vue harmonisée
+  // (les années MODIS paraissent pâles : c'est la rupture). Pas d'anomalie sur du brut.
+  if (view === 'before') {
+    const raw = rawEraValue(p).value
+    return raw === null
+      ? null
+      : interpolateYlOrRd(VALUE_FLOOR + (1 - VALUE_FLOOR) * valueT(raw, max))
+  }
   if (mode === 'value') {
     return interpolateYlOrRd(VALUE_FLOOR + (1 - VALUE_FLOOR) * valueT(p.harmonized_value, max))
   }

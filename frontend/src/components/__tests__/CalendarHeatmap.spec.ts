@@ -17,7 +17,7 @@ function mountHeatmap(props: Partial<InstanceType<typeof CalendarHeatmap>['$prop
       yearRange: [2001, 2025],
       colorMode: 'value',
       selectedMonth: null,
-      compareYear: null,
+      view: 'after',
       ...props,
     },
     attachTo: document.body,
@@ -32,27 +32,41 @@ describe('CalendarHeatmap', () => {
     expect(headers[0]).toBe('2001')
     expect(headers[headers.length - 2]).toBe('2025')
     // Série de comparaison : la ligne de référence vient après les années.
-    expect(headers[headers.length - 1]).toBe('Médiane')
+    expect(headers[headers.length - 1]).toBe('Normale')
     w.unmount()
   })
 
-  it('ajoute la ligne Médiane (12 mois, non tabulable) et émet compare au clic sur une année', async () => {
-    const w = mountHeatmap({ compareYear: 2024 })
+  it('ajoute la ligne Normale (12 mois, non tabulable) et des années en texte simple', () => {
+    const w = mountHeatmap()
     const rows = w.findAll('[role="row"]')
     const baseline = rows[rows.length - 1]!
     const cells = baseline.findAll('[role="gridcell"]')
     expect(cells).toHaveLength(12)
     expect(cells[7]!.attributes('aria-label')).toMatch(
-      /^Médiane de août 2001-2025 : [\d ]+ détections/,
+      /^Mois normal de août \(médiane 2001-2025, données corrigées\) : [\d\s]+ points de feu/,
     )
     expect(baseline.findAll('button')).toHaveLength(0)
-    const year2024 = w.findAll('[role="rowheader"] button').find((b) => b.text() === '2024')!
-    expect(year2024.attributes('aria-pressed')).toBe('true')
-    await w
-      .findAll('[role="rowheader"] button')
-      .find((b) => b.text() === '2010')!
-      .trigger('click')
-    expect(w.emitted('compare')).toEqual([[2010]])
+    // Plus de raccourci « comparer » sur les années (comparateur supprimé).
+    expect(w.findAll('[role="rowheader"] button')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('vue Avant : brut du capteur d’époque, repère 2012, médiane conservée', () => {
+    const w = mountHeatmap({ view: 'before', colorMode: 'anomaly' })
+    expect(w.get('[data-month="2005-08"]').attributes('aria-label')).toMatch(
+      /^août 2005 : [\d\s]+ points de feu bruts MODIS \(Terra \+ Aqua\), [\d\s]+ après correction/,
+    )
+    expect(w.get('[data-month="2012-01"]').attributes('aria-label')).toContain('bruts MODIS')
+    expect(w.get('[data-month="2013-08"]').attributes('aria-label')).toContain('bruts VIIRS S-NPP')
+    expect(w.get('[data-month="2012-02"]').classes().join(' ')).toContain(
+      'shadow-[inset_3px_0_0_#1c1917]',
+    )
+    expect(w.text()).toContain('Changement de satellite : MODIS → VIIRS (février 2012)')
+    // Mode anomalie ignoré sur du brut : légende d'intensité.
+    expect(w.text()).toContain('Points de feu (données brutes)')
+    expect(w.text()).not.toContain('Par rapport à la normale')
+    const rows = w.findAll('[role="row"]')
+    expect(rows[rows.length - 1]!.findAll('[role="gridcell"]')).toHaveLength(12)
     w.unmount()
   })
 
@@ -89,7 +103,7 @@ describe('CalendarHeatmap', () => {
   it('décrit chaque cellule pour les lecteurs d’écran', () => {
     const w = mountHeatmap()
     expect(w.get('[data-month="2024-01"]').attributes('aria-label')).toMatch(
-      /^janvier 2024 : 414 détections équivalentes VIIRS, \+\d+,\d % par rapport à la médiane/,
+      /^janvier 2024 : 414 points de feu, \+\d+,\d % par rapport à la normale/,
     )
     w.unmount()
   })
@@ -110,12 +124,12 @@ describe('MonthDetail', () => {
   it('affiche valeur, anomalie, rang et capteurs inactifs', () => {
     const p = series.find((x) => x.month === '2005-08')!
     const w = mount(MonthDetail, {
-      props: { point: p, rank: historicalRank(series, '2005-08'), pinned: true },
+      props: { point: p, rank: historicalRank(series, '2005-08'), pinned: true, view: 'after' },
     })
     const text = w.text()
     expect(text).toContain('août 2005')
     expect(text).toContain('Intervalle 80 %')
-    expect(text).toMatch(/plus élevé sur 25 août/)
+    expect(text).toMatch(/août le plus actif sur 25/)
     expect(text).toContain('MODIS Terra + Aqua reconstitué')
     expect(text).toContain('capteur non actif') // VIIRS avant 2012
   })
@@ -123,10 +137,27 @@ describe('MonthDetail', () => {
   it('gère la médiane nulle (écart absolu) et l’absence d’intervalle', () => {
     const p = edge.find((x) => x.month === '2026-11')!
     const w = mount(MonthDetail, {
-      props: { point: { ...p, ci_low: null, ci_high: null }, rank: null, pinned: false },
+      props: {
+        point: { ...p, ci_low: null, ci_high: null },
+        rank: null,
+        pinned: false,
+        view: 'after',
+      },
     })
     expect(w.text()).toContain('écart absolu, médiane nulle')
     expect(w.text()).toContain("Intervalle d'incertitude non disponible")
     expect(w.text()).toContain('provisoire')
+  })
+})
+
+describe('MonthDetail - vue Avant', () => {
+  it('met la valeur brute du capteur d’époque au premier plan', () => {
+    const p = series.find((x) => x.month === '2005-08')!
+    const w = mount(MonthDetail, { props: { point: p, rank: null, pinned: true, view: 'before' } })
+    expect(w.text()).toContain('points de feu bruts MODIS (Terra + Aqua)')
+    expect(w.text()).toContain('Données corrigées')
+    expect(w.get('.text-3xl').text()).toBe(
+      String(p.modis_count).replace(/\B(?=(\d{3})+(?!\d))/g, ' '),
+    )
   })
 })

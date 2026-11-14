@@ -15,6 +15,7 @@ import {
   TooltipComponent,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import HarmonizationToggle from '@/components/HarmonizationToggle.vue'
 import { useFiltersStore } from '@/stores/filters'
 import type { CalendarPoint, YearMonth } from '@/types/api'
 import { buildComparisonOption, clampWindow, inRange, snppModisRatio } from '@/utils/chart'
@@ -42,7 +43,7 @@ const emit = defineEmits<{ select: [month: YearMonth] }>()
 
 // Vue et zoom vivent dans le store : ils survivent à la bascule avant/après,
 // à la sélection d'un mois et aux changements de zone ou de filtre torchères.
-const { chartView: view, chartWindow } = storeToRefs(useFiltersStore())
+const { harmonizationView: view, chartWindow } = storeToRefs(useFiltersStore())
 
 const points = computed(() => inRange(props.series, props.yearRange))
 const months = computed(() => points.value.map((p) => p.month))
@@ -81,19 +82,7 @@ function onClick(e: { name?: string }) {
 <template>
   <div>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-      <div role="radiogroup" aria-label="Vue du graphe" class="segmented">
-        <label
-          v-for="v in [
-            { value: 'before', label: 'Avant harmonisation' },
-            { value: 'after', label: 'Après harmonisation' },
-          ] as const"
-          :key="v.value"
-          class="segmented-item"
-        >
-          <input v-model="view" class="sr-only" type="radio" name="chart-view" :value="v.value" />
-          {{ v.label }}
-        </label>
-      </div>
+      <HarmonizationToggle name="chart-view" />
       <p v-if="ratioLabel" class="text-xs text-stone-600">
         VIIRS S-NPP détecte <strong class="tabular-nums text-stone-900">{{ ratioLabel }}</strong>
         plus que MODIS sur 2012-2019 (même zone, mêmes mois).
@@ -125,16 +114,25 @@ function onClick(e: { name?: string }) {
       </button>
     </div>
 
-    <p class="mt-1 text-xs text-stone-500">
+    <p class="mt-1 text-xs text-stone-700">
       <template v-if="view === 'before'">
-        Sans correction, le passage MODIS (1 km) → VIIRS (375 m) en 2012 crée une rupture
-        artificielle dans la série.
+        Sans correction, le changement de satellite en 2012 (MODIS, pixels de 1 km → VIIRS, pixels
+        de 375 m) crée une rupture artificielle : la courbe saute alors que les feux, eux, n'ont pas
+        changé d'un coup.
       </template>
       <template v-else>
-        Série harmonisée = MODIS converti à l’échelle VIIRS (2000-2012, loi de puissance log1p ;
-        modèle Terra seul avant juillet 2002), puis VIIRS S-NPP observé. Zone grisée : intervalle
-        conforme 80 % (absent quand la valeur est observée). Clic sur le graphe = choisir le mois.
+        La courbe « Harmonisé » donne des chiffres comparables d'une année à l'autre. Zone grisée :
+        fourchette probable pour les années recalculées (avant 2012). Cliquez sur le graphe pour
+        choisir un mois.
       </template>
     </p>
+    <details class="mt-1 text-xs text-stone-600">
+      <summary class="cursor-pointer text-stone-700">Détails techniques</summary>
+      <p class="mt-1">
+        Série harmonisée = MODIS converti à l’échelle VIIRS (2000-2012, loi de puissance log1p ;
+        modèle Terra seul avant juillet 2002), puis VIIRS S-NPP observé. Zone grisée : intervalle
+        conforme 80 % (absent quand la valeur est observée).
+      </p>
+    </details>
   </div>
 </template>

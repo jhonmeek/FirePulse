@@ -11,6 +11,7 @@ node_modules
 .DS_Store
 dist
 dist-ssr
+dist-demo
 coverage
 *.local
 
@@ -37,3 +38,9 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

@@ -54,7 +54,7 @@ describe('ComparisonChart', () => {
     expect(w.text()).toContain('intervalle conforme 80 %')
     await w.get('input[value="before"]').setValue(true)
     expect(w.text()).toContain('rupture')
-    expect(useFiltersStore().chartView).toBe('before')
+    expect(useFiltersStore().harmonizationView).toBe('before')
   })
 
   it('conserve le zoom en basculant avant / après (revue UX)', async () => {
@@ -122,14 +122,14 @@ describe('ControlBar', () => {
       },
     })
     expect(w.get('#filter-static-count').text()).toBe(
-      '384 détections retirées (38,4 % du brut, 2001–2025)',
+      '384 détections retirées (38,4 % du total, 2001–2025)',
     )
     expect(w.get('#filter-static-help').text()).toContain(
       'type FIRMS ≠ 0 ou site industriel persistant',
     )
     await w.get('input[type="checkbox"]').setValue(false)
     expect(w.get('#filter-static-count').text()).toBe(
-      '384 détections que le filtre retirerait (38,4 % du brut, 2001–2025)',
+      '384 détections que le filtre retirerait (38,4 % du total, 2001–2025)',
     )
   })
 

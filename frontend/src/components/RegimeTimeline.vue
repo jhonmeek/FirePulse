@@ -55,7 +55,7 @@ const ticks = [2001, 2005, 2010, 2015, 2020, 2025]
 </script>
 
 <template>
-  <figure class="text-xs text-stone-700">
+  <figure class="text-xs text-stone-900">
     <figcaption class="mb-1 font-medium text-stone-800">Régimes d'observation</figcaption>
     <div class="relative h-7 overflow-hidden rounded-md">
       <div

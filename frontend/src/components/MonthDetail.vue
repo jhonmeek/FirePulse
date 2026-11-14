@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CalendarPoint } from '@/types/api'
+import type { ChartView } from '@/utils/chart'
 import {
   COVERAGE_LABELS,
   MONTHS_LONG,
+  RAW_SENSOR_LABELS,
   REGIME_LABELS,
   formatAnomaly,
   formatCount,
   isProvisional,
   monthLabel,
+  rawEraValue,
 } from '@/utils/calendar'
 
 const props = defineProps<{
@@ -16,11 +19,20 @@ const props = defineProps<{
   rank: { rank: number; total: number } | null
   /** true = mois épinglé par clic ; false = aperçu au survol. */
   pinned: boolean
+  /** true = aucun mois choisi : affichage par défaut du dernier mois disponible. */
+  latest?: boolean
+  /** Vue Avant : la valeur brute du capteur d'époque passe au premier plan. */
+  view: ChartView
 }>()
 
 const emit = defineEmits<{ unpin: [] }>()
 
 const p = computed(() => props.point)
+const monthName = computed(() => (p.value ? (MONTHS_LONG[+p.value.month.slice(5) - 1] ?? '') : ''))
+const deMonth = computed(() =>
+  /^[aeiou]/.test(monthName.value) ? `d'${monthName.value}` : `de ${monthName.value}`,
+)
+const raw = computed(() => (p.value ? rawEraValue(p.value) : null))
 const observed = computed(
   () => p.value && p.value.ci_low !== null && p.value.ci_low === p.value.ci_high,
 )
@@ -46,10 +58,17 @@ const rawRows = computed(() =>
     <template v-if="p">
       <header class="flex items-start justify-between gap-2">
         <div>
-          <p class="text-xs uppercase tracking-wide text-stone-500">
-            {{ pinned ? 'Mois sélectionné' : 'Aperçu' }}
+          <p class="text-xs uppercase tracking-wide text-stone-600">
+            {{ pinned ? 'Mois sélectionné' : latest ? 'Dernier mois disponible' : 'Aperçu' }}
           </p>
-          <h2 class="text-lg font-semibold capitalize text-stone-900">{{ monthLabel(p.month) }}</h2>
+          <h2 class="text-lg font-semibold capitalize text-stone-900">
+            {{ monthLabel(p.month) }}
+            <span
+              v-if="isProvisional(p.coverage_status)"
+              class="ml-1 align-middle rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal normal-case text-amber-900"
+              >provisoire</span
+            >
+          </h2>
         </div>
         <button
           v-if="pinned"
@@ -62,55 +81,80 @@ const rawRows = computed(() =>
       </header>
 
       <template v-if="p.harmonized_value !== null">
-        <p class="mt-3">
+        <template v-if="view === 'before' && raw">
+          <p class="mt-3">
+            <span class="text-3xl font-semibold tabular-nums text-stone-900">{{
+              formatCount(raw.value)
+            }}</span>
+            <span class="ml-1 text-stone-600"
+              >points de feu bruts {{ RAW_SENSOR_LABELS[raw.sensor] }}</span
+            >
+          </p>
+          <p class="text-stone-700">
+            Données corrigées :
+            <strong class="tabular-nums">{{ formatCount(p.harmonized_value) }}</strong>
+          </p>
+        </template>
+        <p v-else class="mt-3">
           <span class="text-3xl font-semibold tabular-nums text-stone-900">{{
             formatCount(p.harmonized_value)
           }}</span>
-          <span class="ml-1 text-stone-600">détections équivalentes VIIRS 375 m</span>
+          <span class="ml-1 text-stone-600">points de feu détectés</span>
         </p>
         <p v-if="!observed && p.ci_low !== null" class="text-stone-600">
-          Intervalle 80 % : {{ formatCount(p.ci_low) }} – {{ formatCount(p.ci_high) }}
+          Estimation recalculée : probablement entre {{ formatCount(p.ci_low) }} et
+          {{ formatCount(p.ci_high) }}
         </p>
-        <p v-else-if="observed" class="text-stone-600">
-          Valeur observée directement (sans reconstitution)
-        </p>
-        <p v-else class="text-stone-600">Intervalle d'incertitude non disponible pour cette zone</p>
+        <p v-else-if="observed" class="text-stone-600">Compté directement par le satellite</p>
+        <p v-else class="text-stone-600">Marge d'erreur non disponible pour cette zone</p>
 
         <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-          <dt class="text-stone-600">Médiane de {{ MONTHS_LONG[+p.month.slice(5) - 1] }}</dt>
+          <dt class="text-stone-600">Un mois {{ deMonth }} normal</dt>
           <dd class="tabular-nums">
             {{ formatCount(p.baseline_median) }}
-            <span v-if="p.baseline_iqr" class="text-stone-500">
-              (IQR {{ formatCount(p.baseline_iqr[0]) }} – {{ formatCount(p.baseline_iqr[1]) }})
+            <span v-if="p.baseline_iqr" class="text-stone-600">
+              (souvent entre {{ formatCount(p.baseline_iqr[0]) }} et
+              {{ formatCount(p.baseline_iqr[1]) }})
             </span>
           </dd>
-          <dt class="text-stone-600">Anomalie</dt>
+          <dt class="text-stone-600">Écart à la normale</dt>
           <dd :class="['font-semibold tabular-nums', anomalyTone]">{{ formatAnomaly(p) }}</dd>
           <template v-if="rank">
-            <dt class="text-stone-600">Rang historique</dt>
+            <dt class="text-stone-600">Classement</dt>
             <dd>
-              {{ rank.rank === 1 ? '1er' : `${rank.rank}e` }} plus élevé sur {{ rank.total }}
-              {{ MONTHS_LONG[+p.month.slice(5) - 1] }} (2001–2025)
+              {{ rank.rank === 1 ? '1er' : `${rank.rank}e` }} {{ monthName }} le plus actif sur
+              {{ rank.total }} (2001–2025)
             </dd>
           </template>
-          <dt class="text-stone-600">Régime capteur</dt>
-          <dd>{{ REGIME_LABELS[p.sensor_regime] }}</dd>
-          <dt class="text-stone-600">Couverture</dt>
-          <dd>
-            {{ COVERAGE_LABELS[p.coverage_status] }}
-            <span
-              v-if="isProvisional(p.coverage_status)"
-              class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900"
-              >provisoire</span
-            >
-          </dd>
         </dl>
       </template>
       <p v-else class="mt-3 text-stone-600">Aucune donnée exploitable pour ce mois.</p>
 
+      <!-- Détail technique : un clic plus loin. -->
       <details class="mt-4">
-        <summary class="cursor-pointer text-stone-700">Détections brutes par capteur</summary>
-        <table class="mt-2 w-full text-left">
+        <summary class="cursor-pointer text-stone-700">Détails techniques</summary>
+        <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+          <dt class="text-stone-600">Satellite</dt>
+          <dd>{{ REGIME_LABELS[p.sensor_regime] }}</dd>
+          <dt class="text-stone-600">Couverture</dt>
+          <dd>{{ COVERAGE_LABELS[p.coverage_status] }}</dd>
+          <template v-if="p.harmonized_value !== null">
+            <dt class="text-stone-600">Unité</dt>
+            <dd>Détections équivalentes VIIRS 375 m</dd>
+            <template v-if="!observed && p.ci_low !== null">
+              <dt class="text-stone-600">Intervalle 80 %</dt>
+              <dd class="tabular-nums">
+                {{ formatCount(p.ci_low) }} – {{ formatCount(p.ci_high) }} (intervalle conforme)
+              </dd>
+            </template>
+            <template v-else-if="p.ci_low === null && !observed">
+              <dt class="text-stone-600">Intervalle</dt>
+              <dd>Intervalle d'incertitude non disponible</dd>
+            </template>
+          </template>
+        </dl>
+        <p class="mt-3 font-medium text-stone-700">Détections brutes par capteur</p>
+        <table class="mt-1 w-full text-left">
           <tbody>
             <tr v-for="r in rawRows" :key="r.label" class="border-t border-stone-100">
               <th scope="row" class="py-1 font-normal text-stone-600">{{ r.label }}</th>
@@ -120,9 +164,14 @@ const rawRows = computed(() =>
             </tr>
           </tbody>
         </table>
+        <p v-if="p.uncertainty_note" class="mt-3 text-xs text-stone-600">
+          {{ p.uncertainty_note }}
+        </p>
       </details>
 
-      <p v-if="p.uncertainty_note" class="mt-3 text-xs text-stone-500">{{ p.uncertainty_note }}</p>
+      <p v-if="!pinned" class="mt-3 text-xs text-stone-600">
+        Survolez le calendrier pour voir un autre mois ; cliquez pour le garder affiché.
+      </p>
     </template>
 
     <p v-else class="text-stone-600">
