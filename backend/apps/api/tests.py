@@ -659,6 +659,8 @@ class FirePulseModelsAndApiTests(TestCase):
                 "anomalies_GA_static.json",
                 "methodology_GA_static.json",
                 "hotspots_grid_cell_GA_static.json",
+                "hotspots_grid_monthly_static.json",
+                "hotspots_grid_monthly_raw.json",
                 "hotspots_static_mask_GA.json",
             ):
                 self.assertIn(expected_file, exported_names)
@@ -765,6 +767,46 @@ class FirePulseModelsAndApiTests(TestCase):
                     layers = {f["properties"]["layer"] for f in spots.json()["features"]}
                     self.assertIn("grid_cell_summary", layers)
                     self.assertIn("static_flare_mask", layers)
+
+                    spots_range = self.client.get(
+                        "/api/v1/hotspots/?region=GA&start=2001-01&end=2025-12&filter_static=true&mode=grid&agg=cell&include_static_cells=true&limit=5000"
+                    )
+                    self.assertEqual(spots_range.status_code, 200)
+                    self.assertEqual(spots_range["X-FirePulse-Cache"], "FALLBACK")
+                    spots_range_data = spots_range.json()
+                    self.assertEqual(spots_range_data["mode"], "grid")
+                    self.assertEqual(spots_range_data["agg"], "cell")
+                    range_layers = {f["properties"]["layer"] for f in spots_range_data["features"]}
+                    self.assertIn("grid_cell_summary", range_layers)
+                    self.assertIn("static_flare_mask", range_layers)
+
+                    spots_month = self.client.get(
+                        "/api/v1/hotspots/?region=GA&month=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_month.status_code, 200)
+                    self.assertEqual(spots_month["X-FirePulse-Cache"], "FALLBACK")
+                    grid_features = [
+                        f for f in spots_month.json()["features"] if f["properties"]["layer"] == "grid_cell_summary"
+                    ]
+                    self.assertEqual(len(grid_features), 1)
+                    self.assertEqual(grid_features[0]["properties"]["viirs_snpp_count"], 42)
+
+                    spots_agg_month = self.client.get(
+                        "/api/v1/hotspots/?region=GA&start=2024-08&end=2024-08&filter_static=true&mode=grid&agg=month"
+                    )
+                    self.assertEqual(spots_agg_month.status_code, 200)
+                    self.assertEqual(spots_agg_month["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(spots_agg_month.json()["features"][0]["properties"]["layer"], "grid_cell_month")
+                    self.assertEqual(spots_agg_month.json()["features"][0]["properties"]["month"], "2024-08")
+
+                    spots_bbox = self.client.get(
+                        "/api/v1/hotspots/?bbox=11.0,-2.0,12.0,-1.0&start=2024-08&end=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_bbox.status_code, 200)
+                    self.assertEqual(spots_bbox["X-FirePulse-Cache"], "FALLBACK")
+                    bbox_cell_ids = {f["properties"]["cell_id"] for f in spots_bbox.json()["features"]}
+                    self.assertIn("-1.50_11.50", bbox_cell_ids)
+                    self.assertNotIn("-1.95_9.85", bbox_cell_ids)
 
                     csv_fb = self.client.get("/api/v1/export/?dataset=series&region=GA")
                     self.assertEqual(csv_fb.status_code, 200)

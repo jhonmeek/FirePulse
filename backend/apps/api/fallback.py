@@ -10,6 +10,7 @@ from io import StringIO
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.gis.geos import GEOSGeometry
 from django.http import HttpResponse
 
 _SAFE_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -225,6 +226,36 @@ def fallback_methodology(region_code: str, filter_static: bool) -> dict | None:
     return _load_snapshot_json(f"methodology_{code}_{_suffix(filter_static)}.json")
 
 
+def _region_geometry(code: str) -> GEOSGeometry | None:
+    if code == "GA":
+        return None
+    regions_payload = _load_snapshot_json("regions.json")
+    if regions_payload is None:
+        return None
+    for item in regions_payload.get("regions", []):
+        if item.get("code") == code and item.get("geometry"):
+            return GEOSGeometry(json.dumps(item["geometry"]), srid=4326)
+    return None
+
+
+def _filter_static_mask_features(filter_geom: GEOSGeometry | None) -> list[dict]:
+    mask_payload = _load_snapshot_json("hotspots_static_mask_GA.json")
+    if mask_payload is None:
+        return []
+    out: list[dict] = []
+    for feat in mask_payload.get("features", []):
+        if feat.get("properties", {}).get("layer") != "static_flare_mask":
+            continue
+        if filter_geom is not None:
+            geom_obj = feat.get("geometry")
+            if not geom_obj or not filter_geom.intersects(GEOSGeometry(json.dumps(geom_obj), srid=4326)):
+                continue
+        out.append(feat)
+        if len(out) >= 1000:
+            break
+    return out
+
+
 def fallback_hotspots(
     mode: str,
     agg: str,
@@ -237,31 +268,128 @@ def fallback_hotspots(
     end_month: date | None,
     custom_geom,
 ) -> dict | None:
-    if mode != "grid" or agg != "cell" or custom_geom is not None or any([month_date, start_month, end_month]):
+    if mode != "grid":
         return None
     code = _safe_region_code(region_code, default="GA")
     if code is None:
         return None
     sfx = _suffix(filter_static)
-    payload = _load_snapshot_json(f"hotspots_grid_cell_{code}_{sfx}.json")
-    if payload is None:
+
+    if agg == "cell" and custom_geom is None and month_date is None and start_month is None and end_month is None:
+        payload = _load_snapshot_json(f"hotspots_grid_cell_{code}_{sfx}.json")
+        if payload is None:
+            return None
+        features = [
+            feat
+            for feat in payload.get("features", [])
+            if feat.get("properties", {}).get("layer") != "static_flare_mask"
+        ][:limit]
+        if include_static_cells:
+            features.extend(_filter_static_mask_features(_region_geometry(code)))
+        return {"type": "FeatureCollection", "mode": mode, "agg": agg, "features": features}
+
+    monthly_payload = _load_snapshot_json(f"hotspots_grid_monthly_{sfx}.json")
+    if monthly_payload is None:
         return None
 
-    features = [
-        feat
-        for feat in payload.get("features", [])
-        if feat.get("properties", {}).get("layer") != "static_flare_mask"
-    ][:limit]
+    filter_geom = custom_geom if custom_geom is not None else _region_geometry(code)
+    if code != "GA" and custom_geom is None and filter_geom is None:
+        return None
+
+    cells = monthly_payload.get("cells", {})
+    if filter_geom is None:
+        allowed_cells = set(cells.keys())
+    else:
+        allowed_cells = {
+            cid
+            for cid, poly in cells.items()
+            if filter_geom.intersects(GEOSGeometry(json.dumps(poly), srid=4326))
+        }
+
+    exact_month_str = month_date.strftime("%Y-%m") if month_date else None
+    rows = monthly_payload.get("rows", [])
+
+    features = []
+    if agg == "cell":
+        grouped: dict[str, dict] = {}
+        for cell_id, m_str, mod, snpp, n20, fm, fs, fn in rows:
+            if cell_id not in allowed_cells:
+                continue
+            if exact_month_str is not None:
+                if m_str != exact_month_str:
+                    continue
+            elif not _in_month_str_window(m_str, start_month, end_month):
+                continue
+            acc = grouped.setdefault(
+                cell_id,
+                {
+                    "months_count": 0,
+                    "modis_count": 0,
+                    "viirs_snpp_count": 0,
+                    "viirs_noaa20_count": 0,
+                    "frp_sum_modis": 0.0,
+                    "frp_sum_snpp": 0.0,
+                    "frp_sum_noaa20": 0.0,
+                },
+            )
+            acc["months_count"] += 1
+            acc["modis_count"] += mod
+            acc["viirs_snpp_count"] += snpp
+            acc["viirs_noaa20_count"] += n20
+            acc["frp_sum_modis"] += fm
+            acc["frp_sum_snpp"] += fs
+            acc["frp_sum_noaa20"] += fn
+
+        ordered = sorted(
+            grouped.items(),
+            key=lambda kv: (-kv[1]["viirs_snpp_count"], -kv[1]["modis_count"], kv[0]),
+        )[:limit]
+        for cell_id, acc in ordered:
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": cells[cell_id],
+                    "properties": {
+                        "layer": "grid_cell_summary",
+                        "cell_id": cell_id,
+                        "months_count": acc["months_count"],
+                        "modis_count": acc["modis_count"],
+                        "viirs_snpp_count": acc["viirs_snpp_count"],
+                        "viirs_noaa20_count": acc["viirs_noaa20_count"],
+                        "frp_sum_modis": round(acc["frp_sum_modis"], 2),
+                        "frp_sum_snpp": round(acc["frp_sum_snpp"], 2),
+                        "frp_sum_noaa20": round(acc["frp_sum_noaa20"], 2),
+                    },
+                }
+            )
+    else:
+        for cell_id, m_str, mod, snpp, n20, _fm, _fs, _fn in rows:
+            if cell_id not in allowed_cells:
+                continue
+            if exact_month_str is not None:
+                if m_str != exact_month_str:
+                    continue
+            elif not _in_month_str_window(m_str, start_month, end_month):
+                continue
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": cells[cell_id],
+                    "properties": {
+                        "layer": "grid_cell_month",
+                        "cell_id": cell_id,
+                        "month": m_str,
+                        "modis_count": mod,
+                        "viirs_snpp_count": snpp,
+                        "viirs_noaa20_count": n20,
+                    },
+                }
+            )
+            if len(features) >= limit:
+                break
 
     if include_static_cells:
-        mask_payload = _load_snapshot_json("hotspots_static_mask_GA.json")
-        if mask_payload is not None:
-            static_features = [
-                feat
-                for feat in mask_payload.get("features", [])
-                if feat.get("properties", {}).get("layer") == "static_flare_mask"
-            ][:1000]
-            features.extend(static_features)
+        features.extend(_filter_static_mask_features(filter_geom))
 
     return {
         "type": "FeatureCollection",
