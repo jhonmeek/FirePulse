@@ -62,15 +62,22 @@ const month = (iso: string) => iso.slice(0, 7)
       </p>
 
       <section aria-labelledby="proof-title">
-        <h3 id="proof-title" class="text-base font-semibold text-stone-900">
-          Validation hors échantillon
+        <h3
+          id="proof-title"
+          class="flex flex-wrap items-center gap-2 text-base font-semibold text-stone-900"
+        >
+          Évaluation hors échantillon
+          <span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+            >protocole en revue scientifique (M1)</span
+          >
         </h3>
         <p class="mt-1 text-stone-600">
-          Calibration sur {{ month(run.train_window[0]) }} → {{ month(run.train_window[1]) }}
+          Paramètres ajustés sur {{ month(run.train_window[0]) }} →
+          {{ month(run.train_window[1]) }}
           <template v-if="run.metrics.train_months">({{ run.metrics.train_months }} mois)</template
-          >, test sur {{ month(run.test_window[0]) }} → {{ month(run.test_window[1]) }}
+          >, erreurs mesurées sur {{ month(run.test_window[0]) }} → {{ month(run.test_window[1]) }}
           <template v-if="run.metrics.test_months"
-            >({{ run.metrics.test_months }} mois jamais vus)</template
+            >({{ run.metrics.test_months }} mois non utilisés pour l’ajustement)</template
           >. Cible : comptages VIIRS S-NPP observés ; entrée : MODIS du même mois.
         </p>
 
@@ -78,13 +85,31 @@ const month = (iso: string) => iso.slice(0, 7)
           v-if="selected && gainNaive !== null"
           class="mt-3 rounded-md bg-stone-100 p-3 text-stone-800"
         >
-          Le modèle retenu (<strong>{{ selected.label }}</strong
-          >) réduit l’erreur moyenne de <strong>{{ pct(gainNaive) }}</strong> par rapport à
+          Sur la période test, le modèle retenu (<strong>{{ selected.label }}</strong
+          >) présente une erreur moyenne inférieure de <strong>{{ pct(gainNaive) }}</strong> à
           l’absence de correction<template v-if="gainRatio !== null">
-            et de <strong>{{ pct(gainRatio) }}</strong> par rapport au ratio global</template
+            et de <strong>{{ pct(gainRatio) }}</strong> au ratio global</template
           >, avec R² = <strong>{{ nf(selected.r2, 3) }}</strong
           >.
         </p>
+
+        <div class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950">
+          <p class="font-medium">Points en cours de revue avant validation</p>
+          <ul class="mt-1 list-disc space-y-1 pl-5">
+            <li>
+              L’intervalle 80 % est calibré sur les résidus de la période test : sa couverture n’est
+              pas évaluée de façon indépendante.
+            </li>
+            <li>
+              Le choix du modèle retenu s’appuie sur un benchmark réalisé sur la même fenêtre test :
+              son score peut être légèrement optimiste.
+            </li>
+            <li>
+              Le masque torchères est construit avec les détections de toute la période, test
+              comprise.
+            </li>
+          </ul>
+        </div>
 
         <p v-if="run.metrics.note" class="mt-3 text-stone-600">{{ run.metrics.note }}</p>
 

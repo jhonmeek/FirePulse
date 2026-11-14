@@ -8,7 +8,7 @@ type AreaOnly = Omit<AreaQuery, 'filter_static' | 'start' | 'end'>
 /**
  * Séries calendrier de la zone courante, **avec et sans** filtre torchères :
  * - le toggle bascule instantanément (pas de requête) ;
- * - la différence des deux donne le nombre de détections masquées.
+ * - la différence des deux donne le nombre de détections retirées par le filtre.
  * L'historique complet est chargé (sans start/end) : rang et médiane restent justes
  * quand la plage d'années est réduite, filtrée côté client.
  */

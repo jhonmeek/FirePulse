@@ -68,7 +68,7 @@ describe('AnomaliesPanel', () => {
 })
 
 describe('ControlBar', () => {
-  it('affiche le compteur de détections masquées selon le toggle', async () => {
+  it('affiche le compteur de détections retirées, sa période et sa définition', async () => {
     setActivePinia(createPinia())
     const w = mount(ControlBar, {
       props: {
@@ -77,11 +77,24 @@ describe('ControlBar', () => {
         masked: { total: 1000, masked: 384, share: 0.384 },
       },
     })
-    expect(w.get('#filter-static-count').text()).toBe('384 détections masquées (38,4 % du brut)')
+    expect(w.get('#filter-static-count').text()).toBe(
+      '384 détections retirées (38,4 % du brut, 2001–2025)',
+    )
+    expect(w.get('#filter-static-help').text()).toContain(
+      'type FIRMS ≠ 0 ou site industriel persistant',
+    )
     await w.get('input[type="checkbox"]').setValue(false)
     expect(w.get('#filter-static-count').text()).toBe(
-      '384 détections de sources statiques incluses (38,4 %)',
+      '384 détections que le filtre retirerait (38,4 % du brut, 2001–2025)',
     )
+  })
+
+  it('n’affiche plus « masquées » (terme ambigu relevé en revue M1)', () => {
+    setActivePinia(createPinia())
+    const w = mount(ControlBar, {
+      props: { regions: [], availableYears: [], masked: { total: 10, masked: 4, share: 0.4 } },
+    })
+    expect(w.text()).not.toMatch(/masquées/)
   })
 })
 
@@ -91,10 +104,15 @@ describe('MethodologyPanel', () => {
       props: { region: 'GA', filterStatic: true, customArea: false },
     })
     // Le mock JSON est importé dynamiquement : plusieurs ticks avant le rendu.
-    await vi.waitFor(() => expect(w.text()).toContain('Validation hors échantillon'))
+    await vi.waitFor(() => expect(w.text()).toContain('Évaluation hors échantillon'))
     const text = w.text()
-    expect(text).toContain('Validation hors échantillon')
-    expect(text).toMatch(/réduit l’erreur moyenne de \d+ %/)
+    expect(text).toContain('protocole en revue scientifique (M1)')
+    expect(text).toMatch(/erreur moyenne inférieure de \d+ %/)
+    // Réserves de la revue M1 (PR #9) affichées tant que le protocole n'est pas validé.
+    expect(text).toContain('calibré sur les résidus de la période test')
+    expect(text).toContain('même fenêtre test')
+    expect(text).toContain('test comprise')
+    expect(text).not.toMatch(/validation hors échantillon|validé/i)
     expect(w.findAll('tbody tr')).toHaveLength(5)
     expect(w.get('tbody tr.bg-orange-50').text()).toContain('Loi de puissance log1p')
     expect(text).toContain('183 cellules')
