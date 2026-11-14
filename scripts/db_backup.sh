@@ -18,6 +18,7 @@ elif command -v shasum >/dev/null 2>&1; then
 fi
 
 echo "[2/3] Exporting offline JSON demo snapshot: ${SNAPSHOT_DIR}"
-docker compose exec -T backend python manage.py export_demo_snapshot --output "/data/backups/demo_snapshot"
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" docker compose exec -T backend python manage.py export_demo_snapshot --output "/data/backups/demo_snapshot"
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" docker compose exec -T backend python manage.py export_demo_snapshot --output "/data/backups/demo_snapshot" --verify
 
 echo "[3/3] Done. Backup size: $(wc -c < "${DUMP_PATH}") bytes"

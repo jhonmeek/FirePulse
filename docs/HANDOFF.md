@@ -124,7 +124,7 @@ curl "http://localhost:8000/api/v1/export/?dataset=points&region=GA&month=2024-0
   - `load_regions.py` : charge [data/boundaries/gabon_adm0.geojson](../data/boundaries/gabon_adm0.geojson) + [gabon_adm1.geojson](../data/boundaries/gabon_adm1.geojson) (avec `.strip()` sur les noms contenant des tabulations comme `Ogooué-Ivindo`).
   - `import_firms.py` : déduplication fichier (`ImportBatch.file_sha256`) + ligne (`HotspotObservation.original_hash`) et détection NRT par colonne `version` en plus du nom de fichier. Attention côté SQL : `ROUND()` Postgres exige un cast `::numeric`.
   - `build_baseline_series.py` : conserve `2012-01` en régime `modis_terra_aqua` (`SNPP_START = 2012-02-01`) et supporte `--from-pipeline <bundle.json>` pour ingérer les sorties M1.
-- **Chantiers H24–H34 M2 (en place) :**
-  - Cache API v1 avec invalidation inter-processus (`apps/api/cache.py`), compression `GZipMiddleware`, requêtes `AsGeoJSON` PostGIS (`views.py`), détection `mixed_sp_nrt` / `nrt_only` 2026 (`build_baseline_series.py`) et `/health/` structuré (`503` si DB indisponible).
+- **Chantiers H24–H42 M2 (en place) :**
+  - Cache API v1 avec invalidation inter-processus (`apps/api/cache.py`), compression `GZipMiddleware`, requêtes `AsGeoJSON` PostGIS (`views.py`), détection `mixed_sp_nrt` / `nrt_only` 2026 (`build_baseline_series.py`) et `/health/` structuré (`503` si DB indisponible, en-tête `X-FirePulse-Fallback: ready|none`).
   - Déploiement HTTPS (`docker-compose.prod.yml`, `deploy/Caddyfile`, `gunicorn` par défaut dans `backend/Dockerfile`).
-  - Plan de secours démo : `python manage.py export_demo_snapshot`, `scripts/db_backup.sh` et `scripts/db_restore.sh`.
+  - Plan de secours démo & reprise sur incident : `apps/api/fallback.py` (`API_SNAPSHOT_FALLBACK=true`, `FORCE_SNAPSHOT_FALLBACK=false`, en-tête `X-FirePulse-Cache: FALLBACK`), `python manage.py export_demo_snapshot --verify` (`84` fichiers JSON SHA-256 pour `GA` + `GA-1..GA-9`), `scripts/db_backup.sh` (compatible Git Bash Windows via `MSYS_NO_PATHCONV=1`) et `scripts/db_restore.sh`.

@@ -14,7 +14,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import DatabaseError, IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import resolve
 from rest_framework.test import APIClient
 
@@ -652,6 +652,15 @@ class FirePulseModelsAndApiTests(TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(manifest["artifact_kind"], "firepulse-demo-snapshot")
             self.assertIn("GA", manifest["regions"])
+            exported_names = {entry["file"] for entry in manifest["files"]}
+            for expected_file in (
+                "calendar_GA_static.json",
+                "anomalies_GA_static.json",
+                "methodology_GA_static.json",
+                "hotspots_grid_cell_GA_static.json",
+                "hotspots_static_mask_GA.json",
+            ):
+                self.assertIn(expected_file, exported_names)
             for entry in manifest["files"]:
                 fpath = out / entry["file"]
                 self.assertTrue(fpath.exists(), f"Missing snapshot file {entry['file']}")
@@ -659,3 +668,92 @@ class FirePulseModelsAndApiTests(TestCase):
                     hashlib.sha256(fpath.read_bytes()).hexdigest(),
                     entry["sha256"],
                 )
+
+            call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+            (out / "coverage.json").write_text('{"corrupted": true}\n', encoding="utf-8")
+            with self.assertRaises(CommandError):
+                call_command("export_demo_snapshot", output=tmpdir, verify=True, stdout=StringIO())
+
+    def test_offline_snapshot_fallback_serves_api_without_database(self) -> None:
+        live_csv = self.client.get("/api/v1/export/?dataset=series&region=GA")
+        self.assertEqual(live_csv.status_code, 200)
+        live_csv_text = live_csv.content.decode("utf-8")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir)
+            call_command("export_demo_snapshot", output=tmpdir, stdout=StringIO())
+            cache.clear()
+            invalidate_api_cache()
+
+            with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=True):
+                health = self.client.get("/api/v1/health/")
+                self.assertEqual(health.status_code, 200)
+                self.assertEqual(health["X-FirePulse-Fallback"], "ready")
+
+                with self.assertNumQueries(0):
+                    reg_no_geom = self.client.get("/api/v1/regions/?include_geom=false")
+                    self.assertEqual(reg_no_geom.status_code, 200)
+                    self.assertEqual(reg_no_geom["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertIsNone(reg_no_geom.json()["regions"][0]["geometry"])
+
+                    cov = self.client.get("/api/v1/coverage/?region=GA")
+                    self.assertEqual(cov.status_code, 200)
+                    self.assertEqual(cov["X-FirePulse-Cache"], "FALLBACK")
+
+                    cal = self.client.get("/api/v1/calendar/?region=GA&start=2024-08&end=2024-08")
+                    self.assertEqual(cal.status_code, 200)
+                    self.assertEqual(cal["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(cal.json()["period"], {"start": "2024-08", "end": "2024-08"})
+
+                    anom = self.client.get("/api/v1/anomalies/?region=GA&start=2024-08&end=2024-08&top_n=1")
+                    self.assertEqual(anom.status_code, 200)
+                    self.assertEqual(anom["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(len(anom.json()["top_positive"]), 1)
+
+                    meth = self.client.get("/api/v1/methodology/?region=GA&filter_static=true")
+                    self.assertEqual(meth.status_code, 200)
+                    self.assertEqual(meth["X-FirePulse-Cache"], "FALLBACK")
+
+                    spots = self.client.get("/api/v1/hotspots/?mode=grid&agg=cell&region=GA&include_static_cells=true")
+                    self.assertEqual(spots.status_code, 200)
+                    self.assertEqual(spots["X-FirePulse-Cache"], "FALLBACK")
+                    layers = {f["properties"]["layer"] for f in spots.json()["features"]}
+                    self.assertIn("grid_cell_summary", layers)
+                    self.assertIn("static_flare_mask", layers)
+
+                    csv_fb = self.client.get("/api/v1/export/?dataset=series&region=GA")
+                    self.assertEqual(csv_fb.status_code, 200)
+                    self.assertEqual(csv_fb["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(csv_fb.content.decode("utf-8"), live_csv_text)
+
+                    pts_503 = self.client.get("/api/v1/export/?dataset=points&region=GA&month=2024-08")
+                    self.assertEqual(pts_503.status_code, 503)
+                    self.assertEqual(pts_503["X-FirePulse-Cache"], "BYPASS")
+
+            cache.clear()
+            invalidate_api_cache()
+            with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=False):
+                with patch(
+                    "apps.api.views.Region.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ), patch(
+                    "apps.api.views.HarmonizedMonthSeries.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    cal_err = self.client.get("/api/v1/calendar/?region=GA")
+                    self.assertEqual(cal_err.status_code, 200)
+                    self.assertEqual(cal_err["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertIn("no-store", cal_err["Cache-Control"])
+
+                    csv_err = self.client.get("/api/v1/export/?dataset=series&region=GA")
+                    self.assertEqual(csv_err.status_code, 200)
+                    self.assertEqual(csv_err["X-FirePulse-Cache"], "FALLBACK")
+
+                    bad_region = self.client.get("/api/v1/calendar/?region=../../etc/passwd")
+                    self.assertEqual(bad_region.status_code, 503)
+                    self.assertEqual(bad_region["X-FirePulse-Cache"], "BYPASS")
+
+                with patch("apps.api.views.compute_custom_area_series", side_effect=DatabaseError("db offline")):
+                    bbox_err = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0")
+                    self.assertEqual(bbox_err.status_code, 503)
+                    self.assertEqual(bbox_err["Cache-Control"], "no-store")
