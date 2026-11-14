@@ -1,0 +1,205 @@
+{
+  "contract_version": "2.0.0",
+  "frozen_at_milestone": "H2",
+  "base_url": "/api/v1",
+  "enums": {
+    "sensor_regime": [
+      "partial_year",
+      "modis_terra_only",
+      "modis_terra_aqua",
+      "viirs_snpp_observed",
+      "viirs_noaa20_bridge",
+      "missing"
+    ],
+    "coverage_status": [
+      "complete_sp",
+      "partial_sp",
+      "mixed_sp_nrt",
+      "nrt_only",
+      "no_data"
+    ],
+    "confidence_tier": ["low", "nominal", "high"],
+    "source": ["modis", "viirs-snpp", "viirs-noaa20", "viirs-noaa21"]
+  },
+  "endpoints": {
+    "GET /api/v1/health/": {
+      "description": "Service, database, and PostGIS readiness check.",
+      "response_example": {
+        "status": "ok",
+        "database": "connected",
+        "postgis_version": "3.4 USE_GEOS=1 USE_PROJ=1 USE_STATS=1",
+        "counts": {
+          "regions": 0,
+          "hotspots": 0,
+          "grid_cell_months": 0,
+          "harmonized_months": 0
+        }
+      }
+    },
+    "GET /api/v1/regions/": {
+      "description": "List available precomputed regions (country + sub-regions/provinces) with GeoJSON bounds.",
+      "query_params": {},
+      "response_example": {
+        "regions": [
+          {
+            "code": "GA",
+            "name": "Gabon",
+            "region_type": "country",
+            "bbox": [8.5, -4.0, 14.6, 2.4],
+            "is_custom_supported": true,
+            "geometry": null
+          }
+        ]
+      }
+    },
+    "GET /api/v1/coverage/": {
+      "description": "Temporal availability and processing level (SP vs NRT) per sensor, including Terra-only and S-NPP Nov 2, 2026 transition metadata.",
+      "query_params": {
+        "region": "GA (default)"
+      },
+      "response_example": {
+        "region": "GA",
+        "sensors": [
+          {
+            "source": "modis",
+            "label": "MODIS (Terra + Aqua)",
+            "min_date": "2000-11-01",
+            "max_date": "2025-12-31",
+            "processing_levels": ["SP"],
+            "notes": "Terra-only from 2000-11 to 2002-06; Aqua starts 2002-07."
+          },
+          {
+            "source": "viirs-snpp",
+            "label": "VIIRS Suomi-NPP 375m",
+            "min_date": "2012-01-20",
+            "max_date": "2025-12-31",
+            "operational_end_date": "2026-11-02",
+            "processing_levels": ["SP"],
+            "notes": "Operational FIRMS delivery ended 2026-11-02 13:00 UTC."
+          },
+          {
+            "source": "viirs-noaa20",
+            "label": "VIIRS NOAA-20 375m",
+            "min_date": "2018-04-01",
+            "max_date": "2025-12-31",
+            "processing_levels": ["SP"],
+            "notes": "Official drop-in continuation after S-NPP retirement."
+          }
+        ]
+      }
+    },
+    "GET /api/v1/calendar/": {
+      "description": "Year x Month matrix and raw vs harmonized time series for a region, bbox (west,south,east,north), or custom GeoJSON polygon.",
+      "query_params": {
+        "region": "Region code, e.g. GA (ignored if bbox/polygon provided)",
+        "bbox": "Optional west,south,east,north in EPSG:4326",
+        "start": "YYYY-MM (default 2001-01)",
+        "end": "YYYY-MM (default latest)",
+        "filter_static": "true|false (default true: excludes type!=0 and 0.05 deg static flare cells)"
+      },
+      "response_example": {
+        "region": {
+          "id": "GA",
+          "name": "Gabon",
+          "filter_static": true
+        },
+        "period": {"start": "2001-01", "end": "2025-12"},
+        "method": {
+          "name": "power_law_log1p_static_masked",
+          "version": "v2.0",
+          "reference_scale": "VIIRS_375m_SNPP_equiv",
+          "bridge_after_2026_11_02": "VIIRS_NOAA20"
+        },
+        "series": [
+          {
+            "month": "2024-08",
+            "modis_count": 698,
+            "modis_terra_count": 230,
+            "modis_aqua_count": 468,
+            "viirs_snpp_count": 3150,
+            "viirs_noaa20_count": 3420,
+            "harmonized_value": 3150.0,
+            "ci_low": 3150.0,
+            "ci_high": 3150.0,
+            "baseline_median": 1789.0,
+            "baseline_iqr": [1111.6, 2313.7],
+            "anomaly_percent": 76.1,
+            "anomaly_absolute": 1361.0,
+            "sensor_regime": "viirs_snpp_observed",
+            "coverage_status": "complete_sp",
+            "uncertainty_note": ""
+          }
+        ]
+      }
+    },
+    "GET /api/v1/anomalies/": {
+      "description": "Monthly historical baselines (median + IQR) and ranked positive/negative anomalies.",
+      "query_params": {
+        "region": "GA",
+        "filter_static": "true|false",
+        "top_n": "10"
+      },
+      "response_example": {
+        "region": "GA",
+        "filter_static": true,
+        "monthly_baselines": [
+          {
+            "month_num": 1,
+            "median": 100.0,
+            "iqr_p25": 69.0,
+            "iqr_p75": 181.2,
+            "reference_years_count": 25
+          }
+        ],
+        "top_positive": [],
+        "top_negative": []
+      }
+    },
+    "GET /api/v1/hotspots/": {
+      "description": "GeoJSON FeatureCollection of 0.25 deg grid cell aggregates (default) or filtered raw detections (mode=points, requires month or bbox, capped).",
+      "query_params": {
+        "mode": "grid|points (default grid)",
+        "region": "GA",
+        "month": "YYYY-MM",
+        "bbox": "west,south,east,north",
+        "filter_static": "true|false",
+        "include_static_cells": "true|false",
+        "limit": "2000 (max 5000 for points)"
+      },
+      "response_example": {
+        "type": "FeatureCollection",
+        "mode": "grid",
+        "features": []
+      }
+    },
+    "GET /api/v1/methodology/": {
+      "description": "Calibration coefficients, train/test split out-of-sample benchmark metrics, static flare mask stats, and documented limitations.",
+      "query_params": {
+        "region": "GA",
+        "filter_static": "true|false"
+      },
+      "response_example": {
+        "region": "GA",
+        "active_run": null,
+        "comparison_table": [],
+        "static_mask_summary": {
+          "grid_deg": 0.05,
+          "masked_cells_count": 0
+        },
+        "limitations": []
+      }
+    },
+    "GET /api/v1/export/": {
+      "description": "Downloadable CSV of monthly series (raw + harmonized + baselines + anomalies + coverage metadata) or filtered points.",
+      "query_params": {
+        "region": "GA",
+        "bbox": "optional",
+        "start": "YYYY-MM",
+        "end": "YYYY-MM",
+        "filter_static": "true|false",
+        "dataset": "series|points (default series)"
+      },
+      "response_content_type": "text/csv"
+    }
+  }
+}
