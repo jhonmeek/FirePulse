@@ -1,5 +1,6 @@
-"""Integration tests for PostGIS models and FirePulse REST API v1 endpoints."""
+"""Integration tests for PostGIS models, FIRMS ingestion helpers, and API v1 endpoints."""
 
+import json
 from datetime import date, datetime, timezone
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
@@ -13,6 +14,10 @@ from apps.harmonization.models import (
     HarmonizedMonthSeries,
     MonthlyBaseline,
     SensorRegimeChoices,
+)
+from apps.observations.management.commands.import_firms import (
+    _infer_source,
+    _normalize_confidence,
 )
 from apps.observations.models import (
     GridCellMonth,
@@ -90,7 +95,7 @@ class FirePulseModelsAndApiTests(TestCase):
             train_end=date(2019, 12, 31),
             test_start=date(2020, 1, 1),
             test_end=date(2025, 12, 31),
-            params_json={"p": 0.953, "q": 1.606},
+            params_json={"power_law_p": 0.953, "power_law_q": 1.606},
             metrics_json={"r2": 0.918, "mae": 103.1},
         )
         MonthlyBaseline.objects.create(
@@ -143,6 +148,13 @@ class FirePulseModelsAndApiTests(TestCase):
                 original_hash="b" * 64,
             )
 
+    def test_ingestion_normalization_helpers(self) -> None:
+        self.assertEqual(_infer_source("viirs-jpss1_2025_Gabon.csv"), "viirs-noaa20")
+        self.assertEqual(_infer_source("modis_2024_Gabon.csv"), "modis")
+        self.assertEqual(_normalize_confidence("modis", "85"), "high")
+        self.assertEqual(_normalize_confidence("modis", "20"), "low")
+        self.assertEqual(_normalize_confidence("viirs-snpp", "n"), "nominal")
+
     def test_health_and_contract_endpoints(self) -> None:
         health = self.client.get("/api/v1/health/")
         self.assertEqual(health.status_code, 200)
@@ -150,7 +162,10 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(health.json()["counts"]["regions"], 1)
 
         self.assertEqual(self.client.get("/api/v1/regions/").status_code, 200)
-        self.assertEqual(self.client.get("/api/v1/coverage/").status_code, 200)
+
+        cov = self.client.get("/api/v1/coverage/")
+        self.assertEqual(cov.status_code, 200)
+        self.assertEqual(cov.json()["sensors"][0]["operational_end_date"], "2026-11-02")
 
         cal = self.client.get("/api/v1/calendar/?region=GA")
         self.assertEqual(cal.status_code, 200)
@@ -159,6 +174,17 @@ class FirePulseModelsAndApiTests(TestCase):
         bbox_cal = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0")
         self.assertEqual(bbox_cal.status_code, 200)
         self.assertEqual(bbox_cal.json()["series"][0]["viirs_snpp_count"], 42)
+        self.assertEqual(bbox_cal.json()["series"][0]["harmonized_value"], 42.0)
+
+        poly_geojson = json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[11.0, -2.0], [12.0, -2.0], [12.0, -1.0], [11.0, -1.0], [11.0, -2.0]]],
+            }
+        )
+        poly_cal = self.client.get("/api/v1/calendar/", {"polygon": poly_geojson})
+        self.assertEqual(poly_cal.status_code, 200)
+        self.assertEqual(poly_cal.json()["region"]["id"], "CUSTOM_POLYGON")
 
         self.assertEqual(self.client.get("/api/v1/anomalies/?region=GA").status_code, 200)
 
@@ -174,3 +200,23 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(export.status_code, 200)
         self.assertIn("text/csv", export["Content-Type"])
         self.assertIn("2024-08", export.content.decode())
+
+    def test_custom_area_calendar_baseline_ignores_start_end_filter(self) -> None:
+        GridCellMonth.objects.create(
+            cell_id="-1.50_11.50",
+            geom=self.grid_cell.geom,
+            centroid=self.grid_cell.centroid,
+            month=date(2023, 8, 1),
+            filter_static=True,
+            modis_count=5,
+            viirs_snpp_count=20,
+        )
+        res = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0&start=2024-08&end=2024-08")
+        self.assertEqual(res.status_code, 200)
+        payload = res.json()
+        self.assertEqual(payload["period"], {"start": "2024-08", "end": "2024-08"})
+        self.assertEqual(len(payload["series"]), 1)
+        self.assertEqual(payload["series"][0]["month"], "2024-08")
+        self.assertEqual(payload["series"][0]["harmonized_value"], 42.0)
+        self.assertEqual(payload["series"][0]["baseline_median"], 31.0)
+        self.assertAlmostEqual(payload["series"][0]["anomaly_percent"], 35.48, places=2)
