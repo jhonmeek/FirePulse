@@ -13,6 +13,12 @@ NASA précise que les observations NRT sont progressivement remplacées dans les
 
 L'extraction M1 GA préparée le 14 novembre concerne une seule journée NOAA-20 NRT : 52 détections dans le rectangle API, dont 40 strictement à l'intérieur de la frontière locale GA. Le champ NASA `type` est absent et reste indisponible ; ces 40 points ne sont ni un total mensuel, ni un nombre d'incendies distincts, ni une démonstration de couverture. Le fichier source, la frontière, les sorties et leurs empreintes sont conservés localement dans l'espace de travail ; aucun import DB n'a été effectué par M1.
 
+Deux extractions supplémentaires couvrent les 5–9 et 10–14 novembre : respectivement 56 et 122 détections dans le rectangle, dont 32 et 65 strictement à l'intérieur de la frontière locale. Ces fenêtres sont distinctes ; celle du 10–14 recouvre intégralement la journée du 14 déjà citée, qu'il ne faut donc pas additionner une seconde fois. Les extractions ne représentent pas l'ensemble de 2026 et leur couverture reste inconnue.
+
+## Acquisition reproductible
+
+`python -m pipeline.firms_area_acquire --product VIIRS_NOAA20_NRT --start 2026-11-05 --days 5 --output-dir <dossier>` télécharge une fenêtre de 1 à 5 jours depuis l'API Area et produit un CSV brut accompagné d'un manifeste SHA-256, sans écraser les fichiers existants. La variable d'environnement locale `FIRMS_MAP_KEY` est nécessaire ; elle ne doit pas être copiée dans les commandes partagées ni les journaux. L'API NASA place la clé dans l'URL de requête : les proxys ou outils de diagnostic réseau peuvent donc la voir. Le produit est celui demandé, sans vérification indépendante de son identité. Le rectangle inclut les pays voisins : la sélection spatiale Gabon et la vérification de provenance sont des étapes distinctes. Le filtre spatial utilisé pour ces extractions est local et ne fait pas partie de cette commande.
+
 ## Proposition à valider avec M2
 
 1. Pour chaque requête : enregistrer produit, capteur, niveau déclaré, dates demandées et renvoyées, date de récupération, emprise, SHA-256 du fichier original, frontière et version de traitement. Ne jamais conserver la MAP_KEY dans les manifestes, les URL partagées ou les journaux.
