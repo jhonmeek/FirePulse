@@ -34,7 +34,7 @@ def audit(csv_path: Path, manifest_path: Path) -> dict:
             if split not in {"train", "test"}:
                 continue
             if row["region"] == "GA":
-                grouped[row["filter_static"]][split].append(row)
+                grouped[row["filter_static"].strip().lower()][split].append(row)
 
     results = []
     for filter_static, split in sorted(grouped.items()):
@@ -51,14 +51,24 @@ def audit(csv_path: Path, manifest_path: Path) -> dict:
         xt = [float(r["modis_count"] or 0) for r in test]
         yt = [float(r["viirs_snpp_count"] or 0) for r in test]
         predictions = [max(0.0, math.expm1(p * math.log1p(v) + q)) for v in xt]
-        interval_rows = [r for r in test if r["ci_low"] not in ("", None) and r["ci_high"] not in ("", None) and r["viirs_snpp_count"] not in ("", None)]
-        covered = sum(float(r["ci_low"]) <= float(r["viirs_snpp_count"]) <= float(r["ci_high"]) for r in interval_rows)
+        run = next((run for run in manifest["runs"] if run["region"] == "GA" and str(run["filter_static"]).lower() == filter_static), None)
+        if run is None:
+            raise ValueError(f"missing GA calibration run for filter_static={filter_static}")
+        params = run["params"]
+        model_p, model_q, quantile = (float(params[k]) for k in ("power_law_p", "power_law_q", "conformal_q80_log"))
+        interval_rows = [r for r in test if r["modis_count"] not in ("", None) and r["viirs_snpp_count"] not in ("", None)]
+        covered = 0
+        for row in interval_rows:
+            mu = model_p * math.log1p(float(row["modis_count"])) + model_q
+            low = max(0.0, math.expm1(mu - quantile))
+            high = max(0.0, math.expm1(mu + quantile))
+            covered += low <= float(row["viirs_snpp_count"]) <= high
         results.append({
             "region": "GA", "filter_static": filter_static,
             "train_months": len(train), "test_months": len(test),
             "refit_power_law_p": round(p, 4), "refit_power_law_q": round(q, 4),
             "recomputed_test_metrics": _metrics(predictions, yt),
-            "exported_test_metrics": next(run["metrics"]["models_out_of_sample"]["power_law_log1p"] for run in manifest["runs"] if run["region"] == "GA" and str(run["filter_static"]).lower() == filter_static),
+            "exported_test_metrics": run["metrics"]["models_out_of_sample"]["power_law_log1p"],
             "test_interval_coverage": covered / len(interval_rows) if interval_rows else None,
             "test_interval_covered_months": covered,
             "test_interval_evaluable_months": len(interval_rows),

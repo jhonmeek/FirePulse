@@ -16,14 +16,14 @@ class BenchmarkAuditTests(unittest.TestCase):
             for month in range(1, 13):
                 x = 10 + month
                 y = round(2 * x + 3)
-                rows.append({"region":"GA","filter_static":"false","month":f"{year}-{month:02d}","calibration_split":split,"modis_count":str(x),"viirs_snpp_count":str(y),"ci_low":str(y-2),"ci_high":str(y+2)})
+                rows.append({"region":"GA","filter_static":"false","month":f"{year}-{month:02d}","calibration_split":split,"modis_count":str(x),"viirs_snpp_count":str(y),"ci_low":str(y),"ci_high":str(y)})
         path = root / "series.csv"
         with path.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=rows[0].keys(), lineterminator="\n")
             writer.writeheader(); writer.writerows(rows)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         manifest = root / "manifest.json"
-        manifest.write_text(json.dumps({"csv_sha256":digest,"runs":[{"region":"GA","filter_static":False,"metrics":{"models_out_of_sample":{"power_law_log1p":{"mae":0,"rmse":0,"bias":0,"r2":1}}}}]}), encoding="utf-8")
+        manifest.write_text(json.dumps({"csv_sha256":digest,"runs":[{"region":"GA","filter_static":False,"params":{"power_law_p":1,"power_law_q":0,"conformal_q80_log":0},"metrics":{"models_out_of_sample":{"power_law_log1p":{"mae":0,"rmse":0,"bias":0,"r2":1}}}}]}), encoding="utf-8")
         return path, manifest
 
     def test_recalculates_split_metrics_and_marks_interval_non_independent(self):
@@ -32,7 +32,7 @@ class BenchmarkAuditTests(unittest.TestCase):
             result = audit(csv_path, manifest)["results"][0]
             self.assertEqual((result["train_months"], result["test_months"]), (12, 12))
             self.assertLessEqual(result["recomputed_test_metrics"]["mae"], 0.05)
-            self.assertEqual(result["test_interval_coverage"], 1.0)
+            self.assertEqual(result["test_interval_coverage"], 0.0)
             self.assertFalse(result["interval_coverage_is_independent"])
 
     def test_rejects_csv_checksum_mismatch(self):
