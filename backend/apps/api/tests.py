@@ -1,9 +1,13 @@
 """Integration tests for PostGIS models, FIRMS ingestion helpers, and API v1 endpoints."""
 
 import json
+import tempfile
 from datetime import date, datetime, timezone
+from io import StringIO
+from pathlib import Path
 
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.management import call_command
 from django.db import IntegrityError
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -220,3 +224,138 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(payload["series"][0]["harmonized_value"], 42.0)
         self.assertEqual(payload["series"][0]["baseline_median"], 31.0)
         self.assertAlmostEqual(payload["series"][0]["anomaly_percent"], 35.48, places=2)
+
+    def test_anomalies_supports_bbox_and_polygon(self) -> None:
+        GridCellMonth.objects.create(
+            cell_id="-1.50_11.50",
+            geom=self.grid_cell.geom,
+            centroid=self.grid_cell.centroid,
+            month=date(2023, 8, 1),
+            filter_static=True,
+            modis_count=5,
+            viirs_snpp_count=20,
+        )
+        res_bbox = self.client.get("/api/v1/anomalies/?bbox=11.0,-2.0,12.0,-1.0&top_n=5")
+        self.assertEqual(res_bbox.status_code, 200)
+        data = res_bbox.json()
+        self.assertEqual(data["region"], "CUSTOM_BBOX")
+        self.assertEqual(data["monthly_baselines"][0]["median"], 31.0)
+        self.assertEqual(data["top_positive"][0]["month"], "2024-08")
+        self.assertAlmostEqual(data["top_positive"][0]["anomaly_percent"], 35.48, places=2)
+
+        poly_geojson = json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[11.0, -2.0], [12.0, -2.0], [12.0, -1.0], [11.0, -1.0], [11.0, -2.0]]],
+            }
+        )
+        res_poly = self.client.get("/api/v1/anomalies/", {"polygon": poly_geojson})
+        self.assertEqual(res_poly.status_code, 200)
+        self.assertEqual(res_poly.json()["region"], "CUSTOM_POLYGON")
+
+    def test_export_supports_bbox_polygon_and_points(self) -> None:
+        exp_bbox = self.client.get("/api/v1/export/?bbox=11.0,-2.0,12.0,-1.0")
+        self.assertEqual(exp_bbox.status_code, 200)
+        self.assertIn("CUSTOM_BBOX,2024-08", exp_bbox.content.decode())
+
+        exp_pts = self.client.get("/api/v1/export/?dataset=points&region=GA&month=2024-08")
+        self.assertEqual(exp_pts.status_code, 200)
+        body = exp_pts.content.decode()
+        self.assertIn("latitude,longitude", body)
+        self.assertIn("GA,viirs-snpp", body)
+
+        bad_pts = self.client.get("/api/v1/export/?dataset=points&region=GA")
+        self.assertEqual(bad_pts.status_code, 400)
+
+    def test_hotspots_supports_polygon_start_end_and_agg_cell(self) -> None:
+        GridCellMonth.objects.create(
+            cell_id="-1.50_11.50",
+            geom=self.grid_cell.geom,
+            centroid=self.grid_cell.centroid,
+            month=date(2023, 8, 1),
+            filter_static=True,
+            modis_count=5,
+            viirs_snpp_count=20,
+        )
+        poly_geojson = json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[11.0, -2.0], [12.0, -2.0], [12.0, -1.0], [11.0, -1.0], [11.0, -2.0]]],
+            }
+        )
+        res = self.client.get(
+            "/api/v1/hotspots/",
+            {
+                "mode": "grid",
+                "agg": "cell",
+                "start": "2023-08",
+                "end": "2024-08",
+                "polygon": poly_geojson,
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+        features = res.json()["features"]
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0]["properties"]["layer"], "grid_cell_summary")
+        self.assertEqual(features[0]["properties"]["months_count"], 2)
+        self.assertEqual(features[0]["properties"]["modis_count"], 15)
+        self.assertEqual(features[0]["properties"]["viirs_snpp_count"], 62)
+
+    def test_coverage_exposes_product_versions(self) -> None:
+        cov = self.client.get("/api/v1/coverage/")
+        self.assertEqual(cov.status_code, 200)
+        self.assertEqual(cov.json()["sensors"][0]["product_versions"], ["2"])
+
+    def test_build_baseline_series_from_pipeline_bundle(self) -> None:
+        bundle = {
+            "method_name": "m1_validated_power_law",
+            "method_version": "v2.1-m1",
+            "reference_scale": "VIIRS_375m_SNPP_equiv",
+            "regions": [
+                {
+                    "region": "GA",
+                    "filter_static": True,
+                    "params": {"power_law_p": 0.94, "power_law_q": 1.65},
+                    "metrics": {"test_months": 72, "models_out_of_sample": {"power_law_log1p": {"r2": 0.92}}},
+                    "baselines": [
+                        {
+                            "month_num": 8,
+                            "baseline_median": 1700.0,
+                            "iqr_p25": 1100.0,
+                            "iqr_p75": 2200.0,
+                            "reference_years_count": 25,
+                            "reference_period": "2001-2025",
+                        }
+                    ],
+                    "series": [
+                        {
+                            "month": "2024-08",
+                            "modis_count": 900,
+                            "modis_terra_count": 270,
+                            "modis_aqua_count": 630,
+                            "viirs_snpp_count": 3000,
+                            "viirs_noaa20_count": 2800,
+                            "harmonized_value": 3000.0,
+                            "ci_low": 2800.0,
+                            "ci_high": 3200.0,
+                            "baseline_median": 1700.0,
+                            "sensor_regime": "viirs_snpp_observed",
+                            "coverage_status": "complete_sp",
+                        }
+                    ],
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bundle_path = Path(tmpdir) / "pipeline_bundle.json"
+            bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+            call_command("build_baseline_series", from_pipeline=str(bundle_path), stdout=StringIO())
+
+        meth = self.client.get("/api/v1/methodology/?region=GA")
+        self.assertEqual(meth.status_code, 200)
+        self.assertEqual(meth.json()["active_run"]["method_version"], "v2.1-m1")
+
+        cal = self.client.get("/api/v1/calendar/?region=GA")
+        self.assertEqual(cal.status_code, 200)
+        self.assertEqual(cal.json()["series"][0]["harmonized_value"], 3000.0)
+        self.assertAlmostEqual(cal.json()["series"][0]["anomaly_percent"], 76.47, places=2)

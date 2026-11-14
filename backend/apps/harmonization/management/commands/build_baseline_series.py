@@ -1,10 +1,12 @@
 """Calibrate MODIS->VIIRS harmonization models, baselines, and anomalies into PostGIS."""
 
+import json
 import math
 import statistics
 from datetime import date
+from pathlib import Path
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
 from apps.harmonization.models import (
@@ -38,6 +40,11 @@ def _month_range(start: date, end: date) -> list[date]:
         out.append(cur)
         cur = _next_month(cur)
     return out
+
+
+def _parse_iso_month(value: str) -> date:
+    parts = value.strip().split("-")
+    return date(int(parts[0]), int(parts[1]), int(parts[2]) if len(parts) > 2 else 1)
 
 
 def _fit_linear(xs: list[float], ys: list[float]) -> tuple[float, float]:
@@ -123,8 +130,8 @@ def _calibrate_models(
     counts: dict[date, dict[str, int]],
     fallback_params: dict | None,
 ) -> tuple[dict, dict, str]:
-    train_months = [m for m in _month_range(TRAIN_START, TRAIN_END)]
-    test_months = [m for m in _month_range(TEST_START, TEST_END)]
+    train_months = list(_month_range(TRAIN_START, TRAIN_END))
+    test_months = list(_month_range(TEST_START, TEST_END))
 
     x_tr = [float(counts.get(m, {}).get("modis_count", 0)) for m in train_months]
     xt_tr = [float(counts.get(m, {}).get("modis_terra_count", 0)) for m in train_months]
@@ -143,7 +150,6 @@ def _calibrate_models(
     p_pow, q_pow = _fit_linear([math.log1p(x) for x in x_tr], [math.log1p(y) for y in y_tr])
     pt_pow, qt_pow = _fit_linear([math.log1p(x) for x in xt_tr], [math.log1p(y) for y in y_tr])
 
-    # Evaluate out-of-sample 2020-2025
     x_te = [float(counts.get(m, {}).get("modis_count", 0)) for m in test_months]
     xt_te = [float(counts.get(m, {}).get("modis_terra_count", 0)) for m in test_months]
     y_te = [float(counts.get(m, {}).get("viirs_snpp_count", 0)) for m in test_months]
@@ -162,7 +168,7 @@ def _calibrate_models(
     q80_log = _conformal_quantile(res_log_main, 0.80)
     q80_terra_log = _conformal_quantile(res_log_terra, 0.80)
 
-    n20_months = [m for m in _month_range(date(2019, 1, 1), TEST_END)]
+    n20_months = list(_month_range(date(2019, 1, 1), TEST_END))
     snpp_sum = sum(counts.get(m, {}).get("viirs_snpp_count", 0) for m in n20_months)
     n20_sum = sum(counts.get(m, {}).get("viirs_noaa20_count", 0) for m in n20_months)
     bridge_n20_over_snpp = (n20_sum / snpp_sum) if snpp_sum > 0 and n20_sum > 0 else 1.0
@@ -193,12 +199,322 @@ def _calibrate_models(
     return params, metrics, ""
 
 
+def _build_series_from_params(
+    counts: dict[date, dict[str, int]],
+    params: dict,
+    note: str = "",
+) -> list[dict]:
+    """Reconstruct monthly series from observed counts and calibrated model parameters."""
+    min_m = min(counts.keys())
+    max_m = max(counts.keys())
+    all_months = _month_range(min_m, max_m)
+
+    p_pow = float(params.get("power_law_p", 1.0))
+    q_pow = float(params.get("power_law_q", 0.0))
+    pt_pow = float(params.get("terra_only_p", p_pow))
+    qt_pow = float(params.get("terra_only_q", q_pow))
+    q80 = float(params.get("conformal_q80_log", 0.25))
+    q80_t = float(params.get("conformal_q80_terra_log", q80))
+    n20_ratio = float(params.get("noaa20_to_snpp_ratio", 1.0)) or 1.0
+
+    reconstructed: list[dict] = []
+    for m_date in all_months:
+        row = counts.get(m_date, {})
+        mod = row.get("modis_count", 0) if m_date >= date(2000, 11, 1) else None
+        terra = row.get("modis_terra_count", 0) if m_date >= date(2000, 11, 1) else None
+        aqua = row.get("modis_aqua_count", 0) if m_date >= TERRA_ONLY_CUTOFF else None
+        snpp = row.get("viirs_snpp_count", 0) if date(2012, 1, 1) <= m_date <= SNPP_END else None
+        n20 = row.get("viirs_noaa20_count", 0) if m_date >= date(2018, 4, 1) else None
+
+        if m_date < date(2001, 1, 1):
+            regime = SensorRegimeChoices.PARTIAL_YEAR
+            cov = CoverageStatusChoices.PARTIAL_SP
+            mu = pt_pow * math.log1p(terra or 0) + qt_pow
+            hval = max(0.0, math.expm1(mu))
+            ci_lo = max(0.0, math.expm1(mu - q80_t))
+            ci_hi = max(0.0, math.expm1(mu + q80_t))
+        elif m_date < TERRA_ONLY_CUTOFF:
+            regime = SensorRegimeChoices.MODIS_TERRA_ONLY
+            cov = CoverageStatusChoices.COMPLETE_SP
+            mu = pt_pow * math.log1p(terra or 0) + qt_pow
+            hval = max(0.0, math.expm1(mu))
+            ci_lo = max(0.0, math.expm1(mu - q80_t))
+            ci_hi = max(0.0, math.expm1(mu + q80_t))
+        elif m_date < SNPP_START:
+            regime = SensorRegimeChoices.MODIS_TERRA_AQUA
+            cov = CoverageStatusChoices.COMPLETE_SP
+            mu = p_pow * math.log1p(mod or 0) + q_pow
+            hval = max(0.0, math.expm1(mu))
+            ci_lo = max(0.0, math.expm1(mu - q80))
+            ci_hi = max(0.0, math.expm1(mu + q80))
+        elif m_date <= SNPP_END and snpp is not None:
+            regime = SensorRegimeChoices.VIIRS_SNPP_OBSERVED
+            cov = CoverageStatusChoices.COMPLETE_SP
+            hval = float(snpp)
+            ci_lo = hval
+            ci_hi = hval
+        elif n20 is not None:
+            regime = SensorRegimeChoices.VIIRS_NOAA20_BRIDGE
+            cov = CoverageStatusChoices.NRT_ONLY if m_date.year >= 2026 else CoverageStatusChoices.COMPLETE_SP
+            hval = float(n20) / n20_ratio
+            ci_lo = hval * 0.90
+            ci_hi = hval * 1.10
+        else:
+            regime = SensorRegimeChoices.MISSING
+            cov = CoverageStatusChoices.NO_DATA
+            hval = None
+            ci_lo = None
+            ci_hi = None
+
+        reconstructed.append(
+            {
+                "month": m_date,
+                "modis_count": mod,
+                "modis_terra_count": terra,
+                "modis_aqua_count": aqua,
+                "viirs_snpp_count": snpp,
+                "viirs_noaa20_count": n20,
+                "harmonized_value": round(hval, 2) if hval is not None else None,
+                "ci_low": round(ci_lo, 2) if ci_lo is not None else None,
+                "ci_high": round(ci_hi, 2) if ci_hi is not None else None,
+                "sensor_regime": regime,
+                "coverage_status": cov,
+                "uncertainty_note": note,
+            }
+        )
+    return reconstructed
+
+
+def _compute_baselines_map(reconstructed: list[dict]) -> dict[int, tuple[float, float, float, int, str]]:
+    by_cal_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
+    for item in reconstructed:
+        m_date = item["month"]
+        if 2001 <= m_date.year <= 2025 and item.get("harmonized_value") is not None:
+            by_cal_month[m_date.month].append(float(item["harmonized_value"]))
+
+    baselines_map: dict[int, tuple[float, float, float, int, str]] = {}
+    for cal_m, vals in by_cal_month.items():
+        if vals:
+            med, p25, p75 = _quartiles(vals)
+            baselines_map[cal_m] = (round(med, 2), round(p25, 2), round(p75, 2), len(vals), "2001-2025")
+    return baselines_map
+
+
+def _persist_region_calibration(
+    *,
+    region: Region,
+    filter_static: bool,
+    method_name: str,
+    method_version: str,
+    reference_scale: str,
+    train_start: date,
+    train_end: date,
+    test_start: date,
+    test_end: date,
+    params: dict,
+    metrics: dict,
+    baselines_map: dict[int, tuple[float, float, float, int, str]],
+    reconstructed: list[dict],
+) -> None:
+    """Atomically deactivate previous active runs and persist calibration, baselines, and series."""
+    with transaction.atomic():
+        CalibrationRun.objects.filter(
+            region=region, filter_static=filter_static, is_active=True
+        ).update(is_active=False)
+
+        run = CalibrationRun.objects.create(
+            region=region,
+            filter_static=filter_static,
+            method_name=method_name,
+            method_version=method_version,
+            reference_scale=reference_scale,
+            train_start=train_start,
+            train_end=train_end,
+            test_start=test_start,
+            test_end=test_end,
+            params_json=params,
+            metrics_json=metrics,
+            is_active=True,
+        )
+
+        MonthlyBaseline.objects.bulk_create(
+            [
+                MonthlyBaseline(
+                    region=region,
+                    calibration_run=run,
+                    month_num=cal_m,
+                    filter_static=filter_static,
+                    baseline_median=med,
+                    iqr_p25=p25,
+                    iqr_p75=p75,
+                    reference_years_count=ny,
+                    reference_period=ref_period,
+                )
+                for cal_m, (med, p25, p75, ny, ref_period) in sorted(baselines_map.items())
+            ]
+        )
+
+        series_objs = []
+        for item in reconstructed:
+            b = baselines_map.get(item["month"].month)
+            med = item.get("baseline_median")
+            p25 = item.get("baseline_iqr_p25")
+            p75 = item.get("baseline_iqr_p75")
+            if med is None and b is not None:
+                med, p25, p75 = b[0], b[1], b[2]
+
+            hval = item.get("harmonized_value")
+            anom_abs = item.get("anomaly_absolute")
+            anom_pct = item.get("anomaly_percent")
+            if hval is not None and med is not None:
+                if anom_abs is None:
+                    anom_abs = round(float(hval) - float(med), 2)
+                if anom_pct is None and med > 0:
+                    anom_pct = round(100.0 * (float(hval) - float(med)) / float(med), 2)
+
+            series_objs.append(
+                HarmonizedMonthSeries(
+                    region=region,
+                    calibration_run=run,
+                    month=item["month"],
+                    filter_static=filter_static,
+                    modis_count=item.get("modis_count"),
+                    modis_terra_count=item.get("modis_terra_count"),
+                    modis_aqua_count=item.get("modis_aqua_count"),
+                    viirs_snpp_count=item.get("viirs_snpp_count"),
+                    viirs_noaa20_count=item.get("viirs_noaa20_count"),
+                    harmonized_value=hval,
+                    ci_low=item.get("ci_low"),
+                    ci_high=item.get("ci_high"),
+                    baseline_median=med,
+                    baseline_iqr_p25=p25,
+                    baseline_iqr_p75=p75,
+                    anomaly_percent=anom_pct,
+                    anomaly_absolute=anom_abs,
+                    sensor_regime=item["sensor_regime"],
+                    coverage_status=item["coverage_status"],
+                    method_version=method_version,
+                    uncertainty_note=item.get("uncertainty_note", ""),
+                )
+            )
+        HarmonizedMonthSeries.objects.bulk_create(series_objs)
+
+
+def _ingest_pipeline_bundle(bundle_path: Path, stdout, style) -> None:
+    """Import an M1-validated calibration JSON bundle into PostGIS."""
+    if not bundle_path.exists():
+        raise CommandError(f"Pipeline bundle not found: {bundle_path}")
+    try:
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CommandError(f"Failed to read pipeline bundle {bundle_path}: {exc}") from exc
+
+    entries = bundle.get("regions")
+    if not isinstance(entries, list) or not entries:
+        raise CommandError("Pipeline bundle must contain a non-empty 'regions' list.")
+
+    default_name = bundle.get("method_name", "power_law_log1p_static_masked")
+    default_version = bundle.get("method_version", "v2.0")
+    default_scale = bundle.get("reference_scale", "VIIRS_375m_SNPP_equiv")
+
+    loaded = 0
+    for entry in entries:
+        region_code = entry.get("region")
+        region = Region.objects.filter(code=region_code).first()
+        if not region:
+            stdout.write(style.WARNING(f"Skipping unknown region in pipeline bundle: {region_code!r}"))
+            continue
+
+        filter_static = bool(entry.get("filter_static", True))
+        params = entry.get("params", {})
+        metrics = entry.get("metrics", {})
+        method_name = entry.get("method_name", default_name)
+        method_version = entry.get("method_version", default_version)
+        reference_scale = entry.get("reference_scale", default_scale)
+        train_start = _parse_iso_month(entry.get("train_start", TRAIN_START.isoformat()))
+        train_end = _parse_iso_month(entry.get("train_end", TRAIN_END.isoformat()))
+        test_start = _parse_iso_month(entry.get("test_start", TEST_START.isoformat()))
+        test_end = _parse_iso_month(entry.get("test_end", TEST_END.isoformat()))
+
+        raw_series = entry.get("series")
+        if raw_series:
+            reconstructed = []
+            for row in raw_series:
+                iqr = row.get("baseline_iqr")
+                p25 = row.get("baseline_iqr_p25", iqr[0] if isinstance(iqr, list) and len(iqr) == 2 else None)
+                p75 = row.get("baseline_iqr_p75", iqr[1] if isinstance(iqr, list) and len(iqr) == 2 else None)
+                reconstructed.append(
+                    {
+                        **row,
+                        "month": _parse_iso_month(row["month"]),
+                        "baseline_iqr_p25": p25,
+                        "baseline_iqr_p75": p75,
+                    }
+                )
+        else:
+            counts = _fetch_region_monthly_counts(region.id, filter_static)
+            if not counts:
+                stdout.write(style.WARNING(f"No observations for {region.code}; skipping."))
+                continue
+            reconstructed = _build_series_from_params(counts, params, entry.get("uncertainty_note", ""))
+
+        raw_baselines = entry.get("baselines")
+        if raw_baselines:
+            baselines_map = {
+                int(b["month_num"]): (
+                    float(b["baseline_median"]),
+                    b.get("iqr_p25"),
+                    b.get("iqr_p75"),
+                    int(b.get("reference_years_count", 0)),
+                    b.get("reference_period", "2001-2025"),
+                )
+                for b in raw_baselines
+            }
+        else:
+            baselines_map = _compute_baselines_map(reconstructed)
+
+        _persist_region_calibration(
+            region=region,
+            filter_static=filter_static,
+            method_name=method_name,
+            method_version=method_version,
+            reference_scale=reference_scale,
+            train_start=train_start,
+            train_end=train_end,
+            test_start=test_start,
+            test_end=test_end,
+            params=params,
+            metrics=metrics,
+            baselines_map=baselines_map,
+            reconstructed=reconstructed,
+        )
+        loaded += 1
+        stdout.write(
+            f"Loaded pipeline run for {region.code} (filter_static={filter_static}, "
+            f"version={method_version}): {len(reconstructed)} months."
+        )
+
+    stdout.write(style.SUCCESS(f"Pipeline bundle import complete ({loaded} region-runs updated)."))
+
+
 class Command(BaseCommand):
     """Build CalibrationRun, MonthlyBaseline, and HarmonizedMonthSeries for all regions."""
 
-    help = "Calibrate MODIS->VIIRS models and populate harmonized series & baselines."
+    help = "Calibrate MODIS->VIIRS models or load M1 validated pipeline JSON outputs."
+
+    def add_arguments(self, parser) -> None:
+        parser.add_argument(
+            "--from-pipeline",
+            default=None,
+            help="Optional path to an M1 JSON calibration bundle (e.g. /data/processed/calibration/bundle.json)",
+        )
 
     def handle(self, *args, **options) -> None:
+        pipeline_path = options.get("from_pipeline")
+        if pipeline_path:
+            _ingest_pipeline_bundle(Path(pipeline_path), self.stdout, self.style)
+            return
+
         regions = list(Region.objects.order_by("region_type", "code"))
         if not regions:
             self.stdout.write(self.style.WARNING("No Region records found; run load_regions first."))
@@ -215,171 +531,32 @@ class Command(BaseCommand):
                 if region.code == "GA":
                     national_params = params
 
-                min_m = min(counts.keys())
-                max_m = max(counts.keys())
-                all_months = _month_range(min_m, max_m)
-
-                p_pow = params["power_law_p"]
-                q_pow = params["power_law_q"]
-                pt_pow = params["terra_only_p"]
-                qt_pow = params["terra_only_q"]
-                q80 = params["conformal_q80_log"]
-                q80_t = params["conformal_q80_terra_log"]
-                n20_ratio = params["noaa20_to_snpp_ratio"] or 1.0
-
-                reconstructed: list[dict] = []
-                for m_date in all_months:
-                    row = counts.get(m_date, {})
-                    mod = row.get("modis_count", 0) if m_date >= date(2000, 11, 1) else None
-                    terra = row.get("modis_terra_count", 0) if m_date >= date(2000, 11, 1) else None
-                    aqua = row.get("modis_aqua_count", 0) if m_date >= TERRA_ONLY_CUTOFF else None
-                    snpp = row.get("viirs_snpp_count", 0) if date(2012, 1, 1) <= m_date <= SNPP_END else None
-                    n20 = row.get("viirs_noaa20_count", 0) if m_date >= date(2018, 4, 1) else None
-
-                    row_note = note
-                    if m_date < date(2001, 1, 1):
-                        regime = SensorRegimeChoices.PARTIAL_YEAR
-                        cov = CoverageStatusChoices.PARTIAL_SP
-                        mu = pt_pow * math.log1p(terra or 0) + qt_pow
-                        hval = max(0.0, math.expm1(mu))
-                        ci_lo = max(0.0, math.expm1(mu - q80_t))
-                        ci_hi = max(0.0, math.expm1(mu + q80_t))
-                    elif m_date < TERRA_ONLY_CUTOFF:
-                        regime = SensorRegimeChoices.MODIS_TERRA_ONLY
-                        cov = CoverageStatusChoices.COMPLETE_SP
-                        mu = pt_pow * math.log1p(terra or 0) + qt_pow
-                        hval = max(0.0, math.expm1(mu))
-                        ci_lo = max(0.0, math.expm1(mu - q80_t))
-                        ci_hi = max(0.0, math.expm1(mu + q80_t))
-                    elif m_date < SNPP_START:
-                        regime = SensorRegimeChoices.MODIS_TERRA_AQUA
-                        cov = CoverageStatusChoices.COMPLETE_SP
-                        mu = p_pow * math.log1p(mod or 0) + q_pow
-                        hval = max(0.0, math.expm1(mu))
-                        ci_lo = max(0.0, math.expm1(mu - q80))
-                        ci_hi = max(0.0, math.expm1(mu + q80))
-                    elif m_date <= SNPP_END and snpp is not None:
-                        regime = SensorRegimeChoices.VIIRS_SNPP_OBSERVED
-                        cov = CoverageStatusChoices.COMPLETE_SP
-                        hval = float(snpp)
-                        ci_lo = hval
-                        ci_hi = hval
-                    elif n20 is not None:
-                        regime = SensorRegimeChoices.VIIRS_NOAA20_BRIDGE
-                        cov = CoverageStatusChoices.NRT_ONLY if m_date.year >= 2026 else CoverageStatusChoices.COMPLETE_SP
-                        hval = float(n20) / n20_ratio
-                        ci_lo = hval * 0.90
-                        ci_hi = hval * 1.10
-                    else:
-                        regime = SensorRegimeChoices.MISSING
-                        cov = CoverageStatusChoices.NO_DATA
-                        hval = None
-                        ci_lo = None
-                        ci_hi = None
-
-                    reconstructed.append(
-                        {
-                            "month": m_date,
-                            "modis_count": mod,
-                            "modis_terra_count": terra,
-                            "modis_aqua_count": aqua,
-                            "viirs_snpp_count": snpp,
-                            "viirs_noaa20_count": n20,
-                            "harmonized_value": round(hval, 2) if hval is not None else None,
-                            "ci_low": round(ci_lo, 2) if ci_lo is not None else None,
-                            "ci_high": round(ci_hi, 2) if ci_hi is not None else None,
-                            "sensor_regime": regime,
-                            "coverage_status": cov,
-                            "uncertainty_note": row_note,
-                        }
-                    )
-
-                # Baselines computed across complete reference years 2001..2025
-                by_cal_month: dict[int, list[float]] = {m: [] for m in range(1, 13)}
-                for item in reconstructed:
-                    if 2001 <= item["month"].year <= 2025 and item["harmonized_value"] is not None:
-                        by_cal_month[item["month"].month].append(item["harmonized_value"])
-
-                baselines_map: dict[int, tuple[float, float, float, int]] = {}
-                for cal_m, vals in by_cal_month.items():
-                    if vals:
-                        med, p25, p75 = _quartiles(vals)
-                        baselines_map[cal_m] = (round(med, 2), round(p25, 2), round(p75, 2), len(vals))
-
-                with transaction.atomic():
-                    CalibrationRun.objects.filter(
-                        region=region, filter_static=filter_static, is_active=True
-                    ).update(is_active=False)
-
-                    run = CalibrationRun.objects.create(
-                        region=region,
-                        filter_static=filter_static,
-                        method_name="power_law_log1p_static_masked" if filter_static else "power_law_log1p_unfiltered",
-                        method_version="v2.0",
-                        reference_scale="VIIRS_375m_SNPP_equiv",
-                        train_start=TRAIN_START,
-                        train_end=TRAIN_END,
-                        test_start=TEST_START,
-                        test_end=TEST_END,
-                        params_json=params,
-                        metrics_json=metrics,
-                        is_active=True,
-                    )
-
-                    MonthlyBaseline.objects.bulk_create(
-                        [
-                            MonthlyBaseline(
-                                region=region,
-                                calibration_run=run,
-                                month_num=cal_m,
-                                filter_static=filter_static,
-                                baseline_median=med,
-                                iqr_p25=p25,
-                                iqr_p75=p75,
-                                reference_years_count=ny,
-                                reference_period="2001-2025",
-                            )
-                            for cal_m, (med, p25, p75, ny) in baselines_map.items()
-                        ]
-                    )
-
-                    series_objs = []
-                    for item in reconstructed:
-                        b = baselines_map.get(item["month"].month)
-                        med, p25, p75 = (b[0], b[1], b[2]) if b else (None, None, None)
-                        hval = item["harmonized_value"]
-                        anom_abs = round(hval - med, 2) if (hval is not None and med is not None) else None
-                        anom_pct = round(100.0 * (hval - med) / med, 2) if (hval is not None and med and med > 0) else None
-                        series_objs.append(
-                            HarmonizedMonthSeries(
-                                region=region,
-                                calibration_run=run,
-                                month=item["month"],
-                                filter_static=filter_static,
-                                modis_count=item["modis_count"],
-                                modis_terra_count=item["modis_terra_count"],
-                                modis_aqua_count=item["modis_aqua_count"],
-                                viirs_snpp_count=item["viirs_snpp_count"],
-                                viirs_noaa20_count=item["viirs_noaa20_count"],
-                                harmonized_value=hval,
-                                ci_low=item["ci_low"],
-                                ci_high=item["ci_high"],
-                                baseline_median=med,
-                                baseline_iqr_p25=p25,
-                                baseline_iqr_p75=p75,
-                                anomaly_percent=anom_pct,
-                                anomaly_absolute=anom_abs,
-                                sensor_regime=item["sensor_regime"],
-                                coverage_status=item["coverage_status"],
-                                method_version="v2.0",
-                                uncertainty_note=item["uncertainty_note"],
-                            )
-                        )
-                    HarmonizedMonthSeries.objects.bulk_create(series_objs)
+                reconstructed = _build_series_from_params(counts, params, note)
+                baselines_map = _compute_baselines_map(reconstructed)
+                _persist_region_calibration(
+                    region=region,
+                    filter_static=filter_static,
+                    method_name=(
+                        "power_law_log1p_static_masked"
+                        if filter_static
+                        else "power_law_log1p_unfiltered"
+                    ),
+                    method_version="v2.0",
+                    reference_scale="VIIRS_375m_SNPP_equiv",
+                    train_start=TRAIN_START,
+                    train_end=TRAIN_END,
+                    test_start=TEST_START,
+                    test_end=TEST_END,
+                    params=params,
+                    metrics=metrics,
+                    baselines_map=baselines_map,
+                    reconstructed=reconstructed,
+                )
 
                 self.stdout.write(
                     f"Built {region.code} (filter_static={filter_static}): "
-                    f"{len(reconstructed)} months, test R2={metrics.get('models_out_of_sample', {}).get('power_law_log1p', {}).get('r2')}"
+                    f"{len(reconstructed)} months, "
+                    f"test R2={metrics.get('models_out_of_sample', {}).get('power_law_log1p', {}).get('r2')}"
                 )
 
         self.stdout.write(self.style.SUCCESS("Harmonization & baseline generation complete."))
