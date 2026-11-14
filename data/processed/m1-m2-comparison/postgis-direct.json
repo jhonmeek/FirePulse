@@ -1,0 +1,197 @@
+{
+  "artifact_kind": "firepulse-postgis-direct-comparison",
+  "country_experiment": {
+    "artifact_kind": "firepulse-m1-temporal-experiment",
+    "calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+    "eligible_months": {
+      "calibrate": 36,
+      "evaluate": 36,
+      "select": 36,
+      "train": 59
+    },
+    "evaluation": {
+      "coverage": 0.75,
+      "covered": 27,
+      "mean_width": 382.7530297228959,
+      "metrics": {
+        "bias": 14.540879319062968,
+        "mae": 134.5163645118649,
+        "n": 36,
+        "r2": 0.9339600609152048,
+        "rmse": 216.32304655891056
+      }
+    },
+    "excluded_months": {
+      "calibrate": [],
+      "evaluate": [],
+      "select": [],
+      "train": []
+    },
+    "fit": {
+      "power_p": 0.8061693141314469,
+      "power_q": 2.5517845357080864,
+      "ratio": 4.447596195046705
+    },
+    "interval": {
+      "calibration_rank": 30,
+      "nominal_level": 0.8,
+      "radius_count_units": 191.37651486144796
+    },
+    "limitations": [
+      "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
+      "Unmasked observations; no frozen static mask has been evaluated.",
+      "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+      "2023-2025 was previously inspected, not a blind final holdout.",
+      "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+      "NOAA-20 bridge and custom-region uncertainty not evaluated."
+    ],
+    "schema_version": 1,
+    "selected_model": "power",
+    "selection_metrics": {
+      "identity": {
+        "bias": -727.1111111111111,
+        "mae": 727.1111111111111,
+        "n": 36,
+        "r2": -0.6124979350993007,
+        "rmse": 900.0189504177738
+      },
+      "power": {
+        "bias": -104.69837595052547,
+        "mae": 118.19557157841928,
+        "n": 36,
+        "r2": 0.9499361240576737,
+        "rmse": 158.5858028169639
+      },
+      "ratio": {
+        "bias": -94.18990963712021,
+        "mae": 153.75185439102654,
+        "n": 36,
+        "r2": 0.9371455793724858,
+        "rmse": 177.69286269254474
+      }
+    },
+    "windows": {
+      "calibrate": [
+        "2020-01",
+        "2022-12"
+      ],
+      "evaluate": [
+        "2023-01",
+        "2025-12"
+      ],
+      "select": [
+        "2017-01",
+        "2019-12"
+      ],
+      "train": [
+        "2012-02",
+        "2016-12"
+      ]
+    }
+  },
+  "country_mismatches": 0,
+  "direct_rows": 845,
+  "ga_experiment": {
+    "artifact_kind": "firepulse-m1-temporal-experiment",
+    "calendar_sha256": "bc4fb003fdaea333a69cb7eb763f61eb26f286ea21a9d1403fb7b9ef6a9c37f4",
+    "eligible_months": {
+      "calibrate": 36,
+      "evaluate": 36,
+      "select": 36,
+      "train": 59
+    },
+    "evaluation": {
+      "coverage": 0.7222222222222222,
+      "covered": 26,
+      "mean_width": 357.7780503684917,
+      "metrics": {
+        "bias": 17.277929061196303,
+        "mae": 131.64524956828137,
+        "n": 36,
+        "r2": 0.9345024153226885,
+        "rmse": 207.43440615407113
+      }
+    },
+    "excluded_months": {
+      "calibrate": [],
+      "evaluate": [],
+      "select": [],
+      "train": []
+    },
+    "fit": {
+      "power_p": 0.8022151198680314,
+      "power_q": 2.5717924387164293,
+      "ratio": 4.467773265053858
+    },
+    "interval": {
+      "calibration_rank": 30,
+      "nominal_level": 0.8,
+      "radius_count_units": 178.88902518424584
+    },
+    "limitations": [
+      "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
+      "Unmasked observations; no frozen static mask has been evaluated.",
+      "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+      "2023-2025 was previously inspected, not a blind final holdout.",
+      "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+      "NOAA-20 bridge and custom-region uncertainty not evaluated."
+    ],
+    "schema_version": 1,
+    "selected_model": "power",
+    "selection_metrics": {
+      "identity": {
+        "bias": -708.9722222222222,
+        "mae": 708.9722222222222,
+        "n": 36,
+        "r2": -0.6491081250995867,
+        "rmse": 871.5656569900196
+      },
+      "power": {
+        "bias": -99.52897396991118,
+        "mae": 115.37754998534696,
+        "n": 36,
+        "r2": 0.9502748581402863,
+        "rmse": 151.34342521433481
+      },
+      "ratio": {
+        "bias": -89.589386269547,
+        "mae": 152.74566386092962,
+        "n": 36,
+        "r2": 0.9319537967146038,
+        "rmse": 177.04248323326104
+      }
+    },
+    "windows": {
+      "calibrate": [
+        "2020-01",
+        "2022-12"
+      ],
+      "evaluate": [
+        "2023-01",
+        "2025-12"
+      ],
+      "select": [
+        "2017-01",
+        "2019-12"
+      ],
+      "train": [
+        "2012-02",
+        "2016-12"
+      ]
+    }
+  },
+  "limitations": [
+    "Direct SQL counts detections strictly ST_Within GA; geometry and database versions must be recorded externally.",
+    "No observational coverage verification: eligible months preserve country-file statuses for both experiments.",
+    "2023-2025 was previously inspected and is not a blind final holdout.",
+    "Unmasked raw detections; no frozen mask or NRT evaluation."
+  ],
+  "m1_calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+  "outside_ga_by_source": {
+    "modis": 1550,
+    "viirs-noaa20": 2175,
+    "viirs-snpp": 3851
+  },
+  "postgis_csv_sha256": "a07e45553c3f2cd38d6ecf817b9f1528b15b0d7b63d54cd16e994c50eccb37a3",
+  "schema_version": 1
+}

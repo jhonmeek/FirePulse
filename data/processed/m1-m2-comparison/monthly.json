@@ -10883,11 +10883,11 @@
   ],
   "schema_version": 1,
   "totals": {
+    "modis_count_difference": 1550,
     "modis_matched_rows": 584,
-    "modis_outside_or_difference": 1550,
+    "viirs-noaa20_count_difference": 2175,
     "viirs-noaa20_matched_rows": 93,
-    "viirs-noaa20_outside_or_difference": 2175,
-    "viirs-snpp_matched_rows": 168,
-    "viirs-snpp_outside_or_difference": 3851
+    "viirs-snpp_count_difference": 3851,
+    "viirs-snpp_matched_rows": 168
   }
 }

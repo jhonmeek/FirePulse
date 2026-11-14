@@ -38,7 +38,7 @@ def compare(calendar_path: Path, monthly_manifest: Path, export_path: Path, expo
         original = row.get("count_raw")
         difference = original - value if original is not None and value is not None else None
         if difference is not None:
-            totals[row["source"] + "_outside_or_difference"] += difference
+            totals[row["source"] + "_count_difference"] += difference
             totals[row["source"] + "_matched_rows"] += 1
         records.append({"month": row["month"], "source": row["source"], "satellite": row["satellite"], "m1_count": original, "m1_status": row["status"], "m2_count": value, "difference": difference})
     return {"artifact_kind":"firepulse-m1-m2-monthly-comparison", "schema_version":1, "m1_calendar_sha256":hashlib.sha256(calendar_bytes).hexdigest(), "m2_csv_sha256":hashlib.sha256(export_bytes).hexdigest(), "totals":dict(sorted(totals.items())), "rows":records, "limitations":["M1 uses country files without verified boundary; M2 uses PostGIS GA ST_Within.", "M2 export fills some missing observations with zero; source-month coverage is not independently established.", "Differences can include boundary, ingestion, processing and zero-filling effects; they are not automatically counts of points outside the polygon."]}
