@@ -22,9 +22,11 @@ def compare(calendar: Path, manifest: Path, direct_csv: Path):
             country, ga = int(row["country_count"]), int(row["ga_count"])
             if country < ga or ga < 0: raise ValueError("invalid spatial count")
             direct[key] = (country, ga)
-    payload = json.loads(raw); mismatches = []; used = set(); totals = {}
+    payload = json.loads(raw); mismatches = []; used = set(); totals = {}; calendar_keys = set()
     for row in payload["rows"]:
         key = (row["month"], row["source"], row["satellite"])
+        if key in calendar_keys: raise ValueError("duplicate calendar month/platform")
+        calendar_keys.add(key)
         if key not in direct:
             if row["count_raw"] not in (None, 0): mismatches.append({"key": key, "m1": row["count_raw"], "postgis": None})
             continue
@@ -40,6 +42,7 @@ def compare(calendar: Path, manifest: Path, direct_csv: Path):
         encoded = (json.dumps(payload,sort_keys=True)+"\n").encode("utf-8")
         cal.write_bytes(encoded); meta.write_text(json.dumps({"calendar_sha256":hashlib.sha256(encoded).hexdigest()}),encoding="utf-8")
         ga_result = run(cal,meta)
+    ga_result["limitations"][0] = "GA counts use the local PostGIS ST_Within geometry; database and geometry provenance must be independently verified."
     country_result = run(calendar,manifest)
     return {"artifact_kind":"firepulse-postgis-direct-comparison","schema_version":1,
             "m1_calendar_sha256":hashlib.sha256(raw).hexdigest(),"postgis_csv_sha256":hashlib.sha256(direct_csv.read_bytes()).hexdigest(),
