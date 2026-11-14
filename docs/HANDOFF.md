@@ -29,12 +29,33 @@ Tu travailles dans **`pipeline/`** et **`data/processed/`** (sans avoir besoin d
    - Récupérer janvier–octobre 2026 + les fichiers récents NRT (`NOAA-20` post-coupure S-NPP du `2026-11-02`), vérifier le format de nommage (`modis_*`, `viirs-snpp_*`, `viirs-jpss1_*` / `viirs-noaa20_*`, inclure `nrt` dans le nom ou `version` pour marquer `is_nrt=true`) afin que `import_firms` les ingère proprement.
 2. **Validation scientifique & cas limites :**
    - **Provinces à faible signal / bruitées :** ex. sur `GA-6` avec masque statique, `power_law_log1p` atteint `R² = 0.6876` (contre `0.9189` au national `GA`), et les sous-régions avec `< 24` paires actives sur le train héritent automatiquement des paramètres nationaux `GA`. Valider si une calibration hiérarchique ou nationale est préférable pour certaines provinces.
-   - **Zones dessinées (`bbox` / `polygon`) :** dans [views.py](../backend/apps/api/views.py), `_custom_area_calendar` agrège `GridCellMonth` et applique la courbe nationale `GA`, mais laisse **`ci_low: null`**, **`ci_high: null`** et **`baseline_iqr: null`**. Définir la formule d'incertitude adaptée (et le rôle du modèle spatial sur cellules actives `0.25°`).
+   - **Zones dessinées (`bbox` / `polygon`) :** dans [views.py](../backend/apps/api/views.py), [services.py](../backend/apps/api/services.py) agrège `GridCellMonth`, calcule désormais les médianes + `baseline_iqr` `[p25, p75]` sur `2001–2025`, et applique la courbe nationale `GA`, mais laisse **`ci_low: null`** et **`ci_high: null`**. Définir la formule d'incertitude adaptée (et le rôle du modèle spatial sur cellules actives `0.25°`).
    - **Seuils de masque statique & `B=0` :** vérifier `>= 20` / `>= 48` mois et les cas de mois sans feu historique (`baseline_median = 0`).
 3. **Documentation jury :**
    - Rédiger `docs/methodology.md` et `docs/limitations.md`.
-4. **Livraison vers M2 :**
-   - Déposer tes paramètres finaux / séries validées dans `data/processed/` (JSON/CSV) et prévenir M2 pour brancher l'import (`--from-pipeline`) dans `build_baseline_series.py`.
+4. **Livraison directe vers PostGIS (`--from-pipeline`) :**
+   - Le chargeur [build_baseline_series.py](../backend/apps/harmonization/management/commands/build_baseline_series.py) accepte désormais **deux formats** :
+     1. **Artefacts mensuels M1 actuels (`/data/processed/monthly`)** : dossier, `manifest.json` (`firepulse-monthly` avec vérification SHA-256), `calendar.json` (`firepulse-monthly-calendar`), ou `monthly_counts.csv`. Pivote `count_type0_candidate` (`filter_static=True`) et `count_raw` (`filter_static=False`), conserve les `null` (`not_available` / `missing_input`) sans les transformer en `0`, calibre si `harmonized_value` est `null` et journalise la provenance exacte dans `metrics_json.m1_provenance` (y compris l'absence de masque statique `0.05°`).
+     2. **Bundle calibré M1 JSON (`/data/processed/calibration/pipeline_bundle.json`)** :
+
+```json
+{
+  "method_name": "m1_validated_power_law",
+  "method_version": "v2.1-m1",
+  "reference_scale": "VIIRS_375m_SNPP_equiv",
+  "regions": [
+    {
+      "region": "GA",
+      "filter_static": true,
+      "params": {"power_law_p": 0.9438, "power_law_q": 1.6529},
+      "metrics": {"test_months": 72, "models_out_of_sample": {"power_law_log1p": {"r2": 0.92}}},
+      "baselines": [{"month_num": 8, "baseline_median": 1704.48, "iqr_p25": 1119.5, "iqr_p75": 2187.59, "reference_years_count": 25}],
+      "series": [{"month": "2024-08", "harmonized_value": 3049.0, "ci_low": 2900.0, "ci_high": 3200.0, "sensor_regime": "viirs_snpp_observed", "coverage_status": "complete_sp"}]
+    }
+  ]
+}
+```
+   - Si `"series"` est omis, le backend reconstruit les séries à partir des comptages PostGIS + tes `"params"` ; si `"series"` (et optionnellement `"baselines"`) est fourni, tes valeurs exactes remplacent la baseline provisoire dans une transaction atomique.
 
 ---
 
@@ -60,32 +81,37 @@ curl "http://localhost:8000/api/v1/calendar/?bbox=10.5,-3.0,12.5,-1.0&start=2024
 # Zone libre Polygone GeoJSON (URL-encodé)
 curl -G "http://localhost:8000/api/v1/calendar/" --data-urlencode 'polygon={"type":"Polygon","coordinates":[[[10.5,-3.0],[12.5,-3.0],[12.5,-1.0],[10.5,-1.0],[10.5,-3.0]]]}'
 
-# Anomalies et médianes de référence par mois (1..12)
+# Anomalies et médianes de référence par mois (region, bbox ou polygon)
 curl "http://localhost:8000/api/v1/anomalies/?region=GA&top_n=10"
+curl "http://localhost:8000/api/v1/anomalies/?bbox=10.5,-3.0,12.5,-1.0&top_n=5"
 
-# Grille GeoJSON 0.25° pour un mois donné + cellules statiques masquées
+# Grille GeoJSON 0.25° : par mois OU agrégée par cellule (agg=cell) sur une plage de dates
 curl "http://localhost:8000/api/v1/hotspots/?mode=grid&month=2024-08&include_static_cells=true"
+curl "http://localhost:8000/api/v1/hotspots/?mode=grid&agg=cell&start=2024-06&end=2024-09&bbox=10.5,-3.0,12.5,-1.0"
 
-# Points bruts zoomés (exige month OU bbox, limit max 5000)
+# Points bruts zoomés (exige month, start/end, bbox ou polygon ; limit max 5000)
 curl "http://localhost:8000/api/v1/hotspots/?mode=points&month=2024-08&bbox=10.5,-3.0,12.5,-1.0&limit=500"
 
 # Onglet Méthodologie (paramètres + métriques out-of-sample + limites)
 curl "http://localhost:8000/api/v1/methodology/?region=GA"
 
-# Téléchargement CSV
+# Téléchargement CSV (séries régionales/custom ou points filtrés)
 curl "http://localhost:8000/api/v1/export/?region=GA&start=2024-01&end=2024-12"
+curl "http://localhost:8000/api/v1/export/?bbox=10.5,-3.0,12.5,-1.0"
+curl "http://localhost:8000/api/v1/export/?dataset=points&region=GA&month=2024-08&limit=1000"
 ```
 
 ### Particularités et limites actuelles à connaître côté UI
 1. **`/calendar/?bbox=...` ou `?polygon=...` :**
-   - `ci_low`, `ci_high` et `baseline_iqr` sont actuellement **`null`** (prévoir de masquer gracieusement le ruban d'incertitude sur zone custom en attendant M1, ou d'afficher `uncertainty_note`).
+   - `baseline_iqr` (`[p25, p75]`) est maintenant calculé sur `2001–2025`, mais `ci_low` et `ci_high` restent **`null`** en zone custom (prévoir de masquer gracieusement le ruban d'incertitude ou afficher `uncertainty_note`).
    - Les codes d'identification retournés sont `region.id = "CUSTOM_BBOX"` ou `"CUSTOM_POLYGON"`.
 2. **`/hotspots/` :**
-   - `mode=grid` renvoie une feature **par `(cell_id, month)`**. **Toujours passer `month=YYYY-MM`** (ou un `bbox` + `month`) pour afficher la carte d'un mois donné sans atteindre le plafond `limit` (`2000` par défaut, max `5000`).
-   - `mode=points` renvoie une erreur `400` si ni `month` ni `bbox` n'est fourni.
-   - Si `include_static_cells=true`, la réponse mélange des features `properties.layer = "grid_cell_month"` (ou `"hotspot_point"`) et `"static_flare_mask"` : filtrer sur `properties.layer` côté MapLibre.
-3. **`/anomalies/` et `/export/` :**
-   - Supportent uniquement `region` (`GA`, `GA-1`..`GA-9`) à ce stade. Si M3 a besoin d'exporter ou classer les anomalies d'un `bbox`/`polygon` ou d'exporter `dataset=points`, demander à M2 (évolution prévue en H12–H24).
+   - `mode=grid&agg=month` (défaut) renvoie une feature **par `(cell_id, month)`** : passer `month=YYYY-MM` pour une carte mensuelle rapide.
+   - `mode=grid&agg=cell` agrège par cellule `0.25°` (`layer = "grid_cell_summary"`) sur une fenêtre (`start`/`end` ou `month`) : idéal pour charger tout le Gabon ou une saison en un seul appel (`< 500` cellules).
+   - `mode=points` renvoie une erreur `400` si ni `month`/`start`/`end` ni `bbox`/`polygon` n'est fourni.
+   - Si `include_static_cells=true`, la réponse mélange `layer = "grid_cell_month"` / `"grid_cell_summary"` / `"hotspot_point"` et `"static_flare_mask"` : filtrer sur `properties.layer` côté MapLibre.
+3. **`/export/` :**
+   - `dataset=series` (défaut) et `dataset=points` supportent tous deux `region`, `bbox` et `polygon`. `dataset=points` exige au moins un filtre temporel (`month` / `start` / `end`) ou spatial (`bbox` / `polygon`), plafonné à `limit <= 50000`.
 4. **`/methodology/` :**
    - Les métriques comparatives (`naive`, `global_ratio`, `ols_linear`, `power_law_log1p`, `terra_only_power_law`) se trouvent sous `active_run.metrics.models_out_of_sample` (ou `null` si la sous-région a hérité du modèle national).
 
@@ -96,9 +122,8 @@ curl "http://localhost:8000/api/v1/export/?region=GA&start=2024-01&end=2024-12"
 - **Port DB hôte :** `5433` dans `.env.example` (conteneur `db:5432`).
 - **Commandes clés :**
   - `load_regions.py` : charge [data/boundaries/gabon_adm0.geojson](../data/boundaries/gabon_adm0.geojson) + [gabon_adm1.geojson](../data/boundaries/gabon_adm1.geojson) (avec `.strip()` sur les noms contenant des tabulations comme `Ogooué-Ivindo`).
-  - `import_firms.py` : déduplication fichier (`ImportBatch.file_sha256`) + ligne (`HotspotObservation.original_hash`). Attention côté SQL : `ROUND()` Postgres exige un cast `::numeric`.
-  - `build_baseline_series.py` : conserve `2012-01` en régime `modis_terra_aqua` (`SNPP_START = 2012-02-01`) tout en affichant le `viirs_snpp_count` brut présent dans le CSV 2012.
-- **Chantiers H12–H24 purement M2 :**
-  - Support `bbox` / `polygon` (+ `dataset=points` éventuel) sur `/api/v1/export/` et `/api/v1/anomalies/`.
-  - Option `--from-pipeline` dans `build_baseline_series.py` pour ingérer les sorties `data/processed/` validées par M1.
-  - Cache / indexation si besoin + configuration production (`gunicorn`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, snapshot DB).
+  - `import_firms.py` : déduplication fichier (`ImportBatch.file_sha256`) + ligne (`HotspotObservation.original_hash`) et détection NRT par colonne `version` en plus du nom de fichier. Attention côté SQL : `ROUND()` Postgres exige un cast `::numeric`.
+  - `build_baseline_series.py` : conserve `2012-01` en régime `modis_terra_aqua` (`SNPP_START = 2012-02-01`) et supporte `--from-pipeline <bundle.json>` pour ingérer les sorties M1.
+- **Chantiers H24–H34 purement M2 :**
+  - Cache HTTP / performances GeoJSON & déploiement HTTPS (`gunicorn`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`).
+  - Snapshot DB / JSON de secours pour une démo 100 % reproductible hors ligne à H34–H42.

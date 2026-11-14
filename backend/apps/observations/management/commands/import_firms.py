@@ -282,6 +282,7 @@ class Command(BaseCommand):
                     objs: list[HotspotObservation] = []
                     versions: set[str] = set()
                     dates: list[datetime] = []
+                    nrt_rows = 0
 
                     with csv_path.open("r", encoding="utf-8", newline="") as fh:
                         for row in csv.DictReader(fh):
@@ -289,6 +290,8 @@ class Command(BaseCommand):
                             objs.append(obs)
                             versions.add(obs.product_version)
                             dates.append(obs.acquired_at)
+                            if obs.is_nrt:
+                                nrt_rows += 1
                             if len(objs) >= 5000:
                                 HotspotObservation.objects.bulk_create(objs, ignore_conflicts=True)
                                 objs.clear()
@@ -298,6 +301,10 @@ class Command(BaseCommand):
 
                     batch.row_count = len(dates)
                     batch.product_version = ",".join(sorted(v for v in versions if v))[:30]
+                    if nrt_rows > 0:
+                        batch.processing_level = ProcessingLevelChoices.NRT
+                        if nrt_rows < len(dates):
+                            batch.notes = f"mixed_sp_nrt_rows={nrt_rows}/{len(dates)}"
                     if dates:
                         batch.min_date = min(dates).date()
                         batch.max_date = max(dates).date()

@@ -18,7 +18,7 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 ### Frontend (M3) — jalon H3–H12
 
 - **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia** dans [frontend/](frontend/) ; `echarts`/`vue-echarts` et `maplibre-gl` installés pour le graphe comparatif et la carte (H12–H34).
-- **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.1.0.
+- **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
 - **Flux réel bout-en-bout vérifié** : UI branchée sur l'API locale (`GA` + 9 provinces, bascule torchères), requêtes `/api/v1/*` en 200.
 - **Écran principal** :
   - barre de contrôle : zone (Gabon / provinces), plage d'années, couleur *Intensité* / *Anomalie*, toggle « Exclure torchères » ;
@@ -55,10 +55,11 @@ docker compose exec backend python manage.py import_firms
 docker compose exec backend python manage.py build_baseline_series
 ```
 
-Options utiles de `import_firms` :
+Options utiles :
 - `python manage.py import_firms` : importe uniquement les nouveaux CSV (idempotent via SHA-256).
 - `python manage.py import_firms --rebuild-only` : recalcule uniquement le masque statique `0.05°` et la grille `0.25°`.
 - `python manage.py import_firms --data-dir /data/raw/<dossier>` : pointe vers un autre dossier monté dans `./data`.
+- `python manage.py build_baseline_series --from-pipeline /data/processed/monthly` : ingère directement les artefacts mensuels M1 (`calendar.json` ou `monthly_counts.csv` + vérification SHA-256 `manifest.json`) ou un bundle calibré M1 JSON (`regions`).
 
 ### 4. Vérifier que tout tourne
 
@@ -68,6 +69,8 @@ curl http://localhost:8000/api/v1/health/
 ```
 
 Réponse attendue sur `/api/v1/health/` : `"status": "ok"`, `"database": "connected"` et les compteurs (`regions: 10`, `hotspots: 292589`, `grid_cell_months: 42482`, `harmonized_months: 6011`).
+
+Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) exécute automatiquement à chaque PR/push les tests Backend PostGIS (`manage.py test -v 2`), le pipeline M1 (`unittest`) et le build/tests Frontend (`type-check`, `vitest`, `vite build`).
 
 ---
 
@@ -138,7 +141,8 @@ FirePulse/
 │       │                        # + commandes load_regions, import_firms
 │       ├── harmonization/       # Modèles CalibrationRun, MonthlyBaseline, HarmonizedMonthSeries
 │       │                        # + commande build_baseline_series
-│       └── api/                 # Endpoints REST v1 (views.py, urls.py) + tests (tests.py)
+│       └── api/                 # Endpoints REST v1 (views.py, services.py, urls.py) + tests (tests.py)
+├── pipeline/                    # Scripts scientifiques M1 (inventory.py, ...)
 ├── frontend/
 │   ├── scripts/generate_mocks.py  # Mocks fidèles à l'API, générés depuis data/raw/gabon
 │   └── src/
@@ -152,7 +156,8 @@ FirePulse/
 │       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/
 │   ├── api-contract.json        # Contrat API v1 synchronisé avec backend/apps/api/views.py
-│   └── HANDOFF.md               # Fiche d'intervention M1 / M3 / M2 + limites actuelles
+│   ├── HANDOFF.md               # Fiche d'intervention M1 / M3 / M2 + limites actuelles
+│   └── m1-data-audit.md         # Lot M1 #1 — inventaire et contrôles qualité FIRMS
 ├── docker-compose.yml           # PostGIS 16-3.4 (hôte 5433) + Django (:8000)
 ├── .env.example                 # Modèle de configuration locale
 └── Guide_FirePulse_NASA_Space_Apps_2026_v2.md
@@ -166,12 +171,12 @@ FirePulse/
 | :--- | :--- |
 | `GET /api/v1/health/` | État DB, version PostGIS et compteurs |
 | `GET /api/v1/regions/` | Liste des régions (`GA`, `GA-1`..`GA-9`), `bbox` et GeoJSON (`?include_geom=true\|false`) |
-| `GET /api/v1/coverage/` | Disponibilité temporelle et niveaux (`SP` / `NRT`) par capteur + coupure S-NPP `2026-11-02` |
+| `GET /api/v1/coverage/` | Disponibilité temporelle, versions (`product_versions`) et niveaux (`SP` / `NRT`) par capteur + coupure S-NPP `2026-11-02` |
 | `GET /api/v1/calendar/` | Séries brutes vs harmonisées, médianes & anomalies (`?region=`, `?bbox=`, `?polygon=`, `?start=`, `?end=`, `?filter_static=`) |
-| `GET /api/v1/anomalies/` | Médianes mensuelles `[p25, p75]` et top anomalies positives/négatives (`?region=`, `?filter_static=`, `?top_n=`) |
-| `GET /api/v1/hotspots/` | FeatureCollection GeoJSON grille `0.25°` (`mode=grid`) ou points (`mode=points`) + cellules statiques (`include_static_cells=true`) |
+| `GET /api/v1/anomalies/` | Médianes mensuelles `[p25, p75]` et top anomalies (`?region=`, `?bbox=`, `?polygon=`, `?start=`, `?end=`, `?filter_static=`, `?top_n=`) |
+| `GET /api/v1/hotspots/` | FeatureCollection GeoJSON grille `0.25°` (`mode=grid`, `agg=month\|cell`) ou points (`mode=points`) sur `region`/`bbox`/`polygon` + `include_static_cells=true` |
 | `GET /api/v1/methodology/` | Paramètres calibrés, métriques hors échantillon `2020–2025`, stats masque statique, limites |
-| `GET /api/v1/export/` | Export CSV téléchargeable avec métadonnées de régime et couverture |
+| `GET /api/v1/export/` | Export CSV `dataset=series\|points` (`region`, `bbox`, `polygon`, filtres de dates) avec métadonnées complètes |
 
 Contrat détaillé : [docs/api-contract.json](docs/api-contract.json).
 

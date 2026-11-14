@@ -1,7 +1,7 @@
 {
-  "contract_version": "2.1.0",
+  "contract_version": "2.2.0",
   "frozen_at_milestone": "H2",
-  "synced_with_backend": "backend/apps/api/views.py (back_geo_infra)",
+  "synced_with_backend": "backend/apps/api/views.py (H12-H24)",
   "base_url": "/api/v1",
   "enums": {
     "sensor_regime": [
@@ -73,6 +73,7 @@
             "max_date": "2025-12-31",
             "operational_end_date": null,
             "processing_levels": ["SP"],
+            "product_versions": ["6.03", "6.2", "61.03"],
             "notes": "Terra-only from 2000-11 to 2002-06; Aqua starts 2002-07."
           },
           {
@@ -82,6 +83,7 @@
             "max_date": "2025-12-31",
             "operational_end_date": "2026-11-02",
             "processing_levels": ["SP"],
+            "product_versions": ["2"],
             "notes": "Operational FIRMS delivery ended 2026-11-02 13:00 UTC."
           },
           {
@@ -91,6 +93,7 @@
             "max_date": "2025-12-31",
             "operational_end_date": null,
             "processing_levels": ["SP"],
+            "product_versions": ["2"],
             "notes": "Official drop-in continuation after S-NPP retirement."
           }
         ]
@@ -106,7 +109,7 @@
         "end": "Optional YYYY-MM filter applied to output series",
         "filter_static": "true|false (default true: excludes type!=0 and 0.05 deg static flare cells)"
       },
-      "notes": "When bbox or polygon is used, region.id is CUSTOM_BBOX or CUSTOM_POLYGON, and ci_low, ci_high, baseline_iqr are currently null.",
+      "notes": "When bbox or polygon is used, region.id is CUSTOM_BBOX or CUSTOM_POLYGON, baseline_iqr is computed across 2001-2025, and ci_low/ci_high remain null.",
       "response_example": {
         "region": {
           "id": "GA",
@@ -143,9 +146,13 @@
       }
     },
     "GET /api/v1/anomalies/": {
-      "description": "Monthly historical baselines (median + IQR) and ranked positive/negative anomalies for a precomputed region.",
+      "description": "Monthly historical baselines (median + IQR) and ranked positive/negative anomalies for a region, bbox, or GeoJSON polygon.",
       "query_params": {
-        "region": "GA (default)",
+        "region": "GA (default; ignored if bbox or polygon provided)",
+        "bbox": "Optional west,south,east,north in EPSG:4326",
+        "polygon": "Optional URL-encoded GeoJSON Polygon, MultiPolygon, or Feature",
+        "start": "Optional YYYY-MM filter applied to top_positive / top_negative rankings",
+        "end": "Optional YYYY-MM filter applied to top_positive / top_negative rankings",
         "filter_static": "true|false (default true)",
         "top_n": "1..50 (default 10)"
       },
@@ -176,12 +183,16 @@
       }
     },
     "GET /api/v1/hotspots/": {
-      "description": "GeoJSON FeatureCollection of 0.25 deg grid cell-month aggregates (default) or filtered raw detections (mode=points).",
+      "description": "GeoJSON FeatureCollection of 0.25 deg grid cells (agg=month per cell-month or agg=cell summed over range) or filtered raw detections (mode=points).",
       "query_params": {
-        "mode": "grid|points (default grid; mode=points requires month or bbox)",
-        "region": "Optional region code (ignored if bbox provided)",
-        "month": "YYYY-MM (strongly recommended for mode=grid map rendering)",
+        "mode": "grid|points (default grid; mode=points requires month, start/end, bbox, or polygon)",
+        "agg": "month|cell (default month; agg=cell aggregates grid cells across selected month/start..end)",
+        "region": "Optional region code (ignored if bbox or polygon provided)",
+        "month": "Optional YYYY-MM exact month filter",
+        "start": "Optional YYYY-MM range start (used when month omitted)",
+        "end": "Optional YYYY-MM range end (used when month omitted)",
         "bbox": "west,south,east,north in EPSG:4326",
+        "polygon": "Optional URL-encoded GeoJSON Polygon, MultiPolygon, or Feature",
         "filter_static": "true|false (default true)",
         "include_static_cells": "true|false (default false; appends up to 1000 features with properties.layer='static_flare_mask')",
         "limit": "1..5000 (default 2000)"
@@ -189,6 +200,7 @@
       "response_example": {
         "type": "FeatureCollection",
         "mode": "grid",
+        "agg": "month",
         "features": [
           {
             "type": "Feature",
@@ -252,15 +264,20 @@
       }
     },
     "GET /api/v1/export/": {
-      "description": "Downloadable CSV of monthly series for a precomputed region with raw counts, harmonized estimates, uncertainty bounds, baseline median, anomalies, sensor regime, and coverage metadata.",
+      "description": "Downloadable CSV of monthly harmonized series (dataset=series) or bounded raw detections (dataset=points) for a region, bbox, or polygon.",
       "query_params": {
-        "region": "GA (default)",
+        "dataset": "series|points (default series; dataset=points requires month, start/end, bbox, or polygon)",
+        "region": "GA (default; ignored if bbox or polygon provided)",
+        "bbox": "Optional west,south,east,north in EPSG:4326",
+        "polygon": "Optional URL-encoded GeoJSON Polygon, MultiPolygon, or Feature",
+        "month": "Optional YYYY-MM exact month (mainly for dataset=points)",
         "start": "Optional YYYY-MM",
         "end": "Optional YYYY-MM",
-        "filter_static": "true|false (default true)"
+        "filter_static": "true|false (default true)",
+        "limit": "1..50000 (default 10000; applies to dataset=points)"
       },
       "response_content_type": "text/csv",
-      "csv_columns": [
+      "series_csv_columns": [
         "region",
         "month",
         "filter_static",
@@ -276,6 +293,25 @@
         "sensor_regime",
         "coverage_status",
         "method_version"
+      ],
+      "points_csv_columns": [
+        "region",
+        "source",
+        "satellite",
+        "instrument",
+        "acquired_at",
+        "latitude",
+        "longitude",
+        "frp",
+        "brightness_mir",
+        "brightness_tir",
+        "confidence_raw",
+        "confidence_tier",
+        "daynight",
+        "hotspot_type",
+        "is_static_masked",
+        "product_version",
+        "is_nrt"
       ]
     }
   }
