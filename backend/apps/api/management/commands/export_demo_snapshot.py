@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.gis.db.models.functions import AsGeoJSON
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Max
 from django.test import override_settings
 from rest_framework.test import APIClient
 
-from apps.observations.models import Region
+from apps.observations.models import GridCellMonth, Region
 
 
 def _default_snapshot_dir() -> Path:
@@ -22,14 +24,48 @@ def _default_snapshot_dir() -> Path:
     return Path(settings.BASE_DIR).parent / "data" / "backups" / "demo_snapshot"
 
 
-def _write_json(path: Path, payload: dict) -> dict:
-    encoded = (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+def _write_json(path: Path, payload: dict, *, compact: bool = False) -> dict:
+    if compact:
+        encoded = (json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
+    else:
+        encoded = (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     path.write_bytes(encoded)
     return {
         "file": path.name,
         "bytes": len(encoded),
         "sha256": hashlib.sha256(encoded).hexdigest(),
     }
+
+
+def _build_grid_monthly_payload(filter_static: bool) -> dict:
+    qs = GridCellMonth.objects.filter(filter_static=filter_static)
+    cells = {
+        row["cell_id"]: json.loads(row["geojson_text"])
+        for row in qs.values("cell_id").annotate(geojson_text=Max(AsGeoJSON("geom"))).order_by("cell_id")
+    }
+    rows = [
+        [
+            row["cell_id"],
+            row["month"].strftime("%Y-%m"),
+            row["modis_count"],
+            row["viirs_snpp_count"],
+            row["viirs_noaa20_count"],
+            round(row["frp_sum_modis"] or 0.0, 2),
+            round(row["frp_sum_snpp"] or 0.0, 2),
+            round(row["frp_sum_noaa20"] or 0.0, 2),
+        ]
+        for row in qs.values(
+            "cell_id",
+            "month",
+            "modis_count",
+            "viirs_snpp_count",
+            "viirs_noaa20_count",
+            "frp_sum_modis",
+            "frp_sum_snpp",
+            "frp_sum_noaa20",
+        ).order_by("cell_id", "month")
+    ]
+    return {"cells": cells, "rows": rows}
 
 
 def _verify_snapshot_manifest(out_dir: Path, manifest: dict) -> None:
@@ -121,6 +157,18 @@ class Command(BaseCommand):
                 if filename == "health.json":
                     health_payload = payload
                 manifest_files.append(_write_json(out_dir / filename, payload))
+
+        for filename, filter_static in (
+            ("hotspots_grid_monthly_static.json", True),
+            ("hotspots_grid_monthly_raw.json", False),
+        ):
+            manifest_files.append(
+                _write_json(
+                    out_dir / filename,
+                    _build_grid_monthly_payload(filter_static),
+                    compact=True,
+                )
+            )
 
         manifest = {
             "artifact_kind": "firepulse-demo-snapshot",
