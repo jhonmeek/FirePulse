@@ -17,7 +17,7 @@ const props = defineProps<{
 /**
  * Libellé du compteur. Définition explicite (revue M1, PR #9) : ce n'est pas le nombre de
  * détections situées dans les cellules statiques, mais l'écart entre les séries `/calendar/`
- * sans et avec filtre — type ≠ 0 OU cellule statique 0.05°, dans la zone, sur la période.
+ * sans et avec filtre - type ≠ 0 OU cellule statique 0.05°, dans la zone, sur la période.
  */
 const maskedLabel = computed(() => {
   const m = props.masked
@@ -57,11 +57,7 @@ const modes: { value: ColorMode; label: string }[] = [
   <form class="flex flex-wrap items-end gap-x-6 gap-y-3" @submit.prevent>
     <label class="flex flex-col gap-1 text-sm">
       <span class="font-medium text-stone-700">Zone</span>
-      <select
-        class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-stone-900 focus-visible:outline-2 focus-visible:outline-orange-600"
-        :value="bbox ? 'CUSTOM' : region"
-        @change="onRegion"
-      >
+      <select class="field" :value="bbox ? 'CUSTOM' : region" @change="onRegion">
         <option v-if="bbox" value="CUSTOM" disabled>Zone dessinée</option>
         <option v-if="!regions.length" value="GA">Gabon</option>
         <option v-for="r in country" :key="r.code" :value="r.code">{{ r.name }}</option>
@@ -76,7 +72,7 @@ const modes: { value: ColorMode; label: string }[] = [
       <div class="flex items-center gap-2">
         <select
           aria-label="Année de début"
-          class="rounded-md border border-stone-300 bg-white px-2 py-1.5 focus-visible:outline-2 focus-visible:outline-orange-600"
+          class="field"
           :value="yearRange[0]"
           @change="onYear(0, $event)"
         >
@@ -85,7 +81,7 @@ const modes: { value: ColorMode; label: string }[] = [
         <span aria-hidden="true">→</span>
         <select
           aria-label="Année de fin"
-          class="rounded-md border border-stone-300 bg-white px-2 py-1.5 focus-visible:outline-2 focus-visible:outline-orange-600"
+          class="field"
           :value="yearRange[1]"
           @change="onYear(1, $event)"
         >
@@ -96,12 +92,8 @@ const modes: { value: ColorMode; label: string }[] = [
 
     <fieldset class="flex flex-col gap-1 text-sm">
       <legend class="font-medium text-stone-700">Couleur du calendrier</legend>
-      <div class="inline-flex rounded-md border border-stone-300 bg-white p-0.5">
-        <label
-          v-for="m in modes"
-          :key="m.value"
-          class="cursor-pointer rounded px-3 py-1 has-[:checked]:bg-stone-800 has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-orange-600"
-        >
+      <div class="segmented">
+        <label v-for="m in modes" :key="m.value" class="segmented-item">
           <input
             v-model="colorMode"
             class="sr-only"

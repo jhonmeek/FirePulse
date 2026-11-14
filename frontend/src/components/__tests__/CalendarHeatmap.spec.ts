@@ -12,7 +12,14 @@ const edge = (calEdge as unknown as CalendarResponse).series
 
 function mountHeatmap(props: Partial<InstanceType<typeof CalendarHeatmap>['$props']> = {}) {
   return mount(CalendarHeatmap, {
-    props: { series, yearRange: [2001, 2025], colorMode: 'value', selectedMonth: null, ...props },
+    props: {
+      series,
+      yearRange: [2001, 2025],
+      colorMode: 'value',
+      selectedMonth: null,
+      compareYear: null,
+      ...props,
+    },
     attachTo: document.body,
   })
 }
@@ -23,7 +30,29 @@ describe('CalendarHeatmap', () => {
     expect(w.findAll('button[data-month]')).toHaveLength(25 * 12)
     const headers = w.findAll('[role="rowheader"]').map((h) => h.text())
     expect(headers[0]).toBe('2001')
-    expect(headers[headers.length - 1]).toBe('2025')
+    expect(headers[headers.length - 2]).toBe('2025')
+    // Série de comparaison : la ligne de référence vient après les années.
+    expect(headers[headers.length - 1]).toBe('Médiane')
+    w.unmount()
+  })
+
+  it('ajoute la ligne Médiane (12 mois, non tabulable) et émet compare au clic sur une année', async () => {
+    const w = mountHeatmap({ compareYear: 2024 })
+    const rows = w.findAll('[role="row"]')
+    const baseline = rows[rows.length - 1]!
+    const cells = baseline.findAll('[role="gridcell"]')
+    expect(cells).toHaveLength(12)
+    expect(cells[7]!.attributes('aria-label')).toMatch(
+      /^Médiane de août 2001-2025 : [\d ]+ détections/,
+    )
+    expect(baseline.findAll('button')).toHaveLength(0)
+    const year2024 = w.findAll('[role="rowheader"] button').find((b) => b.text() === '2024')!
+    expect(year2024.attributes('aria-pressed')).toBe('true')
+    await w
+      .findAll('[role="rowheader"] button')
+      .find((b) => b.text() === '2010')!
+      .trigger('click')
+    expect(w.emitted('compare')).toEqual([[2010]])
     w.unmount()
   })
 

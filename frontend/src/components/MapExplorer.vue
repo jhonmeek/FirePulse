@@ -402,10 +402,7 @@ const summary = computed(() => {
     <div class="mb-3 flex flex-wrap items-end gap-x-5 gap-y-3 text-sm">
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-700">Capteur affiché</span>
-        <select
-          v-model="metric"
-          class="rounded-md border border-stone-300 bg-white px-2 py-1.5 focus-visible:outline-2 focus-visible:outline-orange-600"
-        >
+        <select v-model="metric" class="field">
           <option v-for="(m, k) in MAP_METRICS" :key="k" :value="k">{{ m.label }}</option>
         </select>
       </label>
@@ -426,24 +423,12 @@ const summary = computed(() => {
         <button
           type="button"
           :aria-pressed="drawing"
-          :class="[
-            'rounded-md border px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-orange-600',
-            drawing
-              ? 'border-stone-900 bg-stone-900 text-white'
-              : 'border-stone-300 bg-white hover:bg-stone-100',
-          ]"
+          :class="drawing ? 'btn-primary' : 'btn'"
           @click="toggleDrawing"
         >
           {{ drawing ? 'Annuler le dessin (Échap)' : 'Dessiner une zone' }}
         </button>
-        <button
-          v-if="bbox"
-          type="button"
-          class="rounded-md border border-stone-300 bg-white px-3 py-1.5 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-orange-600"
-          @click="clearZone"
-        >
-          Effacer la zone
-        </button>
+        <button v-if="bbox" type="button" class="btn" @click="clearZone">Effacer la zone</button>
       </div>
     </div>
 
@@ -458,7 +443,7 @@ const summary = computed(() => {
     <div class="relative">
       <div
         ref="container"
-        class="h-[28rem] w-full overflow-hidden rounded-md border border-stone-200"
+        class="h-[28rem] w-full overflow-hidden rounded-xl border border-stone-200"
         role="region"
         aria-label="Carte des détections par cellule de 0,25° et des sites statiques exclus"
       />
@@ -515,18 +500,9 @@ const summary = computed(() => {
           class="flex flex-col gap-1"
         >
           <span class="text-xs text-stone-600">{{ f[1] }}</span>
-          <input
-            v-model="form[f[0]]"
-            inputmode="decimal"
-            class="w-24 rounded-md border border-stone-300 px-2 py-1 tabular-nums focus-visible:outline-2 focus-visible:outline-orange-600"
-          />
+          <input v-model="form[f[0]]" inputmode="decimal" class="field w-24 tabular-nums" />
         </label>
-        <button
-          type="submit"
-          class="rounded-md bg-stone-900 px-3 py-1.5 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
-        >
-          Appliquer
-        </button>
+        <button type="submit" class="btn-primary">Appliquer</button>
       </form>
     </details>
     <p v-if="formError" role="alert" class="mt-2 text-xs text-red-800">{{ formError }}</p>

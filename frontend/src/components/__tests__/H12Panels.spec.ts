@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -6,22 +6,41 @@ import AnomaliesPanel from '@/components/AnomaliesPanel.vue'
 import ComparisonChart from '@/components/ComparisonChart.vue'
 import ControlBar from '@/components/ControlBar.vue'
 import MethodologyPanel from '@/components/MethodologyPanel.vue'
+import { useFiltersStore } from '@/stores/filters'
 import type { CalendarResponse } from '@/types/api'
 import calStatic from '@/mocks/calendar_GA_static.json'
 
 const series = (calStatic as unknown as CalendarResponse).series
 
 /** ECharts a besoin d'un canvas (absent de jsdom) : on remplace VChart par un double. */
+/**
+ * Double d'ECharts : expose `getOption()` (fenêtre de zoom courante) et émet `datazoom`
+ * quand on simule un zoom, comme le vrai composant.
+ */
+let stubZoom: { startValue: number; endValue: number } | null = null
 const VChartStub = defineComponent({
   props: { option: Object },
-  emits: ['click'],
-  setup(_, { emit }) {
+  emits: ['click', 'datazoom'],
+  setup(props, { emit, expose }) {
+    expose({ getOption: () => ({ dataZoom: [stubZoom ?? {}] }) })
     return () =>
-      h('div', { 'data-testid': 'chart', onClick: () => emit('click', { name: '2010-08' }) })
+      h('div', {
+        'data-testid': 'chart',
+        'data-zoom': JSON.stringify(
+          (props.option as { dataZoom?: { startValue?: string }[] })?.dataZoom?.[0]?.startValue ??
+            null,
+        ),
+        onClick: () => emit('click', { name: '2010-08' }),
+        onDblclick: () => emit('datazoom'),
+      })
   },
 })
 
 describe('ComparisonChart', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    stubZoom = null
+  })
   const mountChart = () =>
     mount(ComparisonChart, {
       props: { series, yearRange: [2001, 2025], selectedMonth: null },
@@ -35,7 +54,32 @@ describe('ComparisonChart', () => {
     expect(w.text()).toContain('intervalle conforme 80 %')
     await w.get('input[value="before"]').setValue(true)
     expect(w.text()).toContain('rupture')
-    expect(w.emitted('update:view')).toEqual([['before']])
+    expect(useFiltersStore().chartView).toBe('before')
+  })
+
+  it('conserve le zoom en basculant avant / après (revue UX)', async () => {
+    const w = mountChart()
+    // Zoom simulé sur les index 108..179 de 2001-01..2025-12 = 2010-01..2015-12
+    stubZoom = { startValue: 108, endValue: 179 }
+    await w.get('[data-testid="chart"]').trigger('dblclick')
+    expect(useFiltersStore().chartWindow).toEqual({ start: '2010-01', end: '2015-12' })
+    expect(w.get('[data-testid="chart"]').attributes('data-zoom')).toBe('"2010-01"')
+    await w.get('input[value="before"]').setValue(true)
+    expect(w.get('[data-testid="chart"]').attributes('data-zoom')).toBe('"2010-01"')
+    expect(w.text()).toContain('Zoom conservé : janvier 2010 - décembre 2015')
+    await w.get('input[value="after"]').setValue(true)
+    expect(w.get('[data-testid="chart"]').attributes('data-zoom')).toBe('"2010-01"')
+    await w.get('button.btn-ghost').trigger('click')
+    expect(useFiltersStore().chartWindow).toBeNull()
+  })
+
+  it('ramène le zoom dans une plage d’années réduite', async () => {
+    useFiltersStore().chartWindow = { start: '2010-01', end: '2015-12' }
+    const w = mount(ComparisonChart, {
+      props: { series, yearRange: [2014, 2020], selectedMonth: null },
+      global: { stubs: { Echarts: VChartStub } },
+    })
+    expect(w.get('[data-testid="chart"]').attributes('data-zoom')).toBe('"2014-01"')
   })
 
   it('émet select au clic sur un mois du graphe', async () => {

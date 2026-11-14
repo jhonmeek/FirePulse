@@ -59,7 +59,7 @@ describe('formatAnomaly', () => {
     expect(formatAnomaly({ anomaly_percent: null, anomaly_absolute: 30 })).toMatch(
       /^\+30 \(écart absolu/,
     )
-    expect(formatAnomaly({ anomaly_percent: null, anomaly_absolute: null })).toBe('—')
+    expect(formatAnomaly({ anomaly_percent: null, anomaly_absolute: null })).toBe('-')
   })
 })
 

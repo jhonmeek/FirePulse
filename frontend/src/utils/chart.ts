@@ -5,11 +5,34 @@ import { formatCount, monthLabel } from '@/utils/calendar'
 /** `before` = capteurs bruts seuls (rupture 2012 visible) ; `after` = + série harmonisée et bande. */
 export type ChartView = 'before' | 'after'
 
-/** Palette Okabe-Ito (daltonien-compatible) + gris foncé pour l'harmonisé. */
+/** Fenêtre de zoom du graphe, en mois (conservée entre vues et filtres). */
+export interface ChartWindow {
+  start: YearMonth
+  end: YearMonth
+}
+
+/**
+ * Ramène une fenêtre de zoom dans les mois affichés ; null si elle n'y tombe plus
+ * (ou si elle couvre toute la plage : inutile de la mémoriser).
+ */
+export function clampWindow(win: ChartWindow | null, months: YearMonth[]): ChartWindow | null {
+  if (!win || !months.length) return null
+  const first = months[0]!
+  const last = months[months.length - 1]!
+  const start = win.start < first ? first : win.start
+  const end = win.end > last ? last : win.end
+  if (start > end || (start === first && end === last)) return null
+  return { start, end }
+}
+
+/**
+ * Palette Okabe-Ito (daltonien-compatible) + gris foncé pour l'harmonisé.
+ * NOAA-20 en vert bleuté (et pointillés) : le bleu ciel se confondait avec le bleu S-NPP.
+ */
 export const SERIES_COLORS = {
   modis: '#D55E00',
   snpp: '#0072B2',
-  noaa20: '#56B4E9',
+  noaa20: '#009E73',
   harmonized: '#1c1917',
   band: 'rgba(28, 25, 23, 0.16)',
 } as const
@@ -37,8 +60,11 @@ export function buildComparisonOption(
   points: CalendarPoint[],
   view: ChartView,
   selectedMonth: YearMonth | null,
+  zoomWindow: ChartWindow | null = null,
 ): EChartsCoreOption {
   const months = points.map((p) => p.month)
+  const zoom = clampWindow(zoomWindow, months)
+  const zoomRange = zoom ? { startValue: zoom.start, endValue: zoom.end } : {}
   const after = view === 'after'
   const raw = (key: 'modis_count' | 'viirs_snpp_count' | 'viirs_noaa20_count') =>
     points.map((p) => nullable(p[key]))
@@ -65,7 +91,7 @@ export function buildComparisonOption(
       type: 'line',
       data: raw('viirs_noaa20_count'),
       showSymbol: false,
-      lineStyle: { width: 1.25, type: 'dashed', opacity: after ? 0.55 : 1 },
+      lineStyle: { width: 1.5, type: [5, 3], opacity: after ? 0.6 : 1 },
       color: SERIES_COLORS.noaa20,
     },
   ]
@@ -138,6 +164,7 @@ export function buildComparisonOption(
       },
     },
     grid: { left: 56, right: 16, top: 40, bottom: 64 },
+    textStyle: { fontFamily: 'inherit' },
     legend: {
       top: 0,
       data: series.map((s) => s.name as string).filter((n) => n !== 'ci-base'),
@@ -145,7 +172,7 @@ export function buildComparisonOption(
     },
     tooltip: {
       trigger: 'axis',
-      valueFormatter: (v: unknown) => (typeof v === 'number' ? formatCount(Math.round(v)) : '—'),
+      valueFormatter: (v: unknown) => (typeof v === 'number' ? formatCount(Math.round(v)) : '-'),
     },
     xAxis: {
       type: 'category',
@@ -161,11 +188,29 @@ export function buildComparisonOption(
       type: 'value',
       name: 'Détections / mois',
       nameTextStyle: { align: 'left', fontSize: 11 },
-      axisLabel: { formatter: (v: number) => formatCount(v) },
+      axisLabel: { formatter: (v: number) => formatCount(v), color: '#78716c' },
+      splitLine: { lineStyle: { color: '#e7e5e4' } },
     },
+    // Fenêtre réappliquée à chaque reconstruction (vue avant/après, sélection, filtres).
     dataZoom: [
-      { type: 'inside', filterMode: 'none' },
-      { type: 'slider', height: 18, bottom: 8, filterMode: 'none' },
+      { type: 'inside', filterMode: 'none', ...zoomRange },
+      {
+        type: 'slider',
+        height: 18,
+        bottom: 8,
+        filterMode: 'none',
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(120, 113, 108, 0.08)',
+        fillerColor: 'rgba(234, 88, 12, 0.14)',
+        handleStyle: { color: '#ffffff', borderColor: '#a8a29e' },
+        moveHandleStyle: { color: '#d6d3d1' },
+        dataBackground: {
+          lineStyle: { color: '#a8a29e' },
+          areaStyle: { color: 'rgba(168, 162, 158, 0.25)' },
+        },
+        labelFormatter: (_: number, value: string) => value,
+        ...zoomRange,
+      },
     ],
     series,
   }

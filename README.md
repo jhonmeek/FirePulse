@@ -15,7 +15,7 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 - **10 régions chargées** depuis [data/boundaries/](data/boundaries/) : `GA` (Gabon entier) et `GA-1` à `GA-9` (9 provinces).
 - **Grille spatiale `0.25°` (`42 482` lignes)** + **masque statique torchères `0.05°` (`183` cellules)** + **séries harmonisées (`6 011` lignes)** disponibles via **8 endpoints REST `/api/v1/`**.
 
-### Frontend (M3) — jalon H24–H34
+### Frontend (M3) - jalon H24-H34 + finitions UI/UX
 
 - **Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts + MapLibre GL** dans [frontend/](frontend/). ECharts et MapLibre sont chargés en différé (chunks séparés) : le bundle principal reste à ~155 Ko.
 - **Types TypeScript** ([frontend/src/types/api.ts](frontend/src/types/api.ts)) alignés sur [docs/api-contract.json](docs/api-contract.json) v2.2.0.
@@ -23,13 +23,14 @@ Plateforme d'harmonisation multi-capteurs des détections de points chauds **NAS
 - **Onglet *Explorer*** :
   - barre de contrôle : zone (Gabon / provinces), plage d'années, couleur *Intensité* / *Anomalie*, toggle « Exclure torchères » avec **compteur de détections retirées par le filtre** (type FIRMS ≠ 0 ou cellule statique `0.05°`, dans la zone, sur la période affichée — écart entre les séries `/calendar/` sans et avec filtre ; à ne pas confondre avec le nombre de détections situées dans les cellules candidates, cf. revue M1 de la PR #9). Les deux séries sont chargées ensemble : bascule instantanée ;
   - bandeau des régimes capteurs (Terra seul → MODIS reconstitué → VIIRS S-NPP → pont NOAA-20) avec la plage affichée en surbrillance ;
-  - **calendrier Années × Mois accessible** : palettes adaptées aux daltoniens (YlOrRd en racine carrée pour l'intensité, PuOr divergente pour l'anomalie, orange = au-dessus de la médiane), mois provisoires/NRT hachurés, mois sans donnée en pointillés, navigation clavier complète, libellé lecteur d'écran par cellule ;
+  - **calendrier Années × Mois accessible** : palettes adaptées aux daltoniens (YlOrRd en racine carrée pour l'intensité, PuOr divergente pour l'anomalie, orange = au-dessus de la médiane), mois provisoires/NRT hachurés, mois sans donnée en pointillés, navigation clavier complète, libellé lecteur d'écran par cellule ; **série de comparaison** : ligne *Médiane 2001-2025* (même échelle) sous les années, et comparateur *année / année type* (barres de l'année, médiane, bande IQR, écart cumulé, mois au-dessus du 3e quartile, plus fort écart ; SVG léger avec table pour lecteur d'écran). Un clic sur une année du calendrier la place dans le comparateur ;
   - **panneau détail du mois** (survol/focus = aperçu, clic/Entrée = épinglé) : valeur harmonisée ± intervalle 80 %, médiane et IQR du même mois, anomalie (% ou écart absolu si médiane nulle), rang historique 2001–2025, régime, couverture, détections brutes par capteur ;
-  - **graphe comparatif ECharts** : MODIS / VIIRS S-NPP / NOAA-20 bruts, série harmonisée et **bande d'incertitude conforme 80 %**, bouton *Avant / Après harmonisation*, repères des ruptures (Aqua 2002, VIIRS 2012), saut S-NPP/MODIS mesuré (≈ ×3,9 au Gabon), clic = sélection du mois. ECharts est chargé en différé (chunk séparé) ;
+  - **graphe comparatif ECharts** : MODIS / VIIRS S-NPP / NOAA-20 bruts, série harmonisée et **bande d'incertitude conforme 80 %**, bouton *Avant / Après harmonisation* qui **conserve la vue et le zoom** (fenêtre mémorisée, ramenée dans la plage d'années, bouton de réinitialisation), NOAA-20 en vert bleuté pointillé (teinte distincte de S-NPP),, repères des ruptures (Aqua 2002, VIIRS 2012), saut S-NPP/MODIS mesuré (≈ ×3,9 au Gabon), clic = sélection du mois. ECharts est chargé en différé (chunk séparé) ;
   - **anomalies** : saisonnalité de référence (médiane + IQR par mois, mois sélectionné en pointillés) et mois les plus au-dessus / en dessous de la médiane sur la plage affichée, cliquables ;
   - **carte MapLibre** (`/api/v1/hotspots/?mode=grid&agg=cell`) : grille `0.25°` colorée par détections brutes d'un capteur (S-NPP par défaut, MODIS avant 2012, NOAA-20), même échelle racine carrée que le calendrier, **sites statiques exclus** (cellules `0.05°`, bleu) avec info-bulle (motif, détections type 2/3, mois actifs), contours Gabon et provinces, fond de carte OpenFreeMap (sans clé ; attribution OpenMapTiles/OSM affichée), désactivable ; hors ligne, la carte démarre sur fond uni et la grille reste affichée ;
   - **zone libre** : bouton *Dessiner une zone* (cliquer-glisser un rectangle, Échap pour annuler) ou saisie lat/lon au clavier. La bbox remplace la région pour le calendrier, le graphe, les anomalies, la carte et l'export (série `CUSTOM_BBOX` agrégée par M2 depuis la grille ; pas d'intervalle propre à la zone, signalé dans l'UI) ;
   - **Export CSV** (`/api/v1/export/?dataset=series`) de la zone et de la période affichées. En mode mocks, le même CSV est construit côté client (identique octet pour octet à l'export Django sur la série GA sans filtre).
+- **Finitions UI** : en-tête collant et panneau de détail du mois en verre dépoli (seules surfaces vitrées, repli opaque sans `backdrop-filter` ou avec `prefers-reduced-transparency`), cartes et contrôles harmonisés (tokens dans `src/assets/main.css`), lien d'évitement « Aller au contenu », mouvements de 150-200 ms désactivés avec `prefers-reduced-motion`, tiret simple `-` à la place du tiret cadratin dans toute l'interface.
 - **Onglet *Méthodologie & évaluation*** (critère H24 « moteur scientifique évalué hors échantillon visible dans l'UI », **protocole en revue M1**) : évaluation `2020–2025` des 5 modèles ajustés sur `2012-02–2019-12` (MAE, RMSE, biais, R², formules avec paramètres calibrés), écart du modèle retenu sur la période test (au Gabon : −72 % de MAE vs naïf, −16 % vs ratio global, R² = 0,919). L'UI affiche les réserves de la revue : intervalle 80 % calibré sur les résidus de test, choix du modèle fait sur la même fenêtre, masque construit avec la période test. Également : facteurs d'incertitude conformes, pont NOAA-20, masque torchères, limites documentées — le tout lu depuis `/api/v1/methodology/`.
 - **Mode mocks** pour développer sans backend : générés depuis les CSV FIRMS réels en rejouant la chaîne baseline de M2. Comparés à l'API locale : identiques sans filtre ; avec filtre torchères, 37 comptages bruts diffèrent (bord de cellule du masque `0.05°`), écart harmonisé max 1,5 %.
 
@@ -170,9 +171,9 @@ FirePulse/
 │       ├── stores/filters.ts    # Pinia : zone, bbox, années, filtre torchères, couleur, mois sélectionné
 │       ├── composables/         # useCalendar (historique complet, anti-réponse obsolète), useRegions
 │       ├── utils/               # calendar.ts (matrice, palettes, rang), chart.ts (options ECharts),
-│       │                        # anomalies.ts (saisonnalité, classement, compteur), methodology.ts, map.ts
+│       │                        # anomalies.ts, comparison.ts (année / médiane), methodology.ts, map.ts
 │       ├── components/          # ControlBar, RegimeTimeline, CalendarHeatmap, MonthDetail,
-│       │                        # ComparisonChart, AnomaliesPanel, MethodologyPanel, MapExplorer, ExportButton
+│       │                        # YearComparison, ComparisonChart, AnomaliesPanel, MethodologyPanel, MapExplorer, ExportButton
 │       ├── mocks/               # JSON générés (GA) + cas limites synthétiques
 │       └── __tests__/           # Validation des mocks contre le contrat
 ├── docs/

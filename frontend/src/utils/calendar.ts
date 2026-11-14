@@ -57,7 +57,7 @@ export const isProvisional = (s: CoverageStatus) =>
 const nf0 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 })
 const nf1 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 })
 
-export const formatCount = (v: number | null) => (v === null ? '—' : nf0.format(v))
+export const formatCount = (v: number | null) => (v === null ? '-' : nf0.format(v))
 
 export function monthLabel(month: YearMonth, long = true): string {
   const [y, m] = month.split('-')
@@ -77,7 +77,7 @@ export function formatAnomaly(
     const sign = p.anomaly_absolute > 0 ? '+' : p.anomaly_absolute < 0 ? '−' : ''
     return `${sign}${nf0.format(Math.abs(p.anomaly_absolute))} (écart absolu, médiane nulle)`
   }
-  return '—'
+  return '-'
 }
 
 export interface CalendarCell {
