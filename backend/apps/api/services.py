@@ -67,7 +67,10 @@ def parse_polygon(value: str | None) -> GEOSGeometry | None:
 
 
 def bad_request(message: str) -> Response:
-    return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+    res = Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+    res["Cache-Control"] = "no-store"
+    res["X-FirePulse-Cache"] = "BYPASS"
+    return res
 
 
 def parse_area_geometry(request) -> tuple[GEOSGeometry | None, str, str]:
@@ -192,7 +195,11 @@ def compute_custom_area_series(
                 "anomaly_percent": anom_pct,
                 "anomaly_absolute": anom_abs,
                 "sensor_regime": regime,
-                "coverage_status": "partial_sp" if m_date.year < 2001 else "complete_sp",
+                "coverage_status": (
+                    "partial_sp"
+                    if m_date.year < 2001
+                    else ("nrt_only" if m_date >= date(2026, 11, 1) else "complete_sp")
+                ),
                 "uncertainty_note": "Custom area aggregated from 0.25 deg grid using national GA curve.",
             }
         )

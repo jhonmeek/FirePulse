@@ -6,16 +6,19 @@ import tempfile
 from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.gis.geos import MultiPolygon, Point, Polygon
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.test import TestCase
 from django.urls import resolve
 from rest_framework.test import APIClient
 
+from apps.api.cache import invalidate_api_cache
 from apps.harmonization.models import (
     CalibrationRun,
     CoverageStatusChoices,
@@ -494,3 +497,165 @@ class FirePulseModelsAndApiTests(TestCase):
         meth = self.client.get("/api/v1/methodology/?region=GA")
         self.assertEqual(meth.status_code, 200)
         self.assertFalse(meth.json()["active_run"]["metrics"]["m1_provenance"]["static_flare_mask_applied"])
+
+    def test_api_response_cache_hits_and_signal_invalidation(self) -> None:
+        cache.clear()
+        invalidate_api_cache()
+
+        first = self.client.get("/api/v1/calendar/?region=GA")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first["X-FirePulse-Cache"], "MISS")
+        self.assertIn("public", first["Cache-Control"])
+
+        second = self.client.get("/api/v1/calendar/?region=GA")
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second["X-FirePulse-Cache"], "HIT")
+        self.assertEqual(second.json(), first.json())
+
+        row = HarmonizedMonthSeries.objects.get(
+            region=self.region,
+            calibration_run=self.run,
+            month=date(2024, 8, 1),
+        )
+        row.uncertainty_note = "Updated note invalidates cache"
+        row.save()
+
+        third = self.client.get("/api/v1/calendar/?region=GA")
+        self.assertEqual(third.status_code, 200)
+        self.assertEqual(third["X-FirePulse-Cache"], "MISS")
+        self.assertEqual(third.json()["series"][0]["uncertainty_note"], "Updated note invalidates cache")
+
+        bad = self.client.get("/api/v1/calendar/?bbox=invalid")
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(bad["X-FirePulse-Cache"], "BYPASS")
+        self.assertEqual(bad["Cache-Control"], "no-store")
+
+    def test_hotspots_points_and_regions_include_geom_flag(self) -> None:
+        pts = self.client.get("/api/v1/hotspots/?mode=points&month=2024-08&limit=10")
+        self.assertEqual(pts.status_code, 200)
+        features = pts.json()["features"]
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0]["properties"]["layer"], "hotspot_point")
+        self.assertEqual(features[0]["geometry"]["type"], "Point")
+
+        no_geom = self.client.get("/api/v1/regions/?include_geom=false")
+        self.assertEqual(no_geom.status_code, 200)
+        self.assertIsNone(no_geom.json()["regions"][0]["geometry"])
+
+        with_geom = self.client.get("/api/v1/regions/?include_geom=true")
+        self.assertEqual(with_geom.status_code, 200)
+        self.assertEqual(with_geom.json()["regions"][0]["geometry"]["type"], "MultiPolygon")
+
+    def test_health_returns_503_json_on_database_error(self) -> None:
+        with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")):
+            res = self.client.get("/api/v1/health/")
+        self.assertEqual(res.status_code, 503)
+        self.assertEqual(res.json()["status"], "error")
+        self.assertEqual(res.json()["database"], "disconnected")
+        self.assertEqual(res["Cache-Control"], "no-store")
+
+    def test_nrt_and_mixed_coverage_status_on_2026_observations(self) -> None:
+        batch_nrt = ImportBatch.objects.create(
+            source="viirs-snpp",
+            processing_level="NRT",
+            product_version="2.0NRT",
+            file_name="viirs-snpp_2026_nrt.csv",
+            file_sha256="c" * 64,
+            row_count=2,
+            min_date=date(2026, 9, 1),
+            max_date=date(2026, 9, 20),
+        )
+        HotspotObservation.objects.create(
+            batch=batch_nrt,
+            source="viirs-snpp",
+            satellite="N",
+            instrument="VIIRS",
+            acquired_at=datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc),
+            position=Point(11.5, -1.5, srid=4326),
+            frp=9.0,
+            brightness_mir=330.0,
+            brightness_tir=295.0,
+            confidence_raw="n",
+            confidence_tier="nominal",
+            daynight="D",
+            hotspot_type=0,
+            is_static_masked=False,
+            product_version="2",
+            is_nrt=False,
+            original_hash="d" * 64,
+        )
+        HotspotObservation.objects.create(
+            batch=batch_nrt,
+            source="viirs-snpp",
+            satellite="N",
+            instrument="VIIRS",
+            acquired_at=datetime(2026, 9, 20, 12, 0, tzinfo=timezone.utc),
+            position=Point(11.6, -1.6, srid=4326),
+            frp=11.0,
+            brightness_mir=332.0,
+            brightness_tir=296.0,
+            confidence_raw="n",
+            confidence_tier="nominal",
+            daynight="D",
+            hotspot_type=0,
+            is_static_masked=False,
+            product_version="2.0NRT",
+            is_nrt=True,
+            original_hash="e" * 64,
+        )
+        HotspotObservation.objects.create(
+            batch=batch_nrt,
+            source="viirs-noaa20",
+            satellite="N20",
+            instrument="VIIRS",
+            acquired_at=datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc),
+            position=Point(11.5, -1.5, srid=4326),
+            frp=13.0,
+            brightness_mir=334.0,
+            brightness_tir=297.0,
+            confidence_raw="n",
+            confidence_tier="nominal",
+            daynight="D",
+            hotspot_type=0,
+            is_static_masked=False,
+            product_version="2.0NRT",
+            is_nrt=True,
+            original_hash="f" * 64,
+        )
+
+        call_command("build_baseline_series", stdout=StringIO())
+
+        mixed_row = HarmonizedMonthSeries.objects.get(
+            region=self.region,
+            filter_static=True,
+            calibration_run__is_active=True,
+            month=date(2026, 9, 1),
+        )
+        self.assertEqual(mixed_row.coverage_status, CoverageStatusChoices.MIXED_SP_NRT)
+        self.assertEqual(mixed_row.sensor_regime, SensorRegimeChoices.VIIRS_SNPP_OBSERVED)
+
+        bridge_row = HarmonizedMonthSeries.objects.get(
+            region=self.region,
+            filter_static=True,
+            calibration_run__is_active=True,
+            month=date(2026, 11, 1),
+        )
+        self.assertEqual(bridge_row.coverage_status, CoverageStatusChoices.NRT_ONLY)
+        self.assertEqual(bridge_row.sensor_regime, SensorRegimeChoices.VIIRS_NOAA20_BRIDGE)
+
+    def test_export_demo_snapshot_writes_verified_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            call_command("export_demo_snapshot", output=tmpdir, stdout=StringIO())
+            out = Path(tmpdir)
+            manifest_path = out / "snapshot_manifest.json"
+            self.assertTrue(manifest_path.exists())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["artifact_kind"], "firepulse-demo-snapshot")
+            self.assertIn("GA", manifest["regions"])
+            for entry in manifest["files"]:
+                fpath = out / entry["file"]
+                self.assertTrue(fpath.exists(), f"Missing snapshot file {entry['file']}")
+                self.assertEqual(
+                    hashlib.sha256(fpath.read_bytes()).hexdigest(),
+                    entry["sha256"],
+                )

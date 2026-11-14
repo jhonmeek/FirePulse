@@ -78,6 +78,13 @@ Réponse attendue sur `/api/v1/health/` : `"status": "ok"`, `"database": "connec
 
 Le workflow GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) exécute automatiquement à chaque PR/push les tests Backend PostGIS (`manage.py test -v 2`), le pipeline M1 (`unittest`) et le build/tests Frontend (`type-check`, `vitest`, `vite build`).
 
+### 5. Production HTTPS & plan de secours démo (`H24–H34` M2)
+
+- **Stack production HTTPS (Gunicorn + Caddy) :** [docker-compose.prod.yml](docker-compose.prod.yml) + [deploy/Caddyfile](deploy/Caddyfile) (`DJANGO_SECRET_KEY=... docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`).
+- **Backup PostGIS + snapshot JSON hors ligne :**
+  - `./scripts/db_backup.sh` : dump PostgreSQL/PostGIS (`pg_dump -Fc` + SHA-256) et export complet des réponses `/api/v1/` via `python manage.py export_demo_snapshot` dans `data/backups/`.
+  - `./scripts/db_restore.sh data/backups/<fichier>.dump` : restauration vérifiée + contrôle `/api/v1/health/`.
+
 ---
 
 ## Démarrage rapide (Frontend)

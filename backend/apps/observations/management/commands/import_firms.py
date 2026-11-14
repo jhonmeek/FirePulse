@@ -9,6 +9,7 @@ from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 
+from apps.api.cache import invalidate_api_cache
 from apps.observations.models import (
     ConfidenceTierChoices,
     HotspotObservation,
@@ -319,6 +320,7 @@ class Command(BaseCommand):
 
         masked_cells = rebuild_static_mask_and_flag()
         grid_rows = rebuild_grid_cell_months()
+        invalidate_api_cache()
         self.stdout.write(
             self.style.SUCCESS(
                 f"Static flare mask: {masked_cells} cells; GridCellMonth rows: {grid_rows}."
