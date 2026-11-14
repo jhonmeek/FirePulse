@@ -726,6 +726,30 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(live_csv.status_code, 200)
         live_csv_text = live_csv.content.decode("utf-8")
 
+        GridCellMonth.objects.create(
+            cell_id="-4.00_5.00",
+            geom=Polygon.from_bbox((5.0, -4.0, 5.25, -3.75)),
+            centroid=Point(5.125, -3.875, srid=4326),
+            month=date(2024, 8, 1),
+            filter_static=True,
+            modis_count=5,
+            viirs_snpp_count=9,
+        )
+        online_ga_cells = {
+            f["properties"]["cell_id"]
+            for f in self.client.get(
+                "/api/v1/hotspots/?region=GA&start=2001-01&end=2025-12&filter_static=true&mode=grid&agg=cell&include_static_cells=true&limit=5000"
+            ).json()["features"]
+        }
+        self.assertNotIn("-4.00_5.00", online_ga_cells)
+        online_no_region_cells = {
+            f["properties"]["cell_id"]
+            for f in self.client.get(
+                "/api/v1/hotspots/?month=2024-08&filter_static=true&mode=grid&agg=month"
+            ).json()["features"]
+        }
+        self.assertIn("-4.00_5.00", online_no_region_cells)
+
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir)
             call_command("export_demo_snapshot", output=tmpdir, stdout=StringIO())
@@ -779,6 +803,9 @@ class FirePulseModelsAndApiTests(TestCase):
                     range_layers = {f["properties"]["layer"] for f in spots_range_data["features"]}
                     self.assertIn("grid_cell_summary", range_layers)
                     self.assertIn("static_flare_mask", range_layers)
+                    range_cids = {f["properties"]["cell_id"] for f in spots_range_data["features"]}
+                    self.assertIn("-1.50_11.50", range_cids)
+                    self.assertNotIn("-4.00_5.00", range_cids)
 
                     spots_month = self.client.get(
                         "/api/v1/hotspots/?region=GA&month=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
@@ -789,6 +816,7 @@ class FirePulseModelsAndApiTests(TestCase):
                         f for f in spots_month.json()["features"] if f["properties"]["layer"] == "grid_cell_summary"
                     ]
                     self.assertEqual(len(grid_features), 1)
+                    self.assertEqual(grid_features[0]["properties"]["cell_id"], "-1.50_11.50")
                     self.assertEqual(grid_features[0]["properties"]["viirs_snpp_count"], 42)
 
                     spots_agg_month = self.client.get(
@@ -796,8 +824,21 @@ class FirePulseModelsAndApiTests(TestCase):
                     )
                     self.assertEqual(spots_agg_month.status_code, 200)
                     self.assertEqual(spots_agg_month["X-FirePulse-Cache"], "FALLBACK")
-                    self.assertEqual(spots_agg_month.json()["features"][0]["properties"]["layer"], "grid_cell_month")
-                    self.assertEqual(spots_agg_month.json()["features"][0]["properties"]["month"], "2024-08")
+                    agg_month_features = spots_agg_month.json()["features"]
+                    self.assertEqual(len(agg_month_features), 1)
+                    self.assertEqual(agg_month_features[0]["properties"]["cell_id"], "-1.50_11.50")
+                    self.assertEqual(agg_month_features[0]["properties"]["layer"], "grid_cell_month")
+                    self.assertEqual(agg_month_features[0]["properties"]["month"], "2024-08")
+
+                    spots_no_region = self.client.get(
+                        "/api/v1/hotspots/?month=2024-08&filter_static=true&mode=grid&agg=month"
+                    )
+                    self.assertEqual(spots_no_region.status_code, 200)
+                    self.assertEqual(spots_no_region["X-FirePulse-Cache"], "FALLBACK")
+                    self.assertEqual(
+                        {f["properties"]["cell_id"] for f in spots_no_region.json()["features"]},
+                        {"-1.50_11.50", "-4.00_5.00"},
+                    )
 
                     spots_bbox = self.client.get(
                         "/api/v1/hotspots/?bbox=11.0,-2.0,12.0,-1.0&start=2024-08&end=2024-08&filter_static=true&mode=grid&agg=cell&include_static_cells=true"
@@ -844,3 +885,28 @@ class FirePulseModelsAndApiTests(TestCase):
                     bbox_err = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0")
                     self.assertEqual(bbox_err.status_code, 503)
                     self.assertEqual(bbox_err["Cache-Control"], "no-store")
+
+                (out / "coverage.json").write_text('{"tampered": true}\n', encoding="utf-8")
+                with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")), patch(
+                    "apps.api.views.ImportBatch.objects.values",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    health_tampered = self.client.get("/api/v1/health/")
+                    self.assertEqual(health_tampered.status_code, 503)
+                    self.assertEqual(health_tampered["X-FirePulse-Fallback"], "none")
+                    self.assertFalse(health_tampered.json()["offline_snapshot_ready"])
+
+                    cov_tampered = self.client.get("/api/v1/coverage/?region=GA")
+                    self.assertEqual(cov_tampered.status_code, 503)
+                    self.assertEqual(cov_tampered["X-FirePulse-Cache"], "BYPASS")
+
+                (out / "hotspots_static_mask_GA.json").unlink()
+                with patch("apps.api.views.Region.objects.filter", side_effect=DatabaseError("db offline")), patch(
+                    "apps.api.views.GridCellMonth.objects.filter",
+                    side_effect=DatabaseError("db offline"),
+                ):
+                    spots_missing_mask = self.client.get(
+                        "/api/v1/hotspots/?mode=grid&agg=cell&region=GA&include_static_cells=true"
+                    )
+                    self.assertEqual(spots_missing_mask.status_code, 503)
+                    self.assertEqual(spots_missing_mask["X-FirePulse-Cache"], "BYPASS")
