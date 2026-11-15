@@ -111,7 +111,7 @@ def _row_to_observation(row: dict[str, str], batch: ImportBatch, source: str) ->
         confidence_raw=conf_raw,
         confidence_tier=_normalize_confidence(source, conf_raw),
         daynight=(row.get("daynight") or "D").strip()[:1].upper(),
-        hotspot_type=int(row["type"]) if row.get("type") not in (None, "") else 0,
+        hotspot_type=int(row["type"]) if row.get("type") not in (None, "") else None,
         is_static_masked=False,
         product_version=version,
         is_nrt=is_nrt,
@@ -245,6 +245,7 @@ class Command(BaseCommand):
             action="store_true",
             help="Skip CSV ingestion and only rebuild static flare mask and 0.25 deg grid",
         )
+        parser.add_argument("--skip-rebuild-if-unchanged", action="store_true")
 
     def handle(self, *args, **options) -> None:
         if not options["rebuild_only"]:
@@ -317,6 +318,9 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"CSV ingestion finished: {imported_files} new/updated files ({total_rows} rows)."
             )
+            if imported_files == 0 and options["skip_rebuild_if_unchanged"]:
+                self.stdout.write("No new file; mask and grid left unchanged.")
+                return
 
         masked_cells = rebuild_static_mask_and_flag()
         grid_rows = rebuild_grid_cell_months()

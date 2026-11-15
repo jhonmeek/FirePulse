@@ -116,9 +116,10 @@ class HotspotObservation(models.Model):
     )
     daynight = models.CharField(max_length=1, choices=[("D", "Day"), ("N", "Night")])
     hotspot_type = models.PositiveSmallIntegerField(
-        default=0,
+        null=True,
+        blank=True,
         db_index=True,
-        help_text="FIRMS type: 0=vegetation fire, 1=volcano, 2=static land, 3=offshore",
+        help_text="FIRMS type: 0=vegetation fire, 1=volcano, 2=static land, 3=offshore; null=unknown",
     )
     is_static_masked = models.BooleanField(default=False, db_index=True)
     product_version = models.CharField(max_length=30)
