@@ -1,0 +1,76 @@
+{
+  "region": "GA",
+  "filter_static": true,
+  "active_run": {
+    "method_name": "power_law_log1p_static_masked",
+    "method_version": "v2.0",
+    "reference_scale": "VIIRS_375m_SNPP_equiv",
+    "train_window": [
+      "2012-02-01",
+      "2019-12-01"
+    ],
+    "test_window": [
+      "2020-01-01",
+      "2025-12-01"
+    ],
+    "params": {
+      "ols_slope": 3.7625,
+      "power_law_p": 0.9438,
+      "power_law_q": 1.6529,
+      "terra_only_p": 0.691,
+      "terra_only_q": 3.6809,
+      "ols_intercept": 23.25,
+      "conformal_q80_log": 0.5309,
+      "global_ratio_alpha": 3.9328,
+      "noaa20_to_snpp_ratio": 1.0381,
+      "conformal_q80_terra_log": 0.6445
+    },
+    "metrics": {
+      "test_months": 72,
+      "train_months": 95,
+      "models_out_of_sample": {
+        "naive": {
+          "r2": 0.1426,
+          "mae": 355.72,
+          "bias": -355.72,
+          "rmse": 549.84
+        },
+        "ols_linear": {
+          "r2": 0.9003,
+          "mae": 110.04,
+          "bias": 53.62,
+          "rmse": 187.54
+        },
+        "global_ratio": {
+          "r2": 0.8781,
+          "mae": 120.42,
+          "bias": 54.18,
+          "rmse": 207.28
+        },
+        "power_law_log1p": {
+          "r2": 0.9189,
+          "mae": 100.87,
+          "bias": 41.77,
+          "rmse": 169.12
+        },
+        "terra_only_power_law": {
+          "r2": 0.8645,
+          "mae": 126.86,
+          "bias": -21.43,
+          "rmse": 218.55
+        }
+      }
+    }
+  },
+  "static_mask_summary": {
+    "grid_deg": 0.05,
+    "masked_cells_count": 183
+  },
+  "limitations": [
+    "Hotspot counts measure thermal detections, not distinct individual wildfire events.",
+    "MODIS Terra operated without Aqua from 2000-11 through 2002-06; calibrated separately.",
+    "Suomi-NPP VIIRS operational FIRMS delivery ended 2026-11-02; NOAA-20 VIIRS provides continuity.",
+    "Persistent industrial/oil gas flares (~21-24% of raw VIIRS in Gabon) are filtered when filter_static=true.",
+    "NASA FIRMS June 15, 2025 notice: some VIIRS Vxx14IMGML Collection 2 files had type 0/2 differences between versions 1/2 and reprocessed version 3."
+  ]
+}
