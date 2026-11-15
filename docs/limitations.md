@@ -6,6 +6,11 @@ Source files contain thermal anomaly detections observed from orbit. Detection c
 
 ## Spatial Coverage & Geography
 
+- Les CSV de détections et leurs empreintes ne suffisent pas à mesurer tous les passages exploitables, les nuages ou les pertes de données. La couverture d'observation reste inconnue dans les agrégats M1 de préparation.
+- La disponibilité mensuelle du backend est déduite des bornes `min_date`/`max_date` des lots importés : un mois sans détection à l'intérieur d'un lot est un zéro recensé, un mois hors de toute borne reste une entrée manquante (`null`, régime `missing`) et n'est plus transformé en zéro. Ces bornes ne prouvent pas une couverture satellite complète du mois.
+- Les archives initiales s'arrêtent à 2025. Aucune donnée 2026 n'est ajoutée implicitement, et aucun comptage récent n'est extrapolé pour remplir cette année.
+- La sélection nationale M1 reprend le fichier pays fourni. Le découpage par provinces ou polygones personnalisés demande des frontières versionnées et une règle de sélection spatiale ; il n'est pas validé par ce lot.
+- Une cellule préagrégée intersectant un polygone ne permet pas de connaître exactement le nombre de points dans la portion intersectée.
 - Raw FIRMS CSVs and file manifests cannot capture every satellite overpass, heavy cloud obstruction, dense smoke plume, or telemetry gap. Observation completeness remains `unknown` in M1 preparation aggregates.
 - Standard archive files stop at December 2025 (`2025-12`). No 2026 observations are fabricated or extrapolated to fill incomplete years. The NOAA-20 bridge is calibrated over shared historical overlap but not yet validated on live 2026 detections; post-2026 continuity must be clearly framed as a calibrated projection rather than already-observed 2026 telemetry.
 - Country-level M1 counts rely on NASA country CSV extracts (`GA` scope), whereas M2 PostGIS API endpoints apply exact administrative polygon boundaries (`gabon_adm0.geojson`, `gabon_adm1.geojson`).

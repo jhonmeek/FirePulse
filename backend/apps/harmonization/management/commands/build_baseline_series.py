@@ -6,7 +6,7 @@ import json
 import math
 import statistics
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
@@ -20,7 +20,7 @@ from apps.harmonization.models import (
     MonthlyBaseline,
     SensorRegimeChoices,
 )
-from apps.observations.models import Region
+from apps.observations.models import ImportBatch, Region
 
 TRAIN_START = date(2012, 2, 1)
 TRAIN_END = date(2019, 12, 1)
@@ -139,6 +139,58 @@ def _fetch_region_monthly_counts(region_id: int, filter_static: bool) -> dict[da
     }
 
 
+def _month_bounds(month: date) -> tuple[date, date]:
+    """Return the first and last day of the calendar month containing ``month``."""
+    first = month.replace(day=1)
+    next_first = date(month.year + (month.month == 12), (month.month % 12) + 1, 1)
+    return first, next_first - timedelta(days=1)
+
+
+def _fetch_source_coverage() -> dict[str, list[tuple[date, date]]]:
+    """Return the date span actually loaded for each FIRMS source.
+
+    The spans come from ``ImportBatch.min_date``/``max_date``, i.e. the first and
+    last observation of each loaded product. A month inside a span without any
+    detection is a recorded zero; a month outside every span is a missing input and
+    must not be turned into a fabricated zero.
+    """
+    coverage: dict[str, list[tuple[date, date]]] = defaultdict(list)
+    for source, min_date, max_date in ImportBatch.objects.values_list(
+        "source", "min_date", "max_date"
+    ):
+        if min_date and max_date:
+            coverage[source].append((min_date, max_date))
+    return dict(coverage)
+
+
+def _month_is_covered(
+    coverage: dict[str, list[tuple[date, date]]] | None, source: str, month: date
+) -> bool:
+    """True when at least one loaded batch overlaps the given calendar month."""
+    if coverage is None:
+        return True
+    month_start, month_end = _month_bounds(month)
+    return any(
+        start <= month_end and end >= month_start for start, end in coverage.get(source, ())
+    )
+
+
+def _source_month_available(
+    row: dict[str, int | None],
+    key: str,
+    coverage: dict[str, list[tuple[date, date]]] | None,
+    source: str,
+    month: date,
+) -> bool:
+    """True when a source has a recorded count for the month or a loaded product covering it.
+
+    A recorded count (even zero) proves the product was processed for that month. The
+    batch spans only add months where the region has no count at all, so that a missing
+    product is never confused with an absence of detection.
+    """
+    return row.get(key) is not None or _month_is_covered(coverage, source, month)
+
+
 def _count_or_none(row: dict[str, int | None], key: str) -> float | None:
     """Return float count when observed, 0.0 when key is omitted (PostGIS), or None when explicit null."""
     if key not in row:
@@ -152,11 +204,23 @@ def _paired_series(
     months: list[date],
     x_key: str,
     y_key: str,
+    *,
+    coverage: dict[str, list[tuple[date, date]]] | None = None,
+    x_source: str | None = None,
+    y_source: str | None = None,
 ) -> tuple[list[float], list[float]]:
     xs: list[float] = []
     ys: list[float] = []
     for m in months:
         row = counts.get(m, {})
+        if x_source is not None and not _source_month_available(
+            row, x_key, coverage, x_source, m
+        ):
+            continue
+        if y_source is not None and not _source_month_available(
+            row, y_key, coverage, y_source, m
+        ):
+            continue
         xv = _count_or_none(row, x_key)
         yv = _count_or_none(row, y_key)
         if xv is not None and yv is not None:
@@ -168,12 +232,29 @@ def _paired_series(
 def _calibrate_models(
     counts: dict[date, dict[str, int | None]],
     fallback_params: dict | None,
+    coverage: dict[str, list[tuple[date, date]]] | None = None,
 ) -> tuple[dict, dict, str]:
     train_months = list(_month_range(TRAIN_START, TRAIN_END))
     test_months = list(_month_range(TEST_START, TEST_END))
 
-    x_tr, y_tr = _paired_series(counts, train_months, "modis_count", "viirs_snpp_count")
-    xt_tr, yt_tr = _paired_series(counts, train_months, "modis_terra_count", "viirs_snpp_count")
+    x_tr, y_tr = _paired_series(
+        counts,
+        train_months,
+        "modis_count",
+        "viirs_snpp_count",
+        coverage=coverage,
+        x_source="modis",
+        y_source="viirs-snpp",
+    )
+    xt_tr, yt_tr = _paired_series(
+        counts,
+        train_months,
+        "modis_terra_count",
+        "viirs_snpp_count",
+        coverage=coverage,
+        x_source="modis",
+        y_source="viirs-snpp",
+    )
 
     active_pairs = sum(1 for x, y in zip(x_tr, y_tr) if x > 0 and y > 0)
     if active_pairs < 24 and fallback_params is not None:
@@ -188,8 +269,24 @@ def _calibrate_models(
     p_pow, q_pow = _fit_linear([math.log1p(x) for x in x_tr], [math.log1p(y) for y in y_tr])
     pt_pow, qt_pow = _fit_linear([math.log1p(x) for x in xt_tr], [math.log1p(y) for y in yt_tr])
 
-    x_te, y_te = _paired_series(counts, test_months, "modis_count", "viirs_snpp_count")
-    xt_te, yt_te = _paired_series(counts, test_months, "modis_terra_count", "viirs_snpp_count")
+    x_te, y_te = _paired_series(
+        counts,
+        test_months,
+        "modis_count",
+        "viirs_snpp_count",
+        coverage=coverage,
+        x_source="modis",
+        y_source="viirs-snpp",
+    )
+    xt_te, yt_te = _paired_series(
+        counts,
+        test_months,
+        "modis_terra_count",
+        "viirs_snpp_count",
+        coverage=coverage,
+        x_source="modis",
+        y_source="viirs-snpp",
+    )
 
     pred_ratio = [alpha * x for x in x_te]
     pred_ols = [max(0.0, ols_a * x + ols_b) for x in x_te]
@@ -206,7 +303,15 @@ def _calibrate_models(
     q80_terra_log = _conformal_quantile(res_log_terra, 0.80)
 
     n20_months = list(_month_range(date(2019, 1, 1), TEST_END))
-    snpp_pairs, n20_pairs = _paired_series(counts, n20_months, "viirs_snpp_count", "viirs_noaa20_count")
+    snpp_pairs, n20_pairs = _paired_series(
+        counts,
+        n20_months,
+        "viirs_snpp_count",
+        "viirs_noaa20_count",
+        coverage=coverage,
+        x_source="viirs-snpp",
+        y_source="viirs-noaa20",
+    )
     snpp_sum = sum(snpp_pairs)
     n20_sum = sum(n20_pairs)
     bridge_n20_over_snpp = (n20_sum / snpp_sum) if snpp_sum > 0 and n20_sum > 0 else 1.0
@@ -242,8 +347,13 @@ def _build_series_from_params(
     params: dict,
     note: str = "",
     partial_snpp_months: set[date] | None = None,
+    coverage: dict[str, list[tuple[date, date]]] | None = None,
 ) -> list[dict]:
-    """Reconstruct monthly series from observed counts and calibrated model parameters."""
+    """Reconstruct monthly series from observed counts and calibrated model parameters.
+
+    ``coverage`` distinguishes a month whose product was loaded (a zero really means
+    "no detection recorded") from a month with no loaded product (``None``, never 0).
+    """
     min_m = min(counts.keys())
     max_m = max(counts.keys())
     all_months = _month_range(min_m, max_m)
@@ -260,11 +370,45 @@ def _build_series_from_params(
     reconstructed: list[dict] = []
     for m_date in all_months:
         row = counts.get(m_date, {})
-        mod = row.get("modis_count", 0) if m_date >= date(2000, 11, 1) else None
-        terra = row.get("modis_terra_count", 0) if m_date >= date(2000, 11, 1) else None
-        aqua = row.get("modis_aqua_count", 0) if m_date >= TERRA_ONLY_CUTOFF else None
-        snpp = row.get("viirs_snpp_count", 0) if date(2012, 1, 1) <= m_date <= SNPP_END else None
-        n20 = row.get("viirs_noaa20_count", 0) if m_date >= date(2018, 4, 1) else None
+        mod = (
+            row.get("modis_count", 0)
+            if m_date >= date(2000, 11, 1)
+            and _source_month_available(row, "modis_count", coverage, "modis", m_date)
+            else None
+        )
+        terra = (
+            row.get("modis_terra_count", 0)
+            if m_date >= date(2000, 11, 1)
+            and _source_month_available(
+                row, "modis_terra_count", coverage, "modis", m_date
+            )
+            else None
+        )
+        aqua = (
+            row.get("modis_aqua_count", 0)
+            if m_date >= TERRA_ONLY_CUTOFF
+            and _source_month_available(
+                row, "modis_aqua_count", coverage, "modis", m_date
+            )
+            else None
+        )
+        snpp = (
+            row.get("viirs_snpp_count", 0)
+            if date(2012, 1, 1) <= m_date <= SNPP_END
+            and _source_month_available(
+                row, "viirs_snpp_count", coverage, "viirs-snpp", m_date
+            )
+            else None
+        )
+        n20 = (
+            row.get("viirs_noaa20_count", 0)
+            if m_date >= date(2018, 4, 1)
+            and _source_month_available(
+                row, "viirs_noaa20_count", coverage, "viirs-noaa20", m_date
+            )
+            else None
+        )
+        month_note = note
 
         if m_date < date(2001, 1, 1) and terra is not None:
             regime = SensorRegimeChoices.PARTIAL_YEAR
@@ -319,6 +463,7 @@ def _build_series_from_params(
             hval = None
             ci_lo = None
             ci_hi = None
+            month_note = _missing_month_note(m_date, coverage, note)
 
         reconstructed.append(
             {
@@ -333,10 +478,32 @@ def _build_series_from_params(
                 "ci_high": round(ci_hi, 2) if ci_hi is not None else None,
                 "sensor_regime": regime,
                 "coverage_status": cov,
-                "uncertainty_note": note,
+                "uncertainty_note": month_note,
             }
         )
     return reconstructed
+
+
+def _missing_month_note(
+    month: date,
+    coverage: dict[str, list[tuple[date, date]]] | None,
+    note: str,
+) -> str:
+    """Explain why a month has no reconstructed value (missing product vs no detection)."""
+    if coverage is None:
+        return note
+    expected: list[str] = []
+    if date(2000, 11, 1) <= month <= date(2025, 12, 1):
+        expected.append("modis")
+    if date(2012, 1, 1) <= month <= SNPP_END:
+        expected.append("viirs-snpp")
+    if month >= date(2018, 4, 1):
+        expected.append("viirs-noaa20")
+    missing = [src for src in expected if not _month_is_covered(coverage, src, month)]
+    if not missing:
+        return note
+    detail = f"No loaded product covers this month for: {', '.join(missing)}."
+    return f"{note} {detail}".strip()
 
 
 def _compute_baselines_map(reconstructed: list[dict]) -> dict[int, tuple[float, float, float, int, str]]:
@@ -919,6 +1086,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("No Region records found; run load_regions first."))
             return
 
+        coverage = _fetch_source_coverage()
+
         for filter_static in (True, False):
             national_params: dict | None = None
             for region in regions:
@@ -926,11 +1095,11 @@ class Command(BaseCommand):
                 if not counts:
                     continue
 
-                params, metrics, note = _calibrate_models(counts, national_params)
+                params, metrics, note = _calibrate_models(counts, national_params, coverage)
                 if region.code == "GA":
                     national_params = params
 
-                reconstructed = _build_series_from_params(counts, params, note)
+                reconstructed = _build_series_from_params(counts, params, note, coverage=coverage)
                 baselines_map = _compute_baselines_map(reconstructed)
                 _persist_region_calibration(
                     region=region,
