@@ -30,6 +30,7 @@ describe('recent NRT detections panel', () => {
     expect(fetchRecent).toHaveBeenCalledWith(2, 200)
     expect(wrapper.text()).toContain('NASA FIRMS NRT')
     expect(wrapper.text()).toContain('N20')
+    expect(wrapper.text()).toContain('viirs-noaa20')
     expect(wrapper.text()).toContain('FRP 3.5 MW')
     expect(wrapper.text()).toContain('UTC')
     expect(wrapper.text()).toMatch(/inconnu|unknown/)
@@ -52,5 +53,24 @@ describe('recent NRT detections panel', () => {
     await flushPromises()
     expect(fetchRecent).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toMatch(/Aucun point reçu|No points received/)
+  })
+
+  it('lets the user inspect every returned point instead of hiding records after twelve', async () => {
+    fetchRecent.mockResolvedValue({
+      features: Array.from({ length: 13 }, (_, index) => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: [10.5, 0.5] },
+        properties: { id: index + 1, source: 'viirs-snpp', satellite: 'N', acquired_at: new Date().toISOString(), frp: null, hotspot_type: null, processing_level: 'NRT', product_version: '2.0NRT' },
+      })),
+    })
+    const wrapper = show()
+    await flushPromises()
+    expect(wrapper.findAll('.recent-item')).toHaveLength(12)
+    const expand = wrapper.find('button[aria-expanded]')
+    expect(expand.attributes('aria-expanded')).toBe('false')
+    await expand.trigger('click')
+    expect(wrapper.findAll('.recent-item')).toHaveLength(13)
+    expect(expand.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.text()).toContain('viirs-snpp')
+    expect(wrapper.text()).not.toContain('NOAA-20')
   })
 })
