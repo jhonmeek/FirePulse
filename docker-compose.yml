@@ -1,4 +1,13 @@
 services:
+  redis:
+    image: redis:7-alpine
+    profiles: ["nrt"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   db:
     image: postgis/postgis:16-3.4
     container_name: firepulse_db
@@ -39,10 +48,12 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
       API_CACHE_SECONDS: ${API_CACHE_SECONDS:-300}
       HTTP_CACHE_MAX_AGE: ${HTTP_CACHE_MAX_AGE:-60}
+      FIREPULSE_EPOCH_FILE: /run/firepulse-cache/epoch
     volumes:
       - ./backend:/app
       - ./data:/data
       - ./docs:/docs
+      - api_cache_epoch:/run/firepulse-cache
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -58,5 +69,63 @@ services:
       sh -c "python manage.py migrate --noinput &&
              python manage.py runserver 0.0.0.0:8000"
 
+  celery-worker:
+    profiles: ["nrt"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-firepulse}
+      POSTGRES_USER: ${POSTGRES_USER:-firepulse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-firepulse_dev}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FIRMS_NRT_ENABLED: ${FIRMS_NRT_ENABLED:-false}
+      FIRMS_MAP_KEY: ${FIRMS_MAP_KEY:-}
+      FIRMS_NRT_DIR: /data/nrt
+      FIRMS_NRT_LOOKBACK_DAYS: ${FIRMS_NRT_LOOKBACK_DAYS:-2}
+      FIREPULSE_EPOCH_FILE: /run/firepulse-cache/epoch
+    volumes:
+      - ./backend:/app
+      - ./pipeline:/pipeline:ro
+      - ./data:/data
+      - ./docs:/docs:ro
+      - api_cache_epoch:/run/firepulse-cache
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c 'if [ "$$FIRMS_NRT_ENABLED" = "true" ] && [ -z "$$FIRMS_MAP_KEY" ]; then
+        echo "NRT: FIRMS_MAP_KEY est vide. Renseigner la cle dans le .env local de ce worktree." >&2;
+        exit 1;
+      fi;
+      exec celery -A config worker --loglevel=INFO --concurrency=1'
+
+  celery-beat:
+    profiles: ["nrt"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      FIRMS_NRT_ENABLED: ${FIRMS_NRT_ENABLED:-false}
+      FIRMS_NRT_INTERVAL_SECONDS: ${FIRMS_NRT_INTERVAL_SECONDS:-3600}
+    volumes:
+      - ./backend:/app
+      - celery_beat_data:/var/lib/celery
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A config beat --loglevel=INFO --schedule=/var/lib/celery/celerybeat-schedule
+
 volumes:
   postgres_data:
+  celery_beat_data:
+  api_cache_epoch:

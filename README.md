@@ -69,6 +69,7 @@ Options utiles :
 - `python manage.py import_firms` : importe uniquement les nouveaux CSV (idempotent via SHA-256).
 - `python manage.py import_firms --rebuild-only` : recalcule uniquement le masque statique `0.05°` et la grille `0.25°`.
 - `python manage.py import_firms --data-dir /data/raw/<dossier>` : pointe vers un autre dossier monté dans `./data`.
+- Flux FIRMS NRT planifié (profil Docker opt-in) : voir [docs/nrt-celery.md](docs/nrt-celery.md).
 - `python manage.py build_baseline_series --from-pipeline /data/processed/monthly` : ingère directement les artefacts mensuels M1 (`calendar.json` ou `monthly_counts.csv` + vérification SHA-256 `manifest.json`) ou un bundle calibré M1 JSON (`regions`).
 
 ### 4. Vérifier que tout tourne
