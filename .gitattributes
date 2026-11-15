@@ -1,3 +1,5 @@
+# Preserve the exact NASA response bytes used by the acquisition manifest.
+data/fixtures/maritime/*.csv -text
 # Keep generated artifact bytes stable for manifest SHA256 checks after checkout.
 data/processed/monthly/*.csv text eol=lf
 data/processed/monthly/*.json text eol=lf
