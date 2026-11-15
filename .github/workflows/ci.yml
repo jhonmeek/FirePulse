@@ -109,3 +109,26 @@ jobs:
 
       - name: Build production bundle
         run: npm run build-only
+
+  front-bis:
+    name: Front-bis (Vue 3 + Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: front-bis
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: "front-bis/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build

@@ -19,7 +19,6 @@ import {
   buildGrid,
   cellCentroid,
   countryFeature,
-  dataSourceMode,
   formatCount,
   loadHotspotsGrid,
   provinceFeatures,
@@ -505,7 +504,7 @@ watch([countryFeature, provinceFeatures], () => {
 
     <p class="map-caption">
       Agrégat {{ String(provenance.gridDeg).replace('.', ',') }}° sur le polygone GA
-      ({{ loadingLive ? 'synchro PostGIS…' : gridSource === 'live' && dataSourceMode === 'live' ? 'données PostGIS en direct' : 'instantané DB local' }}).
+      ({{ loadingLive ? 'synchronisation API…' : gridSource === 'live' ? 'données reçues de l’API, provenance à vérifier' : 'instantané local' }}).
       Une cellule colorée n'est pas un incendie unique. Les sites statiques (bleu) sont des
       torchères ou sources persistantes.
     </p>

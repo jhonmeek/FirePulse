@@ -276,7 +276,7 @@ onBeforeUnmount(() => {
           <div class="hero-copy">
             <p class="kicker hero-kicker">
               NASA Space Apps 2026 · MODIS × VIIRS ·
-              <span>{{ dataSourceMode === 'live' ? 'PostGIS en direct' : 'Instantané DB' }}</span>
+              <span>{{ dataSourceMode === 'live' ? 'API et instantanés locaux possibles' : 'API partielle ou instantanés locaux' }}</span>
             </p>
             <h1 class="display display-xl hero-title">
               <span class="line"><span>One Planet.</span></span>
@@ -860,13 +860,13 @@ onBeforeUnmount(() => {
               Source :
               <strong>{{
                 dataSourceMode === 'live'
-                  ? 'PostgreSQL / PostGIS en direct · API Django v1 (/api/v1/)'
-                  : 'Instantané synchronisé sur PostgreSQL / PostGIS (mode hors-ligne)'
+                  ? 'API Django et instantanés locaux possibles ; provenance variable selon les données'
+                  : 'API partielle ou instantanés locaux ; provenance variable selon les données'
               }}</strong>
               — Archive BBox : {{ formatCount(composition.archiveTotal) }} détections
               ({{ composition.archiveFiles }} fichiers FIRMS SP, 2000-11 → 2025-12). Polygone GA :
               {{ formatCount(composition.gaTotal) }} détections dont
-              {{ formatCount(composition.gaClean) }} feux de végétation retenus après filtre
+              {{ formatCount(composition.gaClean) }} détections retenues après filtre
               ({{ composition.maskedCells }} mailles à 0,05° + tag FIRMS type ≠ 0).
             </p>
           </div>
