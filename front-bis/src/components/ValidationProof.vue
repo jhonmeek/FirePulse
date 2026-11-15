@@ -90,6 +90,11 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
 
 <template>
   <div class="validation">
+    <p class="v-note v-warning" role="status">
+      Résultats exploratoires en revue scientifique, non validés. Le masque utilise la période
+      de calibration, les mois sans détection ne prouvent pas une couverture complète et le
+      quantile utilisé ne justifie pas une garantie conforme. Les années de test ont déjà été examinées.
+    </p>
     <!-- ---------------------------------------------------------- stats -->
     <div class="v-stats">
       <article class="panel panel-pad v-stat">
@@ -184,7 +189,7 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
     <div class="v-grid-3">
       <article class="panel panel-pad v-panel">
         <div class="panel-label">
-          <span class="tiny-label">Intervalle conforme</span>
+          <span class="tiny-label">Intervalle expérimental</span>
           <span class="tag dot">80 % nominal</span>
         </div>
         <div class="v-coverage">
@@ -272,8 +277,8 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
           </div>
         </dl>
         <p class="v-note v-warning">
-          Le masque all-years connaît les torchères de 2020–2025. Le masque gelé est le seul
-          protocole honnête ; en production, il faut le rafraîchir régulièrement.
+          Le masque all-years utilise aussi des données de test. Le masque gelé utilise la période
+          de calibration : l'indépendance de cette étape reste à examiner.
         </p>
       </article>
     </div>
@@ -343,8 +348,8 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
     <div class="v-grid-2">
       <article class="panel panel-pad v-panel v-prove">
         <div class="panel-label">
-          <span class="tiny-label">Ce que ça prouve</span>
-          <span class="tag cool">Positif</span>
+          <span class="tiny-label">Résultats exploratoires</span>
+          <span class="tag cool">En revue</span>
         </div>
         <ul>
           <li>
@@ -352,16 +357,16 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
             <strong>sur les anomalies</strong> (R² 0,79 vs 0,73 / 0,67 / 0,64).
           </li>
           <li>
-            Il généralise à <strong>NOAA-20</strong>, un capteur non utilisé pour l'entraînement
-            (R² anomalies 0,87).
+            L'évaluation exploratoire NOAA-20 donne un R² d'anomalies de 0,87 ; son indépendance
+            est limitée par la construction du masque et du ratio de calibration.
           </li>
           <li>
-            Le signal reste stable quand on change les seuils du masque (R² 0,79–0,86), même si le
-            choix doit se faire sur calibration.
+            La sensibilité aux seuils de masque doit être recalculée avec une référence saisonnière
+            propre à chaque masque.
           </li>
           <li>
-            Le protocole est reproductible : masque gelé, split 3 temps, calibration séparée,
-            couverture mesurée.
+            La couverture est mesurée sur les données déjà examinées ; les hypothèses et données
+            manquantes doivent encore être vérifiées.
           </li>
         </ul>
       </article>

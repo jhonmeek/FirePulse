@@ -471,7 +471,7 @@ onBeforeUnmount(() => {
               <li>
                 <span class="step-index">03</span>
                 <div>
-                  <strong>Intervalle conforme 80 %</strong>
+                  <strong>Intervalle expérimental, cible 80 %</strong>
                   <span>Une bande d’incertitude sur la période reconstruite, pas une fausse précision.</span>
                 </div>
               </li>
@@ -636,7 +636,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="proof-context reveal reveal-delay-2">
-            <span class="tag dot">Validation renforcée · 48 CSV pays</span>
+            <span class="tag dot">Analyse exploratoire en revue · 48 CSV pays</span>
             <span class="tag">
               {{ validation.split.n_train }} train · {{ validation.split.n_calibration }} calibration ·
               {{ validation.split.n_test }} test

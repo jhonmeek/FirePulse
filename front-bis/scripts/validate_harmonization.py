@@ -135,6 +135,16 @@ def sha256(path: Path) -> str:
 
 def load_observations() -> tuple[list[tuple], list[dict]]:
     """Retourne (observations, inputs). Observation = (mois, année, capteur, type, cellule)."""
+    # La présence d'un fichier annuel ne prouve pas la couverture mensuelle.
+    # Un fichier manquant ne doit cependant jamais être converti en zéros.
+    expected = {
+        *(f"modis_{year}_Gabon.csv" for year in range(2000, 2026)),
+        *(f"viirs-snpp_{year}_Gabon.csv" for year in range(2012, 2026)),
+        *(f"viirs-jpss1_{year}_Gabon.csv" for year in range(2018, 2026)),
+    }
+    actual = {path.name for prefix, _ in SENSOR_FILES for path in RAW.glob(f"{prefix}_*_Gabon.csv")}
+    if actual != expected:
+        raise ValueError(f"FIRMS input files mismatch: missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
     observations: list[tuple] = []
     inputs: list[dict] = []
     for prefix, source in SENSOR_FILES:
@@ -148,18 +158,27 @@ def load_observations() -> tuple[list[tuple], list[dict]]:
             )
             with path.open(encoding="utf-8", newline="") as stream:
                 reader = csv.DictReader(stream)
+                required = {"latitude", "longitude", "type", "acq_date", "satellite"}
+                if not reader.fieldnames or not required.issubset(reader.fieldnames):
+                    raise ValueError(f"Missing required columns: {path.name}")
                 for row in reader:
                     try:
                         lat = float(row["latitude"])
                         lon = float(row["longitude"])
                         hotspot_type = int(row["type"])
-                    except (KeyError, TypeError, ValueError):
-                        continue
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise ValueError(f"Invalid required fields: {path.name}, line {reader.line_num}") from exc
                     month = (row.get("acq_date") or "")[:7]
-                    if len(month) != 7:
-                        continue
+                    try:
+                        acquired = datetime.strptime(row.get("acq_date") or "", "%Y-%m-%d")
+                    except ValueError as exc:
+                        raise ValueError(f"Invalid date: {path.name}, line {reader.line_num}") from exc
+                    if acquired.year != int(path.name.split("_")[1]):
+                        raise ValueError(f"Date outside file year: {path.name}, line {reader.line_num}")
                     satellite = row.get("satellite") or ""
                     if source == "modis":
+                        if satellite not in ("Terra", "Aqua"):
+                            raise ValueError(f"Unknown MODIS satellite: {path.name}, line {reader.line_num}")
                         sensor = "terra" if satellite == "Terra" else "aqua"
                     elif source == "snpp":
                         sensor = "snpp"
