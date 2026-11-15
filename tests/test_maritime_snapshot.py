@@ -69,6 +69,14 @@ class MaritimeSnapshotTests(unittest.TestCase):
             self.build()
         self.assertFalse(self.output.exists())
 
+    def test_wrong_satellite_is_rejected_even_with_valid_checksum(self):
+        self.source.write_text(self.source.read_text(encoding="utf-8").replace("N20", "N21"), encoding="utf-8")
+        self.data["csv_sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, "Satellite or instrument"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
     def test_bbox_must_cover_entire_boundary(self):
         self.data["requested_bbox"] = [0, 0, 1.99, 2]
         self.write_manifest()

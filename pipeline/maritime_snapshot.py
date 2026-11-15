@@ -37,12 +37,20 @@ def build(source: Path, manifest_path: Path, boundary: Path, output: Path) -> in
     row_count = 0
     with source.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
+        required = {"longitude", "latitude", "acq_date", "acq_time", "satellite", "instrument"}
+        if not reader.fieldnames or not required.issubset(reader.fieldnames):
+            raise ValueError("FIRMS CSV is missing required columns")
         for row in reader:
             row_count += 1
             lon, lat = float(row["longitude"]), float(row["latitude"])
             acquired = date.fromisoformat(row["acq_date"])
             if not (math.isfinite(lon) and math.isfinite(lat) and west <= lon <= east and south <= lat <= north and start <= acquired <= end):
                 raise ValueError("Invalid coordinates or date")
+            time = (row.get("acq_time") or "").strip().zfill(4)
+            if len(time) != 4 or not time.isascii() or not time.isdigit() or int(time[:2]) > 23 or int(time[2:]) > 59:
+                raise ValueError("Invalid acquisition time")
+            if row.get("satellite") not in ("N20", "NOAA-20", "NOAA20") or (row.get("instrument") or "").upper() != "VIIRS":
+                raise ValueError("Satellite or instrument does not match requested NOAA-20 VIIRS")
             if not geom.contains(Point(lon, lat)):
                 continue
             result.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]},
