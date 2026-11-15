@@ -64,9 +64,9 @@ def build(source: Path, manifest_path: Path, boundary: Path, output: Path) -> in
             if frp is not None and (not math.isfinite(frp) or frp < 0):
                 raise ValueError("Invalid FRP")
             nasa_type = (row.get("type") or "").strip() or None
-            type_values_present = type_values_present or nasa_type is not None
             if not geom.contains(Point(lon, lat)):
                 continue
+            type_values_present = type_values_present or nasa_type is not None
             result.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]},
                            "properties": {"acq_date": row["acq_date"], "acq_time_utc": time,
                                           "satellite": row["satellite"], "instrument": row["instrument"],

@@ -471,6 +471,7 @@ onMounted(() => {
     })
 
     map.on('mousemove', 'maritime-point', onMaritimeHover)
+    map.on('click', 'maritime-point', onMaritimeHover)
     map.on('mouseleave', 'maritime-point', onLeave)
     map.on('mousemove', 'grid-fill', onGridHover)
     map.on('mouseleave', 'grid-fill', onLeave)
@@ -567,7 +568,7 @@ watch([countryFeature, provinceFeatures], () => {
           <span class="toggle-dot maritime-dot"></span> Observations maritimes
         </button>
         <div v-show="showMaritime" class="maritime-status">
-          <p>Instantané NASA FIRMS (produit NOAA-20 NRT demandé), {{ maritimePeriod }} ; indépendant de la période terrestre. Couverture inconnue. Points thermiques non classifiés : ils ne confirment ni un feu ni une torchère. Périmètre Marine Regions indicatif, non juridique.</p>
+          <p>Instantané NASA FIRMS (produit NOAA-20 NRT demandé), {{ maritimePeriod }} ; indépendant de la période terrestre. Couverture inconnue. Points thermiques non classifiés : ils ne confirment ni un feu ni une torchère. Le polygone EEZ Marine Regions utilisé exclut la mer territoriale ; son périmètre est indicatif, non juridique.</p>
           <div role="status" aria-live="polite">
           <template v-if="maritimeStatus === 'loading'">Chargement des observations…</template>
           <template v-else-if="maritimeStatus === 'missing'">Fichier absent : {{ maritimeUrl }}.</template>

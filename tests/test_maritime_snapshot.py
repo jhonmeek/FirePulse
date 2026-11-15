@@ -99,6 +99,17 @@ class MaritimeSnapshotTests(unittest.TestCase):
         self.assertEqual(result["features"][0]["properties"]["frp"], 4.2)
         self.assertEqual(result["metadata"]["source_rows"], 4)
 
+    def test_type_availability_reflects_only_retained_points(self):
+        original = self.source.read_text(encoding="utf-8")
+        original = original.replace("1,1,2026-01-01,1200,N20,VIIRS,4.2,0", "1,1,2026-01-01,1200,N20,VIIRS,4.2,")
+        self.source.write_text(original, encoding="utf-8")
+        self.data["csv_sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.write_manifest()
+        self.build()
+        result = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertTrue(result["metadata"]["nasa_type_column_present"])
+        self.assertFalse(result["metadata"]["nasa_type_available"])
+
     def test_bbox_must_cover_entire_boundary(self):
         self.data["requested_bbox"] = [0, 0, 1.99, 2]
         self.write_manifest()
@@ -128,6 +139,16 @@ class MaritimeSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot["metadata"]["source_csv_sha256"], manifest["csv_sha256"])
         self.assertEqual(snapshot["metadata"]["count"], len(snapshot["features"]))
         self.assertTrue(all(len(f["properties"]["acq_time_utc"]) == 4 for f in snapshot["features"]))
+        self.assertEqual(snapshot["metadata"]["outside_or_boundary_rows"], manifest["rows"] - len(snapshot["features"]))
+        with source.open(encoding="utf-8-sig", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        for feature in snapshot["features"]:
+            lon, lat = feature["geometry"]["coordinates"]
+            props = feature["properties"]
+            matches = [r for r in rows if float(r["longitude"]) == lon and float(r["latitude"]) == lat and r["acq_date"] == props["acq_date"]]
+            self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0]["acq_time"].zfill(4), props["acq_time_utc"])
+            self.assertEqual(float(matches[0]["frp"]), props["frp"])
 
     def test_existing_output_is_never_overwritten(self):
         original = b"existing output\x00"
