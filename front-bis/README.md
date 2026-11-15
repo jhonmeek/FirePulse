@@ -30,6 +30,7 @@ npm run preview        # Local preview on http://localhost:5174
 - **Animated SVG Charts (`LineChart`)**: Per-sensor views (MODIS, VIIRS S-NPP, VIIRS NOAA-20), experimental harmonized series, nominal 80% uncertainty band, and enlarged axis labels (`16.5px`) for legible presentation.
 - **Accessible Year × Month Calendar (`CalendarHeatmap`)**: Inverted light-to-dark intensity ramp (`#f7efe2` → `#2a0606`), keyboard navigation, month detail inspector, historical rank, composition breakdown, and CSV export.
 - **Interactive Gabon & Maritime Map (`HotspotMap`)**: Dark data-first MapLibre canvas (`0.25°` grid, Gabon & 9 province outlines, `183` candidate `0.05°` persistent-source cells, optional exploratory NOAA-20 NRT maritime layer from `public/data/gabon-maritime-observations.geojson`), plus `Ctrl/Meta + wheel` / `"Scroll zoom: locked / on"` protection against accidental page-scroll zooming.
+- **Recent NRT detections (`RecentDetections`)**: Separate panel below the map for unclassified thermal points in Gabon from the last 48 hours. It shows satellite, UTC acquisition/check times, age, coordinates and FRP; refreshes every five minutes and supports manual retry. Empty, API error and offline demo states remain explicit. These points are not added to the historical filtered fire series.
 - **Regional Auto-Localization (`FR / EN`)**: Browser timezone + language detection (`Africa/Libreville`, Francophone countries, bilingual fallbacks) with optional `/cdn-cgi/trace` enhancement when deployed behind Cloudflare (fails gracefully offline / non-Cloudflare) and strict session priority (`sessionStorage`) for manual `FR` / `EN` switches.
 - **Confidence Cards (`ConfidenceCard`)**: Explicit data source, period, satellite, protocol, empirical coverage, and scientific caveats below every visual.
 
@@ -48,6 +49,7 @@ npm run preview        # Local preview on http://localhost:5174
 | `/api/v1/coverage/` | `coverage.json` | Sensor temporal availability & S-NPP / NOAA-20 status |
 | `/api/v1/regions/` | `regions.json` | Gabon (`GA`) & `9` provinces (`GA-1`–`GA-9`) GeoJSON |
 | `/api/v1/export/` | Client CSV fallback (`buildSeriesCsvFallback`) | Schema-exact CSV export conforming to `docs/api-contract.json` |
+| `/api/v1/recent-unknown-detections/` | None (unavailable in offline demo) | Last 48 h NRT thermal points with unknown FIRMS type; live PostGIS required |
 
 Response provenance should always be verified per runtime (`live` API vs `snapshot` fallback).
 

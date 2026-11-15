@@ -10,6 +10,31 @@ import type {
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1'
 export const USE_MOCKS = String(import.meta.env.VITE_USE_MOCKS ?? 'false').toLowerCase() === 'true'
 
+export interface RecentUnknownFeature {
+  type: 'Feature'
+  geometry: { type: 'Point'; coordinates: [number, number] }
+  properties: {
+    id: number
+    source: string
+    satellite: string
+    acquired_at: string
+    frp: number | null
+    hotspot_type: null
+    processing_level: 'NRT'
+    product_version: string
+  }
+}
+
+export interface RecentUnknownResponse {
+  type: 'FeatureCollection'
+  features: RecentUnknownFeature[]
+  region: string
+  since: string
+  days: number
+  provenance: string
+  caution: string
+}
+
 async function getJson<T>(path: string, timeoutMs = 25_000): Promise<T> {
   const controller = new AbortController()
   const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs)
@@ -57,6 +82,11 @@ export function fetchRegions(): Promise<RegionsResponse> {
 export function fetchCoverage(region = 'GA'): Promise<CoverageResponse> {
   const q = new URLSearchParams({ region })
   return getJson<CoverageResponse>(`/coverage/?${q.toString()}`)
+}
+
+export function fetchRecentUnknownDetections(days = 2, limit = 200): Promise<RecentUnknownResponse> {
+  const q = new URLSearchParams({ region: 'GA', days: String(days), limit: String(limit) })
+  return getJson<RecentUnknownResponse>(`/recent-unknown-detections/?${q.toString()}`, 15_000)
 }
 
 export function fetchHotspotsGrid(opts: {
