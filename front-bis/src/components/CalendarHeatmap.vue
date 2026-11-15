@@ -555,10 +555,10 @@ onMounted(async () => {
   display: block;
   margin-bottom: 7px;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: #cbd5e1;
 }
 
 .season-bars {
@@ -566,7 +566,7 @@ onMounted(async () => {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 4px;
   align-items: end;
-  height: 48px;
+  height: 64px;
 }
 
 .season-bar {
@@ -574,7 +574,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 5px;
   height: 100%;
   min-width: 0;
 }
@@ -598,9 +598,10 @@ onMounted(async () => {
 
 .season-bar span {
   font-family: var(--font-mono);
-  font-size: 0.56rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   text-align: center;
-  color: var(--muted);
+  color: #dce5f0;
 }
 
 .season-bar.main span {
@@ -610,7 +611,7 @@ onMounted(async () => {
 
 .legend {
   flex: none;
-  min-width: 230px;
+  min-width: 245px;
 }
 
 .legend-scale {
@@ -632,8 +633,8 @@ onMounted(async () => {
 .legend-min,
 .legend-max {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  color: var(--muted);
+  font-size: 0.78rem;
+  color: #dce5f0;
 }
 
 .anomaly-swatches {
@@ -641,8 +642,8 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 8px 14px;
   margin-top: 6px;
-  font-size: 0.7rem;
-  color: var(--muted);
+  font-size: 0.78rem;
+  color: #dce5f0;
 }
 
 .anomaly-swatches span {
@@ -677,30 +678,30 @@ onMounted(async () => {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: 3.3rem repeat(12, minmax(0, 1fr));
+  grid-template-columns: 3.8rem repeat(12, minmax(0, 1fr));
   gap: 4px;
   min-width: 640px;
 }
 
 .grid-corner {
-  height: 20px;
+  height: 26px;
 }
 
 .month-head,
 .year-head {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #4a3529;
+  color: #362218;
 }
 
 .month-head {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: 20px;
+  height: 26px;
 }
 
 .year-head {
@@ -972,12 +973,12 @@ onMounted(async () => {
   }
   .calendar-grid {
     min-width: 0;
-    grid-template-columns: 2.4rem repeat(12, minmax(0, 1fr));
+    grid-template-columns: 2.8rem repeat(12, minmax(0, 1fr));
     gap: 2px;
   }
   .month-head,
   .year-head {
-    font-size: 0.52rem;
+    font-size: 0.7rem;
     letter-spacing: 0.02em;
   }
   .cell {

@@ -41,6 +41,8 @@ const yearStart = ref(2000)
 const yearEnd = ref(2025)
 const filterStatic = ref(true)
 const showStatic = ref(true)
+const scrollZoomEnabled = ref(false)
+const showScrollHint = ref(false)
 const mapReady = ref(false)
 const loadingLive = ref(false)
 const gridSource = ref<'live' | 'snapshot'>('snapshot')
@@ -53,6 +55,9 @@ let bundle: GridBundle | null = null
 let markers: Marker[] = []
 let unmounted = false
 let loadSeq = 0
+let scrollHintTimer: ReturnType<typeof setTimeout> | null = null
+let wheelTarget: HTMLElement | null = null
+let onContainerWheel: ((e: WheelEvent) => void) | null = null
 
 const START_OPTIONS = YEARS.filter((y) => y <= 2024)
 const END_OPTIONS = YEARS.filter((y) => y >= 2001)
@@ -107,13 +112,13 @@ function buildGraticule(): FeatureCollection<LineString> {
 
 function gridColorExpression(max: number) {
   const stops: [number, string][] = [
-    [0, '#24110e'],
-    [Math.sqrt(max * 0.05), '#4d1f15'],
-    [Math.sqrt(max * 0.18), '#8a2f17'],
-    [Math.sqrt(max * 0.38), '#c7471c'],
-    [Math.sqrt(max * 0.62), '#ef6a2b'],
-    [Math.sqrt(max * 0.82), '#ff9e53'],
-    [Math.sqrt(max), '#ffe0a3'],
+    [0, '#f7efe2'],
+    [Math.sqrt(max * 0.05), '#f2dfc2'],
+    [Math.sqrt(max * 0.18), '#eccca2'],
+    [Math.sqrt(max * 0.38), '#db7a3b'],
+    [Math.sqrt(max * 0.62), '#b8351b'],
+    [Math.sqrt(max * 0.82), '#6e140d'],
+    [Math.sqrt(max), '#2a0606'],
   ]
   const expression: unknown[] = ['interpolate', ['linear'], ['sqrt', ['get', 'count']]]
   for (const [stop, color] of stops) expression.push(stop, color)
@@ -199,12 +204,12 @@ const legendColors = computed(() => {
   const max = stats.value.max || 1
   return [0, 0.18, 0.38, 0.62, 0.82, 1].map((tVal) => {
     const stops: [number, [number, number, number]][] = [
-      [0, [36, 17, 14]],
-      [0.18, [138, 47, 23]],
-      [0.38, [199, 71, 28]],
-      [0.62, [239, 106, 43]],
-      [0.82, [255, 158, 83]],
-      [1, [255, 224, 163]],
+      [0, [247, 239, 226]],
+      [0.18, [236, 204, 162]],
+      [0.38, [219, 122, 59]],
+      [0.62, [184, 53, 27]],
+      [0.82, [110, 20, 13]],
+      [1, [42, 6, 6]],
     ]
     const value = Math.sqrt(max * tVal * tVal)
     const s = Math.sqrt(value / max)
@@ -318,6 +323,14 @@ function toggleStatic() {
   map.setLayoutProperty('static-line', 'visibility', showStatic.value ? 'visible' : 'none')
 }
 
+function toggleScrollZoom() {
+  scrollZoomEnabled.value = !scrollZoomEnabled.value
+  showScrollHint.value = false
+  if (!map) return
+  if (scrollZoomEnabled.value) map.scrollZoom.enable()
+  else map.scrollZoom.disable()
+}
+
 function resetView() {
   focusRegion('GA')
 }
@@ -333,9 +346,26 @@ onMounted(() => {
     fitBoundsOptions: { padding: 48 },
     pitch: 24,
     bearing: -6,
+    scrollZoom: false,
     attributionControl: false,
     maxPitch: 55,
   })
+  onContainerWheel = (event: WheelEvent) => {
+    if (!map) return
+    if (event.ctrlKey || event.metaKey || scrollZoomEnabled.value) {
+      map.scrollZoom.enable()
+      showScrollHint.value = false
+    } else {
+      map.scrollZoom.disable()
+      showScrollHint.value = true
+      if (scrollHintTimer) clearTimeout(scrollHintTimer)
+      scrollHintTimer = setTimeout(() => {
+        showScrollHint.value = false
+      }, 1800)
+    }
+  }
+  wheelTarget = el
+  el.addEventListener('wheel', onContainerWheel, { capture: true, passive: true })
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
   map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left')
   popup = new Popup({ closeButton: false, closeOnClick: false, offset: 14, className: 'fp-popup-wrap' })
@@ -375,13 +405,13 @@ onMounted(() => {
       id: 'grid-fill',
       type: 'fill',
       source: 'grid',
-      paint: { 'fill-color': gridColorExpression(1), 'fill-opacity': 0.84 },
+      paint: { 'fill-color': gridColorExpression(1), 'fill-opacity': 0.9 },
     })
     map.addLayer({
       id: 'grid-line',
       type: 'line',
       source: 'grid',
-      paint: { 'line-color': '#ffe0a3', 'line-width': 0.35, 'line-opacity': 0.24 },
+      paint: { 'line-color': '#3b2016', 'line-width': 0.55, 'line-opacity': 0.42 },
     })
     map.addLayer({
       id: 'province-line',
@@ -447,6 +477,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unmounted = true
+  if (wheelTarget && onContainerWheel) {
+    wheelTarget.removeEventListener('wheel', onContainerWheel, { capture: true })
+  }
+  if (scrollHintTimer) clearTimeout(scrollHintTimer)
   resizeObserver?.disconnect()
   popup?.remove()
   for (const m of markers) m.remove()
@@ -524,6 +558,17 @@ watch([countryFeature, provinceFeatures], () => {
         {{ t('Sources persistantes candidates (bleu)', 'Candidate persistent sources (blue)') }}
       </button>
 
+      <button
+        type="button"
+        class="map-toggle"
+        :class="{ active: scrollZoomEnabled }"
+        :aria-pressed="scrollZoomEnabled"
+        @click="toggleScrollZoom"
+      >
+        <span class="toggle-dot"></span>
+        {{ scrollZoomEnabled ? t('Zoom molette : activé', 'Scroll zoom: on') : t('Zoom molette : verrouillé', 'Scroll zoom: locked') }}
+      </button>
+
       <button v-if="selectedRegion !== 'GA'" type="button" class="map-reset-inline" @click="resetView">
         {{ t('Revenir à tout le Gabon', 'Back to full Gabon') }}
       </button>
@@ -537,6 +582,10 @@ watch([countryFeature, provinceFeatures], () => {
         :aria-label="t('Carte interactive des détections et sources persistantes candidates au Gabon', 'Interactive map of detections and candidate persistent sources in Gabon')"
       ></div>
       <div class="map-glow" aria-hidden="true"></div>
+
+      <div class="map-scroll-hint" :class="{ visible: showScrollHint && !scrollZoomEnabled }" aria-live="polite">
+        {{ t('Utilisez Ctrl + molette (ou activez « Zoom molette ») pour zoomer sur la carte', 'Use Ctrl + scroll (or enable "Scroll zoom") to zoom the map') }}
+      </div>
 
       <div class="map-legend">
         <div class="map-legend-head">
@@ -552,8 +601,8 @@ watch([countryFeature, provinceFeatures], () => {
           ></span>
         </div>
         <div class="map-legend-values">
-          <span>{{ t('Calme', 'Low') }}</span>
-          <span>{{ formatCount(stats.max) }}</span>
+          <span>{{ t('Calme (clair)', 'Low (light)') }}</span>
+          <span>{{ formatCount(stats.max) }} {{ t('(sombre)', '(dark)') }}</span>
         </div>
       </div>
 
@@ -577,7 +626,7 @@ watch([countryFeature, provinceFeatures], () => {
       <div class="guide-item">
         <span class="guide-box hot"></span>
         <p>
-          <strong>{{ t('Carrés orangés / rouges (~28 km)', 'Orange / red squares (~28 km)') }}</strong> —
+          <strong>{{ t('Carrés clairs à bordeaux sombre (~28 km)', 'Light to dark crimson squares (~28 km)') }}</strong> —
           {{
             t(
               'Zones de détections type 0 (forêt, savane, brûlis présumés). Survolez ou cliquez un carré pour connaître sa province et son activité.',
@@ -757,12 +806,36 @@ watch([countryFeature, provinceFeatures], () => {
   mix-blend-mode: screen;
 }
 
+.map-scroll-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 196, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(5, 8, 13, 0.9);
+  color: #f4f1e8;
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.map-scroll-hint.visible {
+  opacity: 1;
+}
+
 .map-legend {
   position: absolute;
   right: 14px;
   bottom: 14px;
   z-index: 4;
-  width: 210px;
+  width: 235px;
   padding: 10px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -779,7 +852,7 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .map-legend-head .mono {
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   color: var(--gold);
 }
 
@@ -797,10 +870,10 @@ watch([countryFeature, provinceFeatures], () => {
 .map-legend-values {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: 6px;
   font-family: var(--font-mono);
-  font-size: 0.58rem;
-  color: var(--muted);
+  font-size: 0.74rem;
+  color: #dce5f0;
 }
 
 .map-stats {
@@ -889,8 +962,8 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .guide-box.hot {
-  background: linear-gradient(135deg, #ff9e53, #c7471c);
-  border: 1px solid rgba(255, 224, 163, 0.45);
+  background: linear-gradient(135deg, #f7efe2, #db7a3b 52%, #2a0606);
+  border: 1px solid rgba(247, 239, 226, 0.55);
 }
 
 .guide-box.cool {
@@ -908,8 +981,14 @@ watch([countryFeature, provinceFeatures], () => {
   .map-wrap {
     min-height: 500px;
   }
+  .map-scroll-hint {
+    max-width: calc(100% - 24px);
+    white-space: normal;
+    text-align: center;
+    font-size: 0.7rem;
+  }
   .map-legend {
-    width: 165px;
+    width: 185px;
   }
   .map-stats {
     gap: 12px;

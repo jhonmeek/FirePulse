@@ -151,26 +151,33 @@ const activeBar = computed(() => {
         </div>
       </div>
 
-      <div class="bars-grid">
-        <button
-          v-for="bar in bars"
-          :key="bar.index"
-          type="button"
-          class="bar-col"
-          :class="{ active: activeBar.index === bar.index }"
-          :aria-label="`${bar.name} : ${formatCount(bar.veg)} ${t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources')}${showMixed ? `, ${formatCount(bar.flare)} ${t('détections écartées par le filtre', 'detections excluded by the filter')}` : ''}`"
-          @mouseenter="hoveredMonth = bar.index"
-          @focus="hoveredMonth = bar.index"
-          @mouseleave="hoveredMonth = null"
-        >
-          <span class="bar-track">
-            <span class="bar-stack">
-              <i class="seg-flare" :style="{ height: `${bar.flarePct}%` }"></i>
-              <i class="seg-veg" :style="{ height: `${bar.vegPct}%` }"></i>
+      <div class="bars-chart-layout">
+        <div class="bars-y-axis" aria-hidden="true">
+          <span>{{ formatCount(maxBarValue) }}</span>
+          <span>{{ formatCount(Math.round(maxBarValue / 2)) }}</span>
+          <span>0</span>
+        </div>
+        <div class="bars-grid">
+          <button
+            v-for="bar in bars"
+            :key="bar.index"
+            type="button"
+            class="bar-col"
+            :class="{ active: activeBar.index === bar.index }"
+            :aria-label="`${bar.name} : ${formatCount(bar.veg)} ${t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources')}${showMixed ? `, ${formatCount(bar.flare)} ${t('détections écartées par le filtre', 'detections excluded by the filter')}` : ''}`"
+            @mouseenter="hoveredMonth = bar.index"
+            @focus="hoveredMonth = bar.index"
+            @mouseleave="hoveredMonth = null"
+          >
+            <span class="bar-track">
+              <span class="bar-stack">
+                <i class="seg-flare" :style="{ height: `${bar.flarePct}%` }"></i>
+                <i class="seg-veg" :style="{ height: `${bar.vegPct}%` }"></i>
+              </span>
             </span>
-          </span>
-          <span class="bar-label">{{ bar.short }}</span>
-        </button>
+            <span class="bar-label">{{ bar.short }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -403,11 +410,31 @@ const activeBar = computed(() => {
   color: #67e8f9;
 }
 
+.bars-chart-layout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.bars-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 2px 0 24px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #dce5f0;
+  font-variant-numeric: tabular-nums;
+}
+
 .bars-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 6px;
-  height: 150px;
+  height: 162px;
   align-items: end;
 }
 
@@ -464,8 +491,9 @@ const activeBar = computed(() => {
 
 .bar-label {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
-  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: #dce5f0;
 }
 
 .bar-col.active .bar-label {
@@ -483,11 +511,14 @@ const activeBar = computed(() => {
   .split-stats {
     grid-template-columns: 1fr;
   }
+  .bars-y-axis {
+    font-size: 0.72rem;
+  }
   .bars-grid {
     gap: 3px;
   }
   .bar-label {
-    font-size: 0.54rem;
+    font-size: 0.72rem;
   }
 }
 </style>
