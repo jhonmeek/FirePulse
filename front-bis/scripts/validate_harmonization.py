@@ -357,7 +357,6 @@ def validate() -> dict:
     test_observations = [item for item in observations if TEST[0] <= item[0] <= TEST[1]]
     residual_mask_diagnostics = {
         "test_type23_outside_frozen_mask": sum(1 for _, _, _, kind, cell in test_observations if kind in (2, 3) and cell not in frozen_mask),
-        "test_type0_in_later_mask_cells": sum(1 for _, _, _, kind, cell in test_observations if kind == 0 and cell in later_cells),
         "note": "Retrospective descriptive counts, not confirmed industrial sources or causal contamination.",
     }
     for label, sensors in (("all", {"terra", "aqua", "snpp", "noaa20"}), ("snpp", {"snpp"})):
