@@ -28,6 +28,7 @@ import {
   provinceSummaries,
 } from '@/lib/data'
 import { t } from '@/lib/i18n'
+import { HEAT_STOPS, HEAT_GRADIENT } from '@/lib/heatScale'
 import { provenance } from '@/lib/provenance'
 import type { GridBundle } from '@/lib/types'
 
@@ -47,6 +48,13 @@ const mapReady = ref(false)
 const loadingLive = ref(false)
 const gridSource = ref<'live' | 'snapshot'>('snapshot')
 const stats = ref({ cells: 0, total: 0, max: 1 })
+const showMaritime = ref(false)
+const maritimeStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
+const maritimeCount = ref(0)
+const maritimePeriod = ref('')
+const maritimeUrl = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}data/gabon-maritime-observations.geojson`
+const maritimeLayers = ['maritime-point']
+let maritimeAbort: AbortController | null = null
 
 let map: MlMap | null = null
 let popup: Popup | null = null
@@ -68,9 +76,7 @@ const GABON_BOUNDS: [[number, number], [number, number]] = [
 ]
 
 const periodLabel = computed(() =>
-  yearStart.value === 2000 && yearEnd.value === 2025
-    ? '2000 → 2025'
-    : `${yearStart.value} → ${yearEnd.value}`,
+  `${yearStart.value === 2000 ? '11' : '01'}/${yearStart.value} → 12/${yearEnd.value}`,
 )
 
 const STYLE: StyleSpecification = {
@@ -111,17 +117,10 @@ function buildGraticule(): FeatureCollection<LineString> {
 }
 
 function gridColorExpression(max: number) {
-  const stops: [number, string][] = [
-    [0, '#f7efe2'],
-    [Math.sqrt(max * 0.05), '#f2dfc2'],
-    [Math.sqrt(max * 0.18), '#eccca2'],
-    [Math.sqrt(max * 0.38), '#db7a3b'],
-    [Math.sqrt(max * 0.62), '#b8351b'],
-    [Math.sqrt(max * 0.82), '#6e140d'],
-    [Math.sqrt(max), '#2a0606'],
-  ]
   const expression: unknown[] = ['interpolate', ['linear'], ['sqrt', ['get', 'count']]]
-  for (const [stop, color] of stops) expression.push(stop, color)
+  for (const [position, rgb] of HEAT_STOPS) {
+    expression.push(position * Math.sqrt(Math.max(1, max)), `rgb(${rgb.join(', ')})`)
+  }
   return expression as never
 }
 
@@ -200,43 +199,21 @@ function renderProvinceMarkers() {
   }
 }
 
-const legendColors = computed(() => {
-  const max = stats.value.max || 1
-  return [0, 0.18, 0.38, 0.62, 0.82, 1].map((tVal) => {
-    const stops: [number, [number, number, number]][] = [
-      [0, [247, 239, 226]],
-      [0.18, [236, 204, 162]],
-      [0.38, [219, 122, 59]],
-      [0.62, [184, 53, 27]],
-      [0.82, [110, 20, 13]],
-      [1, [42, 6, 6]],
-    ]
-    const value = Math.sqrt(max * tVal * tVal)
-    const s = Math.sqrt(value / max)
-    let c0 = stops[0]!
-    let c1 = stops[stops.length - 1]!
-    for (let i = 1; i < stops.length; i++) {
-      if (s <= stops[i]![0]) {
-        c0 = stops[i - 1]!
-        c1 = stops[i]!
-        break
-      }
-    }
-    const local = Math.max(0, Math.min(1, (s - c0[0]) / Math.max(0.0001, c1[0] - c0[0])))
-    const rgb = c0[1].map((v, i) => Math.round(v + (c1[1][i]! - v) * local))
-    return `rgb(${rgb.join(', ')})`
-  })
-})
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!)
+}
 
 function popupHtml(title: string, badge: string, rows: [string, string][], badgeTone: 'hot' | 'cool' = 'hot'): string {
   return `
     <div class="fp-popup">
       <div class="fp-popup-head">
-        <span class="fp-popup-badge ${badgeTone}">${badge}</span>
-        <p class="fp-popup-title">${title}</p>
+        <span class="fp-popup-badge ${badgeTone}">${escapeHtml(badge)}</span>
+        <p class="fp-popup-title">${escapeHtml(title)}</p>
       </div>
       <dl>
-        ${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
+        ${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
       </dl>
     </div>
   `
@@ -261,7 +238,7 @@ function onGridHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) 
         `${t('Zone de feux', 'Fire zone')} · ${province}`,
         t('Carré ~28 km', '~28 km grid'),
         [
-          [`${t('Points chauds', 'Hotspots')} (${periodLabel.value})`, formatCount(p.count)],
+          [`${t('Détections non harmonisées', 'Unharmonized detections')} (${periodLabel.value})`, formatCount(p.count)],
           [
             t('Fréquence', 'Frequency'),
             t(`Actif sur ${formatCount(p.months)} mois`, `Active across ${formatCount(p.months)} months`),
@@ -310,6 +287,30 @@ function onStaticHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }
     .addTo(map)
 }
 
+function showMaritimePopup(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) {
+  if (!map || !event.features?.[0]) return
+  map.getCanvas().style.cursor = 'pointer'
+  const properties = event.features[0].properties ?? {}
+  const value = (key: string) => properties[key] == null || properties[key] === ''
+    ? 'Non renseigné'
+    : String(properties[key])
+  const rawTime = value('acq_time_utc')
+  const paddedTime = /^\d{1,4}$/.test(rawTime) ? rawTime.padStart(4, '0') : ''
+  const time = paddedTime && Number(paddedTime.slice(0, 2)) < 24 && Number(paddedTime.slice(2)) < 60
+    ? `${paddedTime.slice(0, 2)}:${paddedTime.slice(2)} UTC`
+    : rawTime
+  popup?.setLngLat(event.lngLat).setHTML(popupHtml(
+    t('Point thermique maritime (exploratoire)', 'Maritime thermal point (exploratory)'),
+    'NOAA-20 NRT',
+    [
+      [t('Date', 'Date'), value('acq_date')],
+      [t('Heure', 'Time'), time],
+      ['FRP', value('frp') === 'Non renseigné' ? t('Non renseigné', 'Unavailable') : `${value('frp')} MW`],
+    ],
+    'cool',
+  )).addTo(map)
+}
+
 function onLeave() {
   if (!map) return
   map.getCanvas().style.cursor = ''
@@ -329,6 +330,52 @@ function toggleScrollZoom() {
   if (!map) return
   if (scrollZoomEnabled.value) map.scrollZoom.enable()
   else map.scrollZoom.disable()
+}
+
+async function toggleMaritime() {
+  showMaritime.value = !showMaritime.value
+  if (!map || !mapReady.value) return
+  for (const layer of maritimeLayers) {
+    map.setLayoutProperty(layer, 'visibility', showMaritime.value ? 'visible' : 'none')
+  }
+  if (!showMaritime.value || maritimeStatus.value === 'ready' || maritimeStatus.value === 'loading') return
+
+  maritimeStatus.value = 'loading'
+  maritimeAbort = new AbortController()
+  try {
+    const response = await fetch(maritimeUrl, { signal: maritimeAbort.signal })
+    // Les serveurs SPA peuvent renvoyer index.html avec un statut 200 pour un fichier absent.
+    if (response.status === 404 || (response.ok && response.headers.get('content-type')?.includes('text/html'))) {
+      maritimeStatus.value = 'missing'
+      return
+    }
+    if (!response.ok) throw new Error('Chargement impossible')
+    const data: unknown = await response.json()
+    if (!data || typeof data !== 'object' || !('type' in data) || data.type !== 'FeatureCollection' ||
+        !('features' in data) || !Array.isArray(data.features) ||
+        !data.features.every((feature: unknown) => feature && typeof feature === 'object' &&
+          'type' in feature && feature.type === 'Feature' && 'geometry' in feature &&
+          feature.geometry && typeof feature.geometry === 'object' &&
+          'type' in feature.geometry && feature.geometry.type === 'Point' &&
+          'coordinates' in feature.geometry && Array.isArray(feature.geometry.coordinates) &&
+          feature.geometry.coordinates.length >= 2 &&
+          feature.geometry.coordinates.every((coordinate: unknown) => typeof coordinate === 'number' && Number.isFinite(coordinate)) &&
+          Math.abs(feature.geometry.coordinates[0]) <= 180 && Math.abs(feature.geometry.coordinates[1]) <= 90)) {
+      throw new Error('GeoJSON invalide')
+    }
+    if (unmounted || !map) return
+    ;(map.getSource('maritime') as GeoJSONSource).setData(data as FeatureCollection)
+    maritimeCount.value = data.features.length
+    if ('metadata' in data && data.metadata && typeof data.metadata === 'object' &&
+        'period_start' in data.metadata && 'period_end' in data.metadata &&
+        typeof data.metadata.period_start === 'string' && typeof data.metadata.period_end === 'string') {
+      maritimePeriod.value = `${data.metadata.period_start} → ${data.metadata.period_end}`
+    }
+    maritimeStatus.value = 'ready'
+  } catch (error) {
+    if (unmounted || (error instanceof DOMException && error.name === 'AbortError')) return
+    maritimeStatus.value = 'error'
+  }
 }
 
 function resetView() {
@@ -387,6 +434,8 @@ onMounted(() => {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
+
+    map.addSource('maritime', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
     map.addLayer({
       id: 'graticule',
@@ -459,6 +508,15 @@ onMounted(() => {
       paint: { 'line-color': '#ecfeff', 'line-width': 1, 'line-opacity': 0.95 },
     })
 
+    map.addLayer({
+      id: 'maritime-point', type: 'circle', source: 'maritime',
+      layout: { visibility: 'none' },
+      paint: { 'circle-radius': 5, 'circle-color': '#c084fc', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 },
+    })
+
+    map.on('mousemove', 'maritime-point', showMaritimePopup)
+    map.on('click', 'maritime-point', showMaritimePopup)
+    map.on('mouseleave', 'maritime-point', onLeave)
     map.on('mousemove', 'grid-fill', onGridHover)
     map.on('click', 'grid-fill', onGridHover)
     map.on('mouseleave', 'grid-fill', onLeave)
@@ -477,6 +535,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   unmounted = true
+  maritimeAbort?.abort()
   if (wheelTarget && onContainerWheel) {
     wheelTarget.removeEventListener('wheel', onContainerWheel, { capture: true })
   }
@@ -544,7 +603,11 @@ watch([countryFeature, provinceFeatures], () => {
         @click="filterStatic = !filterStatic"
       >
         <span class="toggle-dot"></span>
-        {{ filterStatic ? t('Type 0 hors sources persistantes', 'Type 0 outside persistent sources') : t('Toutes détections', 'All detections') }}
+        {{
+          filterStatic
+            ? t('Détections thermiques · Type 0 hors sources persistantes (exploratoire)', 'Thermal detections · Type 0 outside persistent sources (exploratory)')
+            : t('Toutes détections thermiques (catégories exploratoires mélangées)', 'All thermal detections (mixed exploratory categories)')
+        }}
       </button>
 
       <button
@@ -556,6 +619,18 @@ watch([countryFeature, provinceFeatures], () => {
       >
         <span class="toggle-dot cool"></span>
         {{ t('Sources persistantes candidates (bleu)', 'Candidate persistent sources (blue)') }}
+      </button>
+
+      <button
+        type="button"
+        class="map-toggle"
+        :class="{ active: showMaritime }"
+        :aria-pressed="showMaritime"
+        :disabled="!mapReady"
+        @click="toggleMaritime"
+      >
+        <span class="toggle-dot maritime-dot"></span>
+        {{ t('Observations maritimes (exploratoire)', 'Maritime observations (exploratory)') }}
       </button>
 
       <button
@@ -574,12 +649,50 @@ watch([countryFeature, provinceFeatures], () => {
       </button>
     </div>
 
+    <div v-show="showMaritime" class="maritime-status">
+      <p>
+        {{
+          t(
+            `Instantané NASA FIRMS (NOAA-20 NRT demandé), ${maritimePeriod || 'période non renseignée'} — indépendant de la période terrestre. Couverture inconnue. Détections thermiques non classifiées (catégorie exploratoire) : elles ne confirment ni un feu ni une torchère. Le polygone EEZ Marine Regions utilisé exclut la mer territoriale ; son périmètre est indicatif, non juridique.`,
+            `NASA FIRMS snapshot (NOAA-20 NRT requested), ${maritimePeriod || 'period unavailable'} — independent of the terrestrial period. Coverage unknown. Unclassified thermal detections (exploratory category): they confirm neither a fire nor a flare. The Marine Regions EEZ polygon excludes territorial waters and is indicative rather than legal.`,
+          )
+        }}
+      </p>
+      <div role="status" aria-live="polite">
+        <template v-if="maritimeStatus === 'loading'">
+          {{ t('Chargement des observations…', 'Loading observations…') }}
+        </template>
+        <template v-else-if="maritimeStatus === 'missing'">
+          {{ t(`Fichier absent : ${maritimeUrl}.`, `Missing file: ${maritimeUrl}.`) }}
+        </template>
+        <template v-else-if="maritimeStatus === 'error'">
+          {{
+            t(
+              `Fichier inaccessible ou GeoJSON invalide : ${maritimeUrl}. Désactivez puis réactivez pour réessayer.`,
+              `Unavailable file or invalid GeoJSON: ${maritimeUrl}. Toggle off and on to retry.`,
+            )
+          }}
+        </template>
+        <template v-else-if="maritimeStatus === 'ready'">
+          {{ t(`${maritimeCount} point(s) thermique(s) non classifié(s).`, `${maritimeCount} unclassified thermal point(s).`) }}
+        </template>
+      </div>
+    </div>
+
+    <p class="map-data-note" role="status">
+      <strong>{{ t('Cumul observé non harmonisé', 'Observed, unharmonized total') }} · {{ periodLabel }}</strong>
+      {{ t(
+        'MODIS + S-NPP + NOAA-20, avec le filtre sélectionné. Comme dans le calendrier : clair = peu, sombre = beaucoup. Ici, les couleurs comparent les cumuls par cellule sur la période choisie ; elles ne représentent pas les valeurs mensuelles harmonisées du calendrier. Une cellule absente ne prouve pas l’absence de feu.',
+        'MODIS + S-NPP + NOAA-20, with the selected filter. As in the calendar: light = low, dark = high. Here, colors compare cell totals over the selected period; they do not represent the calendar’s harmonized monthly values. An absent cell does not prove the absence of fire.',
+      ) }}
+    </p>
+
     <div class="map-wrap">
       <div
         ref="container"
         class="map-canvas"
         role="img"
-        :aria-label="t('Carte interactive des détections et sources persistantes candidates au Gabon', 'Interactive map of detections and candidate persistent sources in Gabon')"
+        :aria-label="t('Carte interactive des détections thermiques et sources persistantes candidates au Gabon', 'Interactive map of thermal detections and candidate persistent sources in Gabon')"
       ></div>
       <div class="map-glow" aria-hidden="true"></div>
 
@@ -589,19 +702,12 @@ watch([countryFeature, provinceFeatures], () => {
 
       <div class="map-legend">
         <div class="map-legend-head">
-          <span class="tiny-label">{{ t('Intensité des feux', 'Fire intensity') }}</span>
+          <span class="tiny-label">{{ t('Détections cumulées / cellule', 'Cumulative detections / cell') }}</span>
           <span class="mono">{{ periodLabel }}</span>
         </div>
-        <div class="map-legend-scale">
-          <span
-            v-for="(color, index) in legendColors"
-            :key="index"
-            class="legend-swatch"
-            :style="{ background: color }"
-          ></span>
-        </div>
+        <div class="map-legend-scale" :style="{ background: HEAT_GRADIENT }" aria-hidden="true"></div>
         <div class="map-legend-values">
-          <span>{{ t('Calme (clair)', 'Low (light)') }}</span>
+          <span>{{ t('0 (clair)', '0 (light)') }}</span>
           <span>{{ formatCount(stats.max) }} {{ t('(sombre)', '(dark)') }}</span>
         </div>
       </div>
@@ -652,8 +758,8 @@ watch([countryFeature, provinceFeatures], () => {
           loadingLive
             ? t('Mise à jour en direct…', 'Syncing live data…')
             : gridSource === 'live' && dataSourceMode === 'live'
-              ? t('Base en direct', 'Live database')
-              : t('Archive SP vérifiée', 'Verified SP archive')
+              ? t('Données reçues de l’API (provenance à vérifier)', 'API data received (verify provenance)')
+              : t('Instantané local SP', 'Local SP snapshot')
         }}
       </span>
     </div>
@@ -661,6 +767,18 @@ watch([countryFeature, provinceFeatures], () => {
 </template>
 
 <style scoped>
+.map-data-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.map-data-note strong {
+  display: block;
+  color: var(--ink);
+}
+
 .map-frame {
   display: grid;
   gap: 12px;
@@ -830,6 +948,27 @@ watch([countryFeature, provinceFeatures], () => {
   opacity: 1;
 }
 
+.toggle-dot.maritime-dot {
+  background: #c084fc;
+}
+
+.map-toggle.active .toggle-dot.maritime-dot {
+  box-shadow: 0 0 8px #c084fc;
+}
+
+.maritime-status {
+  padding: 10px 14px;
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  border-radius: 12px;
+  background: rgba(16, 12, 24, 0.92);
+  color: #f4eaff;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.maritime-status p {
+  margin: 0 0 4px;
+}
 .map-legend {
   position: absolute;
   right: 14px;
@@ -857,6 +996,8 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .map-legend-scale {
+  height: 12px;
+  border-radius: 4px;
   display: flex;
   height: 8px;
   border-radius: 4px;

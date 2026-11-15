@@ -1,0 +1,266 @@
+{
+  "region": "GA",
+  "filter_static": false,
+  "monthly_baselines": [
+    {
+      "month_num": 1,
+      "median": 465.0,
+      "iqr_p25": 347.0,
+      "iqr_p75": 666.35,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 2,
+      "median": 614.52,
+      "iqr_p25": 487.89,
+      "iqr_p75": 784.5,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 3,
+      "median": 719.13,
+      "iqr_p25": 592.32,
+      "iqr_p75": 903.93,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 4,
+      "median": 618.79,
+      "iqr_p25": 505.5,
+      "iqr_p75": 735.0,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 5,
+      "median": 525.0,
+      "iqr_p25": 450.5,
+      "iqr_p75": 663.03,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 6,
+      "median": 1103.0,
+      "iqr_p25": 699.4,
+      "iqr_p75": 1419.55,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 7,
+      "median": 1951.0,
+      "iqr_p25": 1750.0,
+      "iqr_p75": 2438.8,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 8,
+      "median": 2153.67,
+      "iqr_p25": 1622.72,
+      "iqr_p75": 2789.64,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 9,
+      "median": 1283.0,
+      "iqr_p25": 1047.56,
+      "iqr_p75": 1591.5,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 10,
+      "median": 349.64,
+      "iqr_p25": 286.96,
+      "iqr_p75": 384.46,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 11,
+      "median": 235.22,
+      "iqr_p25": 179.5,
+      "iqr_p75": 290.5,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    },
+    {
+      "month_num": 12,
+      "median": 309.36,
+      "iqr_p25": 265.0,
+      "iqr_p75": 397.95,
+      "reference_years_count": 25,
+      "reference_period": "2001-2025"
+    }
+  ],
+  "top_positive": [
+    {
+      "month": "2001-12",
+      "harmonized_value": 952.55,
+      "baseline_median": 309.36,
+      "anomaly_percent": 207.91,
+      "anomaly_absolute": 643.19,
+      "sensor_regime": "modis_terra_only"
+    },
+    {
+      "month": "2001-01",
+      "harmonized_value": 1229.23,
+      "baseline_median": 465.0,
+      "anomaly_percent": 164.35,
+      "anomaly_absolute": 764.23,
+      "sensor_regime": "modis_terra_only"
+    },
+    {
+      "month": "2000-12",
+      "harmonized_value": 806.42,
+      "baseline_median": 309.36,
+      "anomaly_percent": 160.67,
+      "anomaly_absolute": 497.06,
+      "sensor_regime": "partial_year"
+    },
+    {
+      "month": "2000-11",
+      "harmonized_value": 603.74,
+      "baseline_median": 235.22,
+      "anomaly_percent": 156.67,
+      "anomaly_absolute": 368.52,
+      "sensor_regime": "partial_year"
+    },
+    {
+      "month": "2001-11",
+      "harmonized_value": 516.75,
+      "baseline_median": 235.22,
+      "anomaly_percent": 119.69,
+      "anomaly_absolute": 281.53,
+      "sensor_regime": "modis_terra_only"
+    },
+    {
+      "month": "2024-01",
+      "harmonized_value": 980.0,
+      "baseline_median": 465.0,
+      "anomaly_percent": 110.75,
+      "anomaly_absolute": 515.0,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2007-01",
+      "harmonized_value": 928.95,
+      "baseline_median": 465.0,
+      "anomaly_percent": 99.77,
+      "anomaly_absolute": 463.95,
+      "sensor_regime": "modis_terra_aqua"
+    },
+    {
+      "month": "2012-07",
+      "harmonized_value": 3875.0,
+      "baseline_median": 1951.0,
+      "anomaly_percent": 98.62,
+      "anomaly_absolute": 1924.0,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2003-01",
+      "harmonized_value": 890.4,
+      "baseline_median": 465.0,
+      "anomaly_percent": 91.48,
+      "anomaly_absolute": 425.4,
+      "sensor_regime": "modis_terra_aqua"
+    },
+    {
+      "month": "2002-05",
+      "harmonized_value": 977.11,
+      "baseline_median": 525.0,
+      "anomaly_percent": 86.12,
+      "anomaly_absolute": 452.11,
+      "sensor_regime": "modis_terra_only"
+    }
+  ],
+  "top_negative": [
+    {
+      "month": "2009-08",
+      "harmonized_value": 863.15,
+      "baseline_median": 2153.67,
+      "anomaly_percent": -59.92,
+      "anomaly_absolute": -1290.52,
+      "sensor_regime": "modis_terra_aqua"
+    },
+    {
+      "month": "2014-06",
+      "harmonized_value": 531.0,
+      "baseline_median": 1103.0,
+      "anomaly_percent": -51.86,
+      "anomaly_absolute": -572.0,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2016-03",
+      "harmonized_value": 347.0,
+      "baseline_median": 719.13,
+      "anomaly_percent": -51.75,
+      "anomaly_absolute": -372.13,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2015-08",
+      "harmonized_value": 1171.0,
+      "baseline_median": 2153.67,
+      "anomaly_percent": -45.63,
+      "anomaly_absolute": -982.67,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2014-01",
+      "harmonized_value": 254.0,
+      "baseline_median": 465.0,
+      "anomaly_percent": -45.38,
+      "anomaly_absolute": -211.0,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2014-04",
+      "harmonized_value": 340.0,
+      "baseline_median": 618.79,
+      "anomaly_percent": -45.05,
+      "anomaly_absolute": -278.79,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2017-06",
+      "harmonized_value": 631.0,
+      "baseline_median": 1103.0,
+      "anomaly_percent": -42.79,
+      "anomaly_absolute": -472.0,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2006-09",
+      "harmonized_value": 735.48,
+      "baseline_median": 1283.0,
+      "anomaly_percent": -42.67,
+      "anomaly_absolute": -547.52,
+      "sensor_regime": "modis_terra_aqua"
+    },
+    {
+      "month": "2015-03",
+      "harmonized_value": 417.0,
+      "baseline_median": 719.13,
+      "anomaly_percent": -42.01,
+      "anomaly_absolute": -302.13,
+      "sensor_regime": "viirs_snpp_observed"
+    },
+    {
+      "month": "2012-10",
+      "harmonized_value": 204.0,
+      "baseline_median": 349.64,
+      "anomaly_percent": -41.65,
+      "anomaly_absolute": -145.64,
+      "sensor_regime": "viirs_snpp_observed"
+    }
+  ]
+}

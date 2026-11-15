@@ -59,4 +59,30 @@ M1 outputs reside under `data/processed/`. They can be ingested via a versioned 
 
 `python -m pipeline.static_mask_audit` reproduces the M2 `0.05°` cell persistence rule (`FLOOR(coordinate × 20)`, threshold `>= 20` type-2/3 detections or S-NPP activity across at least `48` distinct months). When run retrospectively across all `2000–2025` inputs, it flags candidate cells in `static_mask_audit.json` and `static_mask_cells.csv` without modifying source rows.
 
-`python -m pipeline.grid_025` aggregates detections by month, source, satellite, and `0.25°` cell across four views: raw detections, `type 0`, `type 0` outside candidate cells, and all detections inside candidate cells (`grid_025_monthly.csv`, `grid_025_monthly.json`, and `manifest.json`). Across the full 2000–2025 archive (`292,589` rows), the retrospective mask flags `183` cells out of `3,227` active cells (`109,876` total detections inside flagged cells, including `52,023` type-0 detections, or `22.20%` of `234,366` type-0 rows).
+`python -m pipeline.grid_025` aggregates detections by month, source, satellite, and `0.25°` cell across four views: raw detections, `type 0`, `type 0` outside candidate cells, and all detections inside candidate cells (`grid_025_monthly.csv`, `grid_025_monthly.json`, and `manifest.json`). Across the full 2000–2025 archive (`292,589` rows), the retrospective mask flags `183` cells out of `3,227` active cells (`109,876` total detections inside flagged cells, including `52,023` type-0 detections, or `22.20%` of `234,366` type-0 rows). The `0.25°` grid contains `41,957` month-source-satellite-cell rows computed directly from Gabon country files without administrative geometry clipping.
+
+## Independent Reproduction of the M2 Benchmark (H12–H24)
+
+`python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json` verifies the SHA-256 checksum of the M2 export, refits the power-law regression on `train` rows, and recomputes MAE, RMSE, bias, and `R²` on `test` rows for Gabon with and without the candidate static mask.
+
+Reproduction of the November 14, 2026 M2 export (CSV SHA-256 `56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd`):
+- Without mask: `p = 0.7916`, `q = 2.6733`, `MAE = 129.71`, `RMSE = 205.47`, `bias = 19.69`, `R² = 0.9165`.
+- With mask: `p = 0.9438`, `q = 1.6529`, `MAE = 100.87`, `RMSE = 169.12`, `bias = 41.77`, `R² = 0.9189`.
+- The `95` training months and `72` test months match the M2 manifest. Bounds reconstructed from MODIS, the exported parameters, and the quantile cover `59/72` months without mask and `58/72` months with mask. This coverage is descriptive rather than independent because the quantile was estimated from residuals of the same test period; reproduction does not independently validate model selection or interval coverage.
+
+## Derived Exploratory Display Series (`front-bis`)
+
+To separate seasonal vegetation patterns from persistent heat sources in the UI without mutating API payloads, `front-bis/src/lib/data.ts` computes the following derived display series directly from `/api/v1/calendar/` responses (or their matching offline database snapshots):
+
+1. **Filtered Vegetation-Candidate Series (`staticSeries`)**:
+   `/api/v1/calendar/?region=GA&filter_static=true` — NASA `type = 0` thermal detections outside the `183` candidate `0.05°` persistent-source cells (`86,882` raw MODIS + S-NPP + NOAA-20 detections summed across loaded `GA` series points).
+2. **Unfiltered Total Series (`allSeries`)**:
+   `/api/v1/calendar/?region=GA&filter_static=false` — all thermal detections (`type 0`, `2`, `3`, all cells; `144,060` summed detections across loaded `GA` series points).
+3. **Excluded Thermal Detections Series (`flareSeries`, exploratory category)**:
+   Derived month-by-month as a non-negative residual difference:
+   - Raw per-sensor delta: $\Delta c_{t,s} = \max(0,\, c_{t,s}^{\text{all}} - c_{t,s}^{\text{static}})$ for MODIS (Terra + Aqua), VIIRS S-NPP, and VIIRS NOAA-20.
+   - Harmonized delta: $\Delta h_t = \max(0,\, \text{round}((h_t^{\text{all}} - h_t^{\text{static}}) \times 10) / 10)$ when both harmonized values are non-null (otherwise $\Delta c_{t,\text{modis}} + \Delta c_{t,\text{snpp}}$).
+   - Monthly baseline & anomaly: $\text{median}_{2001\text{–}2025}(\Delta h_t)$ per calendar month, $\text{abs\_anomaly}_t = \Delta h_t - \text{median}$, and $\text{pct\_anomaly}_t = (\text{abs\_anomaly}_t / \text{median}) \times 100$.
+   - **Scientific caveat**: `flareSeries` (`57,178` summed detections across `calendar-all` minus `calendar-static`) combines both NASA `type 2/3` thermal anomalies (`31,110`) and `type 0` detections located inside candidate `0.05°` mask cells (`26,068`). It represents an exploratory series difference of spatial-persistence detections, **not** a census of confirmed gas flares.
+4. **Exploratory Thermal Regime Categories (`CalendarHeatmap.vue`)**:
+   - **Routine seasonal activity** vs **Abnormal surges**: purely statistical display thresholds comparing each month's harmonized value against its 2001–2025 calendar-month `baseline_median` (`pct >= +25%` with delta `>= 80`, or ratio `>= 1.35×` for surges). These labels highlight inter-annual thermal surges as exploratory indicators rather than causal fire classifications.

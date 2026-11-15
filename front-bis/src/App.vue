@@ -49,7 +49,7 @@ const chapters = computed(() => [
   { id: 'translate', label: t('L’accord des données', 'Aligning data') },
   { id: 'calendar', label: t('Le calendrier', 'Calendar') },
   { id: 'map', label: t('La carte', 'Map') },
-  { id: 'proof', label: t('Fiabilité & suite', 'Proof & future') },
+  { id: 'proof', label: t('Analyse exploratoire & suite', 'Exploratory analysis & future') },
 ])
 
 const scrollProgress = ref(0)
@@ -58,7 +58,6 @@ const activeChapter = ref('top')
 const cursor = ref({ x: 0, y: 0 })
 const globePoints = computed(() => buildGlobePoints())
 const pctSuffix = computed(() => (locale.value === 'en' ? '%' : ' %'))
-
 const ambientGlobeStyle = computed(() => {
   const p = scrollProgress.value
   let opacity = 1
@@ -417,6 +416,9 @@ onBeforeUnmount(() => {
                 {{ t('Explorer le calendrier des feux', 'Explore the fire calendar') }}
                 <span aria-hidden="true">→</span>
               </button>
+              <button type="button" class="btn btn-ghost" @click="navigate('proof')">
+                {{ t('Voir l’analyse exploratoire', 'See exploratory analysis') }}
+              </button>
             </div>
 
             <div class="hero-meta hero-meta-pair">
@@ -600,8 +602,8 @@ onBeforeUnmount(() => {
               <li>
                 <span class="step-index">03</span>
                 <div>
-                  <strong>{{ t('Afficher la marge d’incertitude', 'Show the uncertainty margin') }}</strong>
-                  <span>{{ t('La bande est nominale à 80 % ; sa couverture empirique est de 63,9 % sur 2020–2025. C’est un indicateur, pas une garantie.', 'The band is nominal 80%; empirical coverage is 63.9% over 2020–2025. Treat it as an indicator, not a guarantee.') }}</span>
+                  <strong>{{ t('Intervalle expérimental (cible 80 %)', 'Experimental interval (80% target)') }}</strong>
+                  <span>{{ t('Bande d’incertitude sur la période reconstruite : couverture empirique 63,9 % sur 2020–2025 dans l’artefact exploratoire, pas une garantie conforme.', 'Uncertainty band over the reconstructed period: 63.9% empirical coverage over 2020–2025 in the exploratory artifact, not a conformal guarantee.') }}</span>
                 </div>
               </li>
             </ol>
@@ -609,7 +611,7 @@ onBeforeUnmount(() => {
             <div class="stat-row reveal reveal-delay-4">
               <div>
                 <div class="stat">−{{ maeReduction }}{{ pctSuffix }}</div>
-                <div class="stat-label">{{ t('d’erreur moyenne (validation renforcée, 2020–2025)', 'less average error (reinforced validation, 2020–2025)') }}</div>
+                <div class="stat-label">{{ t('d’erreur moyenne (artefact exploratoire, 2020–2025)', 'less average error (exploratory artifact, 2020–2025)') }}</div>
               </div>
               <div>
                 <div class="stat stat-small">
@@ -644,8 +646,8 @@ onBeforeUnmount(() => {
               <p class="panel-caption">
                 {{
                   t(
-                    'MODIS est l’entrée du modèle ; VIIRS S-NPP est la référence cible. Changez de capteur pour voir ce que chaque instrument observe vraiment : la rupture de 2012 est un changement de caméra, pas un pic de feux. Après 2012, MODIS continue de voler mais reste moins sensible ; la série orangée suit S-NPP.',
-                    'MODIS is the model input; VIIRS S-NPP is the target reference. Switch sensors to see what each instrument actually observes: the 2012 break is a camera change, not a fire spike. After 2012, MODIS keeps flying but is less sensitive; the orange series follows S-NPP.',
+                    'MODIS est l’entrée du modèle ; VIIRS S-NPP est la référence cible. La rupture de 2012 est un changement d’instrument, pas un pic de feux. La bande d’incertitude provient de la baseline DB v2.0 ; sa couverture indépendante n’est pas établie par l’artefact exploratoire ci-dessous.',
+                    'MODIS is the model input; VIIRS S-NPP is the target reference. The 2012 break is an instrument change, not a fire spike. The uncertainty band comes from the DB v2.0 baseline; its independent coverage is not established by the exploratory artifact below.',
                   )
                 }}
               </p>
@@ -689,12 +691,12 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="season-cards-head reveal">
-            <h3>{{ t('Les 3 temps du feu au Gabon', 'Gabon’s 3 fire seasons') }}</h3>
+            <h3>{{ t('Les 3 régimes de détections thermiques au Gabon (catégories exploratoires)', 'Gabon’s 3 thermal detection regimes (exploratory categories)') }}</h3>
             <p>
               {{
                 t(
-                  'Médiane mensuelle calculée sur 25 années complètes (2001–2025, type 0 hors sources persistantes).',
-                  'Median monthly counts measured across 25 full years (2001–2025, type 0 outside persistent sources).',
+                  'Médiane mensuelle sur 25 années complètes (2001–2025, détections thermiques type 0 hors sources persistantes). La bande d’incertitude reste celle de la baseline DB v2.0 et n’est pas validée par l’artefact exploratoire ci-dessous.',
+                  'Monthly median across 25 full years (2001–2025, type-0 thermal detections outside persistent sources). The uncertainty band follows the DB v2.0 baseline and is not independently validated by the exploratory artifact below.',
                 )
               }}
             </p>
@@ -729,8 +731,8 @@ onBeforeUnmount(() => {
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  `En orange : les zones de détections type 0 (~28 km). En bleu : les ${composition.maskedCells} cellules candidates (~5 km) de sources persistantes, surtout sur la côte et en mer. Sélectionnez une province pour une lecture descriptive ; la calibration harmonisée reste nationale et n’est pas revalidée par polygone.`,
-                  `Orange squares (~28 km) map type-0 detections. Blue cells (~5 km) mark ${composition.maskedCells} candidate persistent sources, mostly coastal and offshore. Choose a province for a descriptive read; the harmonized calibration stays national and is not revalidated per polygon.`,
+                  `Du clair au bordeaux sombre, comme dans le calendrier : les cumuls de détections type 0 non harmonisées (~28 km). En bleu : les ${composition.maskedCells} cellules candidates (~5 km) de sources persistantes, surtout sur la côte et en mer. Sélectionnez une province pour une lecture descriptive ; la calibration harmonisée reste nationale et n’est pas revalidée par polygone.`,
+                  `Light to dark crimson squares, as in the calendar, map cumulative unharmonized type-0 detections (~28 km). Blue cells (~5 km) mark ${composition.maskedCells} candidate persistent sources, mostly coastal and offshore. Choose a province for a descriptive read; the harmonized calibration stays national and is not revalidated per polygon.`,
                 )
               }}
             </p>
@@ -812,17 +814,17 @@ onBeforeUnmount(() => {
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">05 — {{ t('Fiabilité & suite', 'Proof & future') }}</p>
+              <p class="kicker reveal">05 — {{ t('Analyse exploratoire & suite', 'Exploratory analysis & future') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                {{ t('Testé sur des années jamais vues.', 'Tested on unseen years.') }}<br />
-                <em>{{ t('Les limites sont publiées.', 'The limits are published.') }}</em>
+                {{ t('Ce que nous explorons.', 'What we explore.') }}<br />
+                <em>{{ t('Et les limites publiées.', 'And the published limits.') }}</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  'Avant de publier ces courbes, nous avons testé notre méthode à l’aveugle sur 6 années complètes (2020–2025). Voici simplement ce qu’elle sait faire et ce qu’elle ne mesure pas.',
-                  'Before publishing these curves, we blind-tested the method across 6 unseen years (2020–2025). Here is plainly what works and what the limits are.',
+                  'Cette analyse compare plusieurs modèles sur 2020–2025 (72 mois) et documente leurs limites : la couverture des observations et l’indépendance de certaines étapes restent en revue scientifique.',
+                  'This exploratory check compares models over 2020–2025 (72 months) and publishes all limits: observation coverage and step independence remain under scientific review.',
                 )
               }}
             </p>
@@ -854,7 +856,7 @@ onBeforeUnmount(() => {
             <div class="reveal reveal-delay-2">
               <SeasonTimeline
                 :archive-end="provenance.archiveEnd"
-                :noaa-bridge-ratio="noaaBridgeRatio"
+                :noaa-bridge-ratio="noaaBridgeRatio ?? undefined"
                 :reduced-motion="reducedMotion"
               />
             </div>
@@ -879,8 +881,8 @@ onBeforeUnmount(() => {
                 <p>
                   {{
                     t(
-                      'Appliquer la même séparation sources persistantes / type 0 aux pays forestiers voisins du Gabon.',
-                      'Apply the same persistent-source / type-0 separation across neighboring Congo Basin forest nations.',
+                      'Étudier et valider la séparation sources persistantes / type 0 sur les pays forestiers voisins du Gabon.',
+                      'Study and validate the persistent-source / type-0 separation across Gabon’s Congo Basin neighbors.',
                     )
                   }}
                 </p>
@@ -888,12 +890,12 @@ onBeforeUnmount(() => {
               </article>
               <article class="roadmap-card reveal reveal-delay-2">
                 <span class="roadmap-horizon">{{ t('Terrain', 'Impact') }}</span>
-                <h3>{{ t('Mesurer l’intensité des feux', 'Measure fire intensity') }}</h3>
+                <h3>{{ t('Mesurer l’énergie des feux', 'Measure fire energy') }}</h3>
                 <p>
                   {{
                     t(
-                      'En plus du nombre d’alertes, suivre la chaleur dégagée par les feux pour repérer les épisodes vraiment destructeurs.',
-                      'Track heat energy released per detection alongside counts to spot unusually intense burns.',
+                      'En plus du nombre de détections thermiques, suivre la puissance radiative (FRP) pour repérer les épisodes vraiment destructeurs.',
+                      'Track fire radiative power (FRP) alongside thermal detection counts to spot unusually intense burns.',
                     )
                   }}
                 </p>
@@ -924,14 +926,14 @@ onBeforeUnmount(() => {
               {{ t('Archive vérifiée (SHA-256) :', 'Verified archive (SHA-256):') }}
               <strong>{{
                 dataSourceMode === 'live'
-                  ? t('Base géographique en direct', 'Live geographic database')
-                  : t('Instantané de base vérifié', 'Verified database snapshot')
+                  ? t('API Django et instantanés locaux possibles ; provenance à vérifier', 'Django API & local snapshots possible; provenance to verify')
+                  : t('API partielle ou instantanés locaux vérifiés', 'Partial API or verified local snapshots')
               }}</strong>
               — {{ formatCount(composition.gaTotal) }}
               {{
                 t(
-                  `détections au Gabon (2000–2025) : ${formatCount(composition.gaClean)} type 0 hors sources persistantes, ${formatCount(composition.gaExcluded)} écartées par le filtre complet (type 2/3 + ${composition.maskedCells} cellules candidates).`,
-                  `detections inside Gabon (2000–2025): ${formatCount(composition.gaClean)} type 0 outside persistent sources, ${formatCount(composition.gaExcluded)} excluded by the full filter (type 2/3 + ${composition.maskedCells} candidate cells).`,
+                  `détections thermiques au Gabon (2000–2025) : ${formatCount(composition.gaClean)} type 0 hors sources persistantes, ${formatCount(composition.gaExcluded)} détections écartées par le filtre complet (type 2/3 + type 0 dans ${composition.maskedCells} cellules candidates).`,
+                  `thermal detections inside Gabon (2000–2025): ${formatCount(composition.gaClean)} type 0 outside persistent sources, ${formatCount(composition.gaExcluded)} excluded thermal detections (type 2/3 + type 0 inside ${composition.maskedCells} candidate cells).`,
                 )
               }}
             </p>
@@ -954,7 +956,7 @@ onBeforeUnmount(() => {
                 </a>
               </li>
               <li>{{ t('Limites provinciales du Gabon (9 provinces)', 'Gabon provincial boundaries (9 provinces)') }}</li>
-              <li>{{ t('Test à l’aveugle sur 72 mois (2020–2025)', 'Blind check over 72 months (2020–2025)') }}</li>
+              <li>{{ t('Baseline harmonisée v2.0 & analyse exploratoire en revue M1', 'Harmonized baseline v2.0 & exploratory analysis under M1 review') }}</li>
             </ul>
           </div>
           <div>

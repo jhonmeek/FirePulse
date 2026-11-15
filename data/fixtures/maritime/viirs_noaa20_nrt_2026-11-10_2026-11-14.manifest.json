@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "firepulse-firms-area-acquisition",
+  "csv_file": "viirs_noaa20_nrt_2026-11-10_2026-11-14.csv",
+  "csv_sha256": "1c626b89f9849f640ebdf3caf0767a73873d06e4137ae5b8a6e1c42794bf1cf4",
+  "dataset_scope": "bounding_box_not_filtered_to_gabon",
+  "dates_with_detections": [
+    "2026-11-10",
+    "2026-11-13",
+    "2026-11-14"
+  ],
+  "limitations": [
+    "Missing detections do not prove complete observation or absence of fire.",
+    "Area includes locations outside Gabon until a boundary filter is applied.",
+    "NRT products may later be replaced by standard processing."
+  ],
+  "observation_coverage": "unknown",
+  "product": "VIIRS_NOAA20_NRT",
+  "product_verification": "requested_not_independently_verified",
+  "requested_bbox": [
+    6.9,
+    -6.5,
+    11.2,
+    1.1
+  ],
+  "requested_end": "2026-11-14",
+  "requested_start": "2026-11-10",
+  "retrieved_at_utc": "2026-11-15T05:52:09.683019+00:00",
+  "rows": 47,
+  "schema_version": 1,
+  "source": "NASA FIRMS area API",
+  "type_column_present": false
+}

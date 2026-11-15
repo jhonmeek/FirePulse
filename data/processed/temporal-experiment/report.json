@@ -1,0 +1,89 @@
+{
+  "artifact_kind": "firepulse-m1-temporal-experiment",
+  "calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+  "eligible_months": {
+    "calibrate": 36,
+    "evaluate": 36,
+    "select": 36,
+    "train": 59
+  },
+  "evaluation": {
+    "coverage": 0.75,
+    "covered": 27,
+    "mean_width": 382.7530297228959,
+    "metrics": {
+      "bias": 14.540879319062968,
+      "mae": 134.5163645118649,
+      "n": 36,
+      "r2": 0.9339600609152048,
+      "rmse": 216.32304655891056
+    }
+  },
+  "excluded_months": {
+    "calibrate": [],
+    "evaluate": [],
+    "select": [],
+    "train": []
+  },
+  "fit": {
+    "power_p": 0.8061693141314469,
+    "power_q": 2.5517845357080864,
+    "ratio": 4.447596195046705
+  },
+  "interval": {
+    "calibration_rank": 30,
+    "nominal_level": 0.8,
+    "radius_count_units": 191.37651486144796
+  },
+  "limitations": [
+    "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
+    "Unmasked observations; no frozen static mask has been evaluated.",
+    "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+    "2023-2025 was previously inspected, not a blind final holdout.",
+    "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+    "NOAA-20 bridge and custom-region uncertainty not evaluated."
+  ],
+  "schema_version": 1,
+  "selected_model": "power",
+  "selection_metrics": {
+    "identity": {
+      "bias": -727.1111111111111,
+      "mae": 727.1111111111111,
+      "n": 36,
+      "r2": -0.6124979350993007,
+      "rmse": 900.0189504177738
+    },
+    "power": {
+      "bias": -104.69837595052547,
+      "mae": 118.19557157841928,
+      "n": 36,
+      "r2": 0.9499361240576737,
+      "rmse": 158.5858028169639
+    },
+    "ratio": {
+      "bias": -94.18990963712021,
+      "mae": 153.75185439102654,
+      "n": 36,
+      "r2": 0.9371455793724858,
+      "rmse": 177.69286269254474
+    }
+  },
+  "windows": {
+    "calibrate": [
+      "2020-01",
+      "2022-12"
+    ],
+    "evaluate": [
+      "2023-01",
+      "2025-12"
+    ],
+    "select": [
+      "2017-01",
+      "2019-12"
+    ],
+    "train": [
+      "2012-02",
+      "2016-12"
+    ]
+  }
+}

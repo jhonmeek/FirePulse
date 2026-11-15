@@ -101,16 +101,16 @@ const activeBar = computed(() => {
 
       <div class="split-stats">
         <div class="split-card veg">
-          <span class="swatch-label"><i class="swatch hot"></i>{{ t('Type 0 hors sources persistantes (forêt, savane, brûlis)', 'Type 0 outside persistent sources (forest, savanna, clearing)') }}</span>
+          <span class="swatch-label"><i class="swatch hot"></i>{{ t('Détections thermiques · Type 0 hors sources persistantes (catégorie exploratoire)', 'Thermal detections · Type 0 outside persistent sources (exploratory category)') }}</span>
           <div class="split-numbers">
             <strong>{{ formatCount(vegCount) }}</strong>
             <span>{{ formatDecimal(vegShare, 1) }}{{ pctSuffix }}</span>
           </div>
-          <p>{{ t('Suivent les saisons sèches. Ce sont des candidats feux de végétation, pas une validation terrain.', 'Follow Gabon’s dry seasons. These are candidate vegetation fires, not field-validated.') }}</p>
+          <p>{{ t('Série filtrée suivant les saisons sèches. Il s’agit de détections thermiques type 0 hors masque (candidats végétation), pas d’une validation causale terrain.', 'Filtered series tracking dry seasons. These are type-0 thermal detections outside the mask (vegetation candidates), not causal field validation.') }}</p>
         </div>
 
         <div class="split-card flare-card">
-          <span class="swatch-label"><i class="swatch cool"></i>{{ t('Détections écartées par le filtre complet', 'Detections excluded by the full filter') }}</span>
+          <span class="swatch-label"><i class="swatch cool"></i>{{ t('Détections thermiques écartées (catégorie exploratoire : différence de séries)', 'Excluded thermal detections (exploratory category: series difference)') }}</span>
           <div class="split-numbers">
             <strong>{{ formatCount(flareCount) }}</strong>
             <span>{{ formatDecimal(flareShare, 1) }}{{ pctSuffix }}</span>
@@ -118,8 +118,8 @@ const activeBar = computed(() => {
           <p>
             {{
               t(
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %) + ${formatCount(composition.gaType0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %), côte et offshore.`,
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)}%) + ${formatCount(composition.gaType0InMaskCount)} type 0 inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%), coastal and offshore.`,
+                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %) + ${formatCount(composition.gaType0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates 0,05° (${formatDecimal(composition.gaType0InMaskShare, 1)} %) — pas toutes des torchères confirmées.`,
+                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)}%) + ${formatCount(composition.gaType0InMaskCount)} type 0 inside ${composition.maskedCells} candidate 0.05° cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%) — not all confirmed flares.`,
               )
             }}
           </p>
