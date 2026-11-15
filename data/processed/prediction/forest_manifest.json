@@ -1,0 +1,21 @@
+{
+  "adm0_sha256": "71046924ecaa90fbd96ebe42eb3c4643264d6c1d9bd932c18fa347f61c6910b7",
+  "adm1_sha256": "6ee4c6990d0997cc8a321b0162a9323cd835aa443e8985d2c5d4de5177289f29",
+  "artifact_kind": "firepulse-prediction-forest-cells",
+  "cells": 340,
+  "csv_sha256": "5eb9426dc6a7e52c18f1126434f56adc46534c7b392563572da8d2db4c7825fe",
+  "forest_area_share": 0.9471,
+  "forest_cells": 322,
+  "forest_classes": [
+    10,
+    95
+  ],
+  "forest_threshold": 0.3,
+  "grid_deg": 0.25,
+  "notes": "Static 2021 land-cover mask; not a time-varying forest map. Cells are selected by centroid inside Gabon.",
+  "pixel_deg": 0.0025,
+  "raster_sha256": "96f7024c85f4890825ed7bcb5da028c3bef85bc8c5bdaba76f47b42e9daf98a0",
+  "schema_version": 1,
+  "source": "ESA WorldCover 2021 v200, 10 m, tiles N00E009/N00E012/S03E009/S03E012/S06E009/S06E012",
+  "source_url_template": "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_{tile}_Map.tif"
+}

@@ -51,6 +51,9 @@ const emit = defineEmits<{ navigate: [id: string] }>()
         <a class="topbar-link" href="#proof" @click.prevent="emit('navigate', 'proof')">
           {{ t('La preuve', 'Proof') }}
         </a>
+        <a class="topbar-link" href="#prediction" @click.prevent="emit('navigate', 'prediction')">
+          {{ t('Prévision', 'Outlook') }}
+        </a>
 
         <div
           class="lang-switch"

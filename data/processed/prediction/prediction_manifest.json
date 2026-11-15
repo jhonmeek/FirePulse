@@ -1,0 +1,39 @@
+{
+  "annual_rows": 3220,
+  "annual_sha256": "4a88b9784676f1c0b16c7f7e8a6c12fd16a83f6f2776b62d93efcfad98e414d0",
+  "artifact_kind": "firepulse-prediction-climatology",
+  "cells": 322,
+  "cells_sha256": "5eb9426dc6a7e52c18f1126434f56adc46534c7b392563572da8d2db4c7825fe",
+  "end_month": "2025-12",
+  "forest_threshold": 0.3,
+  "future_years": [
+    2026,
+    2027,
+    2028,
+    2029,
+    2030,
+    2031,
+    2032,
+    2033,
+    2034,
+    2035
+  ],
+  "grid_deg": 0.25,
+  "grid_sha256": "2827ec71faf9b0a4447fae8733bee4dd4d5417778c100bf33e43987da5fba584",
+  "metrics_sha256": "47c8e8dc402d42ce9c905c26044acb7f5c41626413b59499efda8bd27bd7b60d",
+  "model": "smoothed monthly climatology + conservative province trend",
+  "monthly_rows": 38640,
+  "monthly_sha256": "31208b27ba762027cae8c80bcceb4fd817d6971bb113835671afc4d671da38c4",
+  "notes": [
+    "Climatological risk, not a weather forecast.",
+    "Forest mask is ESA WorldCover 2021 (static).",
+    "Natural ignition cause is not observable in FIRMS; this is a forest-associated proxy.",
+    "Absent FIRMS rows are treated as zero detections; observation coverage is not exhaustive."
+  ],
+  "provinces_sha256": "5fa1c40aef6822d8788a5b9282accd708d36eac4d4b01bd8a0ab4430087ff638",
+  "schema_version": 1,
+  "start_month": "2012-02",
+  "target": "at least one type-0 detection outside candidate persistent cells",
+  "test_start": "2020-01",
+  "train_end": "2019-12"
+}

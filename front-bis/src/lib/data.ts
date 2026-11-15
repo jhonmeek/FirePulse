@@ -905,6 +905,11 @@ export const composition = computed(() => {
 
     excludedBySensorPartition,
     provenanceAudit,
+    // Alias plats utilisés par la fiche de confiance et les cartes de composition.
+    gaType23Count: provenanceAudit.type23Count,
+    gaType23Share: provenanceAudit.type23ShareOfScope,
+    gaType0InMaskCount: provenanceAudit.type0InMaskCount,
+    gaType0InMaskShare: provenanceAudit.type0InMaskShareOfScope,
 
     modisTotal: gaAll.modis,
     modisClean: gaClean.modis,

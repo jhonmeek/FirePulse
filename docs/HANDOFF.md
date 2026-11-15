@@ -19,6 +19,22 @@ To serve live data early, M2 implemented an operational baseline in two Django m
 
 Priority research extensions: `2026 YTD / NRT` NOAA-20 ingestion past `2026-11-02` (not yet ingested; the demo archive stops at `2025-12` and the relay is not yet validated on 2026 data), hierarchical provincial calibration for noisy low-count provinces (`GA-6`), physical Fire Radiative Power (`FRP`), and custom-polygon interval bounds.
 
+### Predictive Outlook (`pipeline/prediction/`)
+
+The MVP outlook is an M1 artifact consumed by M3; it does not touch the M2 API.
+
+```bash
+python -m pip install -r pipeline/requirements-prediction.txt
+python -m pipeline.prediction.build_forest_mask   # ESA WorldCover 2021 -> forest_cells.csv
+python -m pipeline.prediction.build_climatology   # smoothed monthly climatology + trend
+```
+
+- **Target**: `type 0` outside candidate persistent cells, forest cells only (`forest_fraction >= 0.30`).
+- **Model**: smoothed monthly frequency `Beta(1, 4)` over `2012–2025` (VIIRS) + conservative province trend `2026–2035`.
+- **Validation**: train `2012–2019`, test `2020–2025`; ROC-AUC `0.898`, PR-AUC `0.755`, Brier `0.098`, top `10%` capture `41.6%`.
+- **Outputs**: `data/processed/prediction/*` and the compact `front-bis/src/data/prediction.json`.
+- **Limits**: climatological projection, not a weather forecast; no ignition cause; static forest mask; FIRMS coverage not exhaustive. See [`pipeline/prediction/README.md`](../pipeline/prediction/README.md).
+
 ---
 
 ## 2. M3 — Frontend / UX (`front-bis/`)
@@ -61,6 +77,7 @@ curl "http://localhost:8000/api/v1/export/?region=GA&start=2024-01&end=2024-12"
 1. **`bbox` / `polygon` responses**: Compute `2001–2025` `baseline_iqr` `[p25, p75]`, returning `region.id = "CUSTOM_BBOX"` or `"CUSTOM_POLYGON"` with `ci_low: null` and `ci_high: null`.
 2. **`/hotspots/` layers**: With `include_static_cells=true`, responses include both `grid_cell_summary`/`grid_cell_month` features (`~28 km` grids) and `static_flare_mask` candidate-cell features (`~5 km` coastal/offshore candidate persistent sources), separated cleanly in `front-bis/src/components/HotspotMap.vue`.
 3. **Automatic Regional Language Detection (`front-bis/src/lib/i18n.ts`)**: Initializes **EN / FR** synchronously via browser timezone (`Intl`), refines via Cloudflare edge geo-header (`/cdn-cgi/trace`), and synchronizes the header toggle (`TopBar.vue`) and `<html lang>` / `<title>`.
+4. **Prediction section (`#prediction`)**: Lazy-loaded `PredictionExplorer` reads the static `front-bis/src/data/prediction.json` (no API dependency), offers a province filter, a `2026–2035` × month calendar, a `0.25°` SVG probability map, and a floating detail card. Keep the distinction between projection, climatology, and observed series visible; do not present the outlook as a weather forecast.
 
 ---
 

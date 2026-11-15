@@ -26,12 +26,13 @@ npm run preview        # Local preview on http://localhost:5174
 ## What Is Inside
 
 - **3D Globe (`Three.js`)**: Starfield, geographic graticule, orbital paths, Gabon polygon boundary, and additive hotspot particles.
-- **Scroll-Driven Story (`6` chapters)**: Opening globe, the 2012 sensor break (`FlareSplit`), MODIS-to-VIIRS translation (`LineChart`), accessible 25-year seasonal calendar (`CalendarHeatmap`), interactive PostGIS/MapLibre map (`HotspotMap`), and exploratory protocol review + 2026 relay (`ValidationProof`, `SeasonTimeline`).
+- **Scroll-Driven Story (`7` chapters)**: Opening globe, the 2012 sensor break (`FlareSplit`), MODIS-to-VIIRS translation (`LineChart`), accessible 25-year seasonal calendar (`CalendarHeatmap`), interactive PostGIS/MapLibre map (`HotspotMap`), exploratory protocol review + 2026 relay (`ValidationProof`, `SeasonTimeline`), and a calibrated 2026–2035 forest-fire outlook (`PredictionExplorer`).
 - **Animated SVG Charts (`LineChart`)**: Per-sensor views (MODIS, VIIRS S-NPP, VIIRS NOAA-20), experimental harmonized series, nominal 80% uncertainty band, and enlarged axis labels (`16.5px`) for legible presentation.
 - **Accessible Year × Month Calendar (`CalendarHeatmap`)**: Inverted light-to-dark intensity ramp (`#f7efe2` → `#2a0606`), keyboard navigation, month detail inspector, historical rank, composition breakdown, and CSV export.
 - **Interactive Gabon & Maritime Map (`HotspotMap`)**: Dark data-first MapLibre canvas (`0.25°` grid, Gabon & 9 province outlines, `183` candidate `0.05°` persistent-source cells, optional exploratory NOAA-20 NRT maritime layer from `public/data/gabon-maritime-observations.geojson`), plus `Ctrl/Meta + wheel` / `"Scroll zoom: locked / on"` protection against accidental page-scroll zooming.
 - **Regional Auto-Localization (`FR / EN`)**: Browser timezone + language detection (`Africa/Libreville`, Francophone countries, bilingual fallbacks) with optional `/cdn-cgi/trace` enhancement when deployed behind Cloudflare (fails gracefully offline / non-Cloudflare) and strict session priority (`sessionStorage`) for manual `FR` / `EN` switches.
 - **Confidence Cards (`ConfidenceCard`)**: Explicit data source, period, satellite, protocol, empirical coverage, and scientific caveats below every visual.
+- **Future Risk Outlook (`PredictionExplorer`)**: Province-filtered `2026–2035` × month calendar, `0.25°` forest-fire probability map, floating cell/province detail card on hover/click, and a validation/calibration note. Climatological projection, not a weather forecast; forest mask from ESA WorldCover 2021; target is `type 0` outside candidate persistent cells.
 
 ---
 
@@ -48,6 +49,7 @@ npm run preview        # Local preview on http://localhost:5174
 | `/api/v1/coverage/` | `coverage.json` | Sensor temporal availability & S-NPP / NOAA-20 status |
 | `/api/v1/regions/` | `regions.json` | Gabon (`GA`) & `9` provinces (`GA-1`–`GA-9`) GeoJSON |
 | `/api/v1/export/` | Client CSV fallback (`buildSeriesCsvFallback`) | Schema-exact CSV export conforming to `docs/api-contract.json` |
+| Static prediction artifact | `prediction.json` | `2026–2035` forest-fire outlook (MVP climatology + province trend) |
 
 Response provenance should always be verified per runtime (`live` API vs `snapshot` fallback).
 
