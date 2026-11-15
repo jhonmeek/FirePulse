@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
 import { gsap } from '@/lib/motion'
+import { locale } from '@/lib/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -15,16 +16,18 @@ const props = withDefaults(
 )
 
 const el = useTemplateRef<HTMLSpanElement>('el')
-const current = ref(0)
+// Affiche la valeur finale tant que l'animation d'intersection n'a pas démarré :
+// le chiffre reste correct si le navigateur ou la démo n'exécute pas GSAP.
+const current = ref(props.to)
 let observer: IntersectionObserver | null = null
 
-const formatter = new Intl.NumberFormat('fr-FR', {
-  maximumFractionDigits: props.decimals,
-  minimumFractionDigits: props.decimals,
-})
-
 function display(value: number): string {
-  return `${props.prefix}${formatter.format(value)}${props.suffix}`
+  const loc = locale.value === 'en' ? 'en-US' : 'fr-FR'
+  const formatted = new Intl.NumberFormat(loc, {
+    maximumFractionDigits: props.decimals,
+    minimumFractionDigits: props.decimals,
+  }).format(value)
+  return `${props.prefix}${formatted}${props.suffix}`
 }
 
 function animate() {
@@ -38,7 +41,7 @@ function animate() {
 }
 
 onMounted(() => {
-  if (props.reducedMotion || !el.value) {
+  if (props.reducedMotion || !el.value || typeof IntersectionObserver === 'undefined') {
     current.value = props.to
     return
   }

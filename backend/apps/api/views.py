@@ -73,7 +73,7 @@ DOCUMENTED_LIMITATIONS = [
     "Hotspot counts measure thermal detections, not distinct individual wildfire events.",
     "MODIS Terra operated without Aqua from 2000-11 through 2002-06; calibrated separately.",
     "Suomi-NPP VIIRS operational FIRMS delivery ended 2026-11-02; NOAA-20 VIIRS provides continuity.",
-    "Persistent industrial/oil gas flares (~21-24% of raw VIIRS in Gabon) are filtered when filter_static=true.",
+    "Persistent industrial/offshore heat sources (~21-24% of raw VIIRS in Gabon) are filtered when filter_static=true; these are candidate cells, not individually confirmed flares.",
     "NASA FIRMS June 15, 2025 notice: some VIIRS Vxx14IMGML Collection 2 files had type 0/2 differences between versions 1/2 and reprocessed version 3.",
 ]
 

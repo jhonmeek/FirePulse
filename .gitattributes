@@ -6,3 +6,5 @@ data/processed/monthly/*.json text eol=lf
 data/processed/normalized/*.json text eol=lf
 pipeline/*.py text eol=lf
 scripts/*.sh text eol=lf
+# MCD12Q1 rasters are verified by SHA-256 in their manifest.
+data/raw/mcd12q1/gabon/*.tif binary

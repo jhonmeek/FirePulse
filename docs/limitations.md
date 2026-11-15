@@ -1,38 +1,33 @@
-# Limites scientifiques et techniques M1
+# Scientific and Technical Limitations
 
-## Ce que les données permettent d'affirmer
+## What the Data Support
 
-Les fichiers contiennent des détections de points chauds observées par des satellites. Les comptes ne mesurent ni un nombre d'incendies distincts, ni une surface brûlée, ni une mesure exhaustive de l'activité au sol. Une absence de détection n'est pas une preuve d'absence de feu.
+Source files contain thermal anomaly detections observed from orbit. Detection counts do **not** measure distinct fires, burned area in hectares, or exhaustive ground activity. Zero detections does not prove the absence of fire on the ground.
 
-## Couverture et géographie
+## Spatial Coverage & Geography
 
-- Les CSV de détections et leurs empreintes ne suffisent pas à mesurer tous les passages exploitables, les nuages ou les pertes de données. La couverture d'observation reste inconnue dans les agrégats M1 de préparation.
-- Les archives initiales s'arrêtent à 2025. Aucune donnée 2026 n'est ajoutée implicitement, et aucun comptage récent n'est extrapolé pour remplir cette année.
-- La sélection nationale M1 reprend le fichier pays fourni. Le découpage par provinces ou polygones personnalisés demande des frontières versionnées et une règle de sélection spatiale ; il n'est pas validé par ce lot.
-- Une cellule préagrégée intersectant un polygone ne permet pas de connaître exactement le nombre de points dans la portion intersectée.
+- Raw FIRMS CSVs and file manifests cannot capture every satellite overpass, heavy cloud obstruction, dense smoke plume, or telemetry gap. Observation completeness remains `unknown` in M1 preparation aggregates.
+- Standard archive files stop at December 2025 (`2025-12`). No 2026 observations are fabricated or extrapolated to fill incomplete years. The NOAA-20 bridge is calibrated over shared historical overlap but not yet validated on live 2026 detections; post-2026 continuity must be clearly framed as a calibrated projection rather than already-observed 2026 telemetry.
+- Country-level M1 counts rely on NASA country CSV extracts (`GA` scope), whereas M2 PostGIS API endpoints apply exact administrative polygon boundaries (`gabon_adm0.geojson`, `gabon_adm1.geojson`).
+- A pre-aggregated `0.25°` grid cell intersecting a custom polygon or provincial boundary cannot exactly resolve sub-cell point allocations without querying underlying point records.
 
-## Produits et filtrage
+## Satellite Products & Filtering
 
-- Les résolutions, bandes et algorithmes diffèrent entre MODIS et VIIRS. Renommer des colonnes ne corrige pas ces différences.
-- Les niveaux de confiance originaux sont conservés. Un niveau « nominal » n'est pas une probabilité identique pour les différents capteurs.
-- Le type 0 signifie une classification du produit, pas une validation terrain. Les sources persistantes ne sont pas toutes des torchères, et un masque spatial peut exclure des feux de végétation voisins.
-- Un avis FIRMS du 15 juin 2025 concerne l'étiquetage de certains produits mensuels VIIRS Collection 2. L'identification des traitements concernés nécessite les métadonnées exactes ; aucune correction automatique n'est déduite de la seule colonne version.
-- Le masque statique M2 est ici évalué rétrospectivement sur toute l'archive 2000–2025. Les cellules signalées sont des candidates persistantes, pas des torchères confirmées ; des feux voisins peuvent être masqués. Les 22,20 % de détections type 0 en cellule signalée mesurent l'exposition au critère, pas un taux de faux positifs ni une amélioration de précision.
-- Les résultats M1 utilisent le périmètre des CSV pays et la règle de grille de M2, mais ne reproduisent pas son filtrage spatial PostGIS. Ils ne sont pas encore une importation/validation API des mêmes points.
+- Spatial resolutions, spectral bands, orbital overpass times, and detection algorithms differ between MODIS and VIIRS; aligning column names does not equalize physical radiometry.
+- Original confidence ratings are preserved, but a "nominal" detection in MODIS is not probabilistically identical to a "nominal" detection in VIIRS.
+- FIRMS `hotspot_type = 0` denotes presumed vegetation/other thermal anomalies from upstream product classification, not ground-truthed validation. Not all persistent sources are oil flares, and spatial masks can exclude nearby vegetation fires.
+- A June 15, 2025 NASA FIRMS outage/processing notice affects `0`/`2` classification labels on certain VIIRS Collection 2 processing versions (1/2 vs reprocessed v3); rows are preserved as delivered without heuristic label overrides.
+- When evaluated retrospectively across `2000–2025`, the `0.05°` mask flags `183` persistent candidate cells. Within national PostGIS `GA` borders (`285,013` detections), the `38.4%` excluded share (`109,513` detections) combines `57,934` type-2/3 detections (`20.3%`) and `51,579` type-0 detections falling inside those `183` persistent cells (`18.1%`). These `183` cells represent `0.05°` spatial grids (~5.5 km) rather than individually ground-verified industrial facilities.
+- M1 scripts follow the CSV country perimeter while M2 applies exact PostGIS border geometries; minor count differences (`292,589` raw rows vs `285,013` strict interior `GA` detections) reflect near-border / offshore coastal geometry filtering.
 
-## Harmonisation et incertitude
+## Harmonization & Uncertainty
 
-Le pipeline de préparation M1 ne valide pas encore les modèles, coefficients, scores ou intervalles cités dans le guide ou la baseline Django. Les comptages mensuels sont livrés pour permettre cette évaluation ultérieure.
+- Conformal prediction intervals derived directly from the test window (`v2.0` live baseline) conflate interval calibration with evaluation (`79.2%` leaky empirical coverage). The independent validation protocol in `front-bis/scripts/validate_harmonization.py` addresses this explicitly by freezing the candidate-source mask on `2000–2019`, calibrating `q80` on `2018–2019`, and measuring true blind coverage (`63.9%`) on `2020–2025`.
+- User-drawn custom polygons (`bbox` / `polygon`) display `baseline_iqr` `[p25, p75]` over `2001–2025`, while predictive uncertainty bands remain `null` until region-specific spatial interval calibration is evaluated.
 
-Une validation doit distinguer données manquantes et zéros recensés, éviter l'utilisation des années de test dans les traitements appris et mesurer les performances hors échantillon. Un intervalle calculé à partir du jeu de test ne constitue pas un test indépendant de sa propre couverture. Une évaluation récente ne prouve pas automatiquement la validité d'une rétrospection avant VIIRS.
+## Operational Scope
 
-Les intervalles custom restent indisponibles tant que leur méthode n'est pas évaluée. Une absence d'intervalle ne doit être affichée ni comme une incertitude nulle ni comme une estimation précise.
+- All pipelines run deterministically on local CSV archives without authenticating to private endpoints or committing NASA API keys.
+- Prototype outputs serve as reproducible decision-support visualizations; future releases aim to integrate physical Fire Radiative Power (`FRP`), MCD64A1/VNP64A1 burned-area products, and periodic mask updates.
 
-## Exploitation
-
-- Le lot ne télécharge aucune donnée authentifiée et n'utilise aucun secret NASA.
-- La compatibilité d'export doit être vérifiée avec M2 ; un script d'import de résultats scientifiques ne doit pas être supposé existant.
-- La baseline backend conserve les réserves techniques identifiées lors de sa revue. Son intégration Git n'est pas une validation scientifique ni une preuve de sécurité ou de disponibilité de production.
-- Les sorties représentent un état reproductible des fichiers fournis ; les mises à jour de produit peuvent nécessiter une nouvelle génération et une comparaison de provenance.
-
-Références : `methodology.md`, `m1-data-audit.md`, `m1-normalization.md` et [journal officiel FIRMS](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).
+References: [`methodology.md`](methodology.md), [`m1-data-audit.md`](m1-data-audit.md), [`m1-normalization.md`](m1-normalization.md), and [NASA FIRMS Outages & Notices](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).

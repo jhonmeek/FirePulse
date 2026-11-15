@@ -1,0 +1,1694 @@
+{
+  "artifact_kind": "firepulse-mcd12q1-land-cover",
+  "schema_version": 1,
+  "product": "MCD12Q1.061",
+  "band": "LC_Type1",
+  "classification": "IGBP (LC_Type1)",
+  "source": "NASA ORNL DAAC MODIS/VIIRS Land Product Subsets web service",
+  "source_api": "https://modis.ornl.gov/rst/api/v1",
+  "retrieved_at": "2026-11-15T13:24:09+00:00",
+  "boundary": "gabon_adm0.geojson",
+  "bbox_wgs84_buffered": [
+    8.57272501051246,
+    -4.103369949372927,
+    14.674359198719031,
+    2.468954208360562
+  ],
+  "grid": {
+    "crs": "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs",
+    "cell_size_m": 463.312716528,
+    "origin": [
+      -20015109.354,
+      10007554.677
+    ],
+    "window": {
+      "col0": 45252,
+      "row0": 21007,
+      "ncols": 1470,
+      "nrows": 1578
+    },
+    "geotransform": [
+      950717.6943250597,
+      463.312716528,
+      0.0,
+      274744.44089630246,
+      0.0,
+      -463.312716528
+    ]
+  },
+  "nodata": 255,
+  "cleaning": [
+    "cell size and corners aligned on native MODIS grid (no resampling)",
+    "band LC_Type1 only; values restricted to IGBP 1-17 and fill 255",
+    "overlapping subsets identical pixel by pixel",
+    "window fully covered for every year",
+    "no gap filling or reclassification"
+  ],
+  "requests": [
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=9.347754&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_9.347754_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=9.347754&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_9.347754_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=9.347754&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_9.347754_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=10.848397&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_10.848397_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=10.848397&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_10.848397_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=10.848397&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_10.848397_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=12.34904&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_12.34904_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=12.34904&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_12.34904_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=12.34904&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_12.34904_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=13.849683&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_13.849683_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=13.849683&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_13.849683_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=13.849683&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_13.849683_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=15.350325&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_15.350325_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=15.350325&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_15.350325_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=1.677083&longitude=15.350325&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "1.677083_15.350325_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=9.343795&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_9.343795_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=9.343795&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_9.343795_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=9.343795&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_9.343795_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=10.843802&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_10.843802_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=10.843802&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_10.843802_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=10.843802&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_10.843802_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=12.343809&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_12.343809_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=12.343809&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_12.343809_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=12.343809&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_12.343809_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=13.843816&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_13.843816_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=13.843816&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_13.843816_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=13.843816&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_13.843816_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=15.343823&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_15.343823_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=15.343823&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_15.343823_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=0.177083&longitude=15.343823&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "0.177083_15.343823_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=9.346241&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_9.346241_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=9.346241&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_9.346241_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=9.346241&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_9.346241_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=10.846641&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_10.846641_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=10.846641&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_10.846641_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=10.846641&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_10.846641_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=12.347041&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_12.347041_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=12.347041&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_12.347041_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=12.347041&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_12.347041_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=13.847441&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_13.847441_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=13.847441&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_13.847441_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=13.847441&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_13.847441_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=15.347841&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_15.347841_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=15.347841&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_15.347841_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-1.322917&longitude=15.347841&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-1.322917_15.347841_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=9.355102&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_9.355102_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=9.355102&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_9.355102_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=9.355102&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_9.355102_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=10.856925&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_10.856925_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=10.856925&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_10.856925_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=10.856925&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_10.856925_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=12.358747&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_12.358747_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=12.358747&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_12.358747_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=12.358747&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_12.358747_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=13.86057&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_13.86057_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=13.86057&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_13.86057_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=13.86057&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_13.86057_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=15.362392&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_15.362392_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=15.362392&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_15.362392_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-2.822917&longitude=15.362392&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-2.822917_15.362392_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=9.370408&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_9.370408_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=9.370408&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_9.370408_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=9.370408&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_9.370408_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=10.874688&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_10.874688_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=10.874688&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_10.874688_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=10.874688&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_10.874688_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=12.378967&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_12.378967_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=12.378967&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_12.378967_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=12.378967&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_12.378967_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=13.883247&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_13.883247_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=13.883247&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_13.883247_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=13.883247&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_13.883247_2021-2025.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=15.387527&band=LC_Type1&startDate=A2001001&endDate=A2010001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_15.387527_2001-2010.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=15.387527&band=LC_Type1&startDate=A2011001&endDate=A2020001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_15.387527_2011-2020.json.gz"
+    },
+    {
+      "url": "https://modis.ornl.gov/rst/api/v1/MCD12Q1/subset?latitude=-4.322917&longitude=15.387527&band=LC_Type1&startDate=A2021001&endDate=A2025001&kmAboveBelow=100&kmLeftRight=100",
+      "cache": "-4.322917_15.387527_2021-2025.json.gz"
+    }
+  ],
+  "years": {
+    "2001": {
+      "file": "mcd12q1_lc_type1_gabon_2001.tif",
+      "sha256": "06c083b64ca806acec98e2f99587930213303d37ef865db374b06d4784ac1f54",
+      "histogram": {
+        "1": 168,
+        "2": 1305222,
+        "3": 1,
+        "4": 7,
+        "5": 23,
+        "6": 137,
+        "7": 1,
+        "8": 392904,
+        "9": 48751,
+        "10": 108302,
+        "11": 21849,
+        "12": 833,
+        "13": 1839,
+        "14": 4375,
+        "16": 36,
+        "17": 435212
+      },
+      "subsets": 25
+    },
+    "2002": {
+      "file": "mcd12q1_lc_type1_gabon_2002.tif",
+      "sha256": "2243182098722012805dad0ed36eeeefcb6802aee87d51cbbbed987a7b44b3a6",
+      "histogram": {
+        "1": 196,
+        "2": 1331213,
+        "4": 1,
+        "5": 9,
+        "6": 992,
+        "8": 371682,
+        "9": 54628,
+        "10": 106439,
+        "11": 15279,
+        "12": 825,
+        "13": 1853,
+        "14": 1304,
+        "16": 24,
+        "17": 435215
+      },
+      "subsets": 25
+    },
+    "2003": {
+      "file": "mcd12q1_lc_type1_gabon_2003.tif",
+      "sha256": "57130680d867450f51192713cc6edf29b8bd74a768eb1e180e718a0359052277",
+      "histogram": {
+        "1": 95,
+        "2": 1351436,
+        "5": 1,
+        "6": 1713,
+        "8": 355390,
+        "9": 57562,
+        "10": 100922,
+        "11": 14257,
+        "12": 464,
+        "13": 1871,
+        "14": 706,
+        "16": 28,
+        "17": 435215
+      },
+      "subsets": 25
+    },
+    "2004": {
+      "file": "mcd12q1_lc_type1_gabon_2004.tif",
+      "sha256": "35e1b964855581a8405719f482a9b83bebced421b4be9f28cb1a2b824770c0c5",
+      "histogram": {
+        "1": 76,
+        "2": 1402245,
+        "4": 3,
+        "5": 2,
+        "6": 1348,
+        "8": 299977,
+        "9": 61096,
+        "10": 103044,
+        "11": 13942,
+        "12": 282,
+        "13": 1888,
+        "14": 508,
+        "16": 33,
+        "17": 435216
+      },
+      "subsets": 25
+    },
+    "2005": {
+      "file": "mcd12q1_lc_type1_gabon_2005.tif",
+      "sha256": "4f725f7e06ccffae8ca9a30d6924d91b6d5fde98bf0f91380c4f15eff820e396",
+      "histogram": {
+        "1": 58,
+        "2": 1460877,
+        "4": 24,
+        "5": 1,
+        "6": 740,
+        "8": 236452,
+        "9": 65486,
+        "10": 104592,
+        "11": 13676,
+        "12": 161,
+        "13": 1900,
+        "14": 428,
+        "16": 36,
+        "17": 435229
+      },
+      "subsets": 25
+    },
+    "2006": {
+      "file": "mcd12q1_lc_type1_gabon_2006.tif",
+      "sha256": "fbd8b1cd6f5790dd0427c874de5c99a769e92efd7d2d20412b1b7db2bef16a67",
+      "histogram": {
+        "1": 50,
+        "2": 1473834,
+        "3": 1,
+        "4": 126,
+        "5": 6,
+        "6": 422,
+        "8": 216423,
+        "9": 73130,
+        "10": 104394,
+        "11": 13655,
+        "12": 119,
+        "13": 1907,
+        "14": 330,
+        "16": 34,
+        "17": 435229
+      },
+      "subsets": 25
+    },
+    "2007": {
+      "file": "mcd12q1_lc_type1_gabon_2007.tif",
+      "sha256": "d8d81845d9900e9c523dfd7879c1810dda276413780c28e514fcf7e2ed4ecdf6",
+      "histogram": {
+        "1": 57,
+        "2": 1479235,
+        "4": 30,
+        "6": 242,
+        "8": 206251,
+        "9": 80752,
+        "10": 102014,
+        "11": 13525,
+        "12": 56,
+        "13": 1916,
+        "14": 319,
+        "16": 36,
+        "17": 435227
+      },
+      "subsets": 25
+    },
+    "2008": {
+      "file": "mcd12q1_lc_type1_gabon_2008.tif",
+      "sha256": "b16ac7f3420526129fe95cafbc313c2f1073d9a5051aa9896b535eec68f0dc36",
+      "histogram": {
+        "1": 60,
+        "2": 1472694,
+        "4": 27,
+        "5": 1,
+        "6": 252,
+        "8": 205738,
+        "9": 86621,
+        "10": 102981,
+        "11": 13662,
+        "12": 119,
+        "13": 1926,
+        "14": 319,
+        "16": 29,
+        "17": 435231
+      },
+      "subsets": 25
+    },
+    "2009": {
+      "file": "mcd12q1_lc_type1_gabon_2009.tif",
+      "sha256": "25648cce083ca1469139fad6100ca8b95d26e7b31e6e58355a264d9c86f35c66",
+      "histogram": {
+        "1": 55,
+        "2": 1459947,
+        "4": 86,
+        "5": 3,
+        "6": 229,
+        "8": 216128,
+        "9": 89940,
+        "10": 101425,
+        "11": 13969,
+        "12": 278,
+        "13": 1934,
+        "14": 408,
+        "16": 22,
+        "17": 435236
+      },
+      "subsets": 25
+    },
+    "2010": {
+      "file": "mcd12q1_lc_type1_gabon_2010.tif",
+      "sha256": "760f702e58bad270d52dc08ef3eb7129d0eb1eaae428d5d460141345ab0880fd",
+      "histogram": {
+        "1": 48,
+        "2": 1441817,
+        "4": 19,
+        "5": 3,
+        "6": 271,
+        "8": 232191,
+        "9": 92769,
+        "10": 100636,
+        "11": 13964,
+        "12": 259,
+        "13": 1950,
+        "14": 480,
+        "16": 25,
+        "17": 435228
+      },
+      "subsets": 25
+    },
+    "2011": {
+      "file": "mcd12q1_lc_type1_gabon_2011.tif",
+      "sha256": "a57b95f11dda5de430a1adfd81306e0b68e16cea29f51ccca79a8f24bd5f82cf",
+      "histogram": {
+        "1": 42,
+        "2": 1415722,
+        "4": 4,
+        "6": 315,
+        "8": 257538,
+        "9": 91114,
+        "10": 103054,
+        "11": 14047,
+        "12": 247,
+        "13": 1977,
+        "14": 355,
+        "16": 24,
+        "17": 435221
+      },
+      "subsets": 25
+    },
+    "2012": {
+      "file": "mcd12q1_lc_type1_gabon_2012.tif",
+      "sha256": "fda6f4ae35df3b459cac91d0f8d17c85ba910463a244b49bd848a160bc88f067",
+      "histogram": {
+        "1": 40,
+        "2": 1401264,
+        "4": 17,
+        "6": 232,
+        "8": 278802,
+        "9": 86694,
+        "10": 101050,
+        "11": 13566,
+        "12": 358,
+        "13": 1997,
+        "14": 391,
+        "16": 28,
+        "17": 435221
+      },
+      "subsets": 25
+    },
+    "2013": {
+      "file": "mcd12q1_lc_type1_gabon_2013.tif",
+      "sha256": "c99cf35c17eb5164d41c4b0d2cc849ca6eacc7e99277b654f999f788f20b9b84",
+      "histogram": {
+        "1": 31,
+        "2": 1396503,
+        "4": 12,
+        "5": 1,
+        "6": 122,
+        "8": 291230,
+        "9": 81780,
+        "10": 98271,
+        "11": 13734,
+        "12": 361,
+        "13": 2003,
+        "14": 362,
+        "16": 29,
+        "17": 435221
+      },
+      "subsets": 25
+    },
+    "2014": {
+      "file": "mcd12q1_lc_type1_gabon_2014.tif",
+      "sha256": "ebf99e92e853d494ddee583c6194682e8f6dab0deb6486ed7db53cd072057467",
+      "histogram": {
+        "1": 28,
+        "2": 1394289,
+        "4": 34,
+        "6": 95,
+        "8": 293324,
+        "9": 81781,
+        "10": 98262,
+        "11": 13922,
+        "12": 312,
+        "13": 2012,
+        "14": 354,
+        "16": 24,
+        "17": 435223
+      },
+      "subsets": 25
+    },
+    "2015": {
+      "file": "mcd12q1_lc_type1_gabon_2015.tif",
+      "sha256": "a5f858066cfb56f496d6f564855880418bf5ccd29af7de1482e5400fa9176aee",
+      "histogram": {
+        "1": 31,
+        "2": 1369259,
+        "4": 14,
+        "5": 1,
+        "6": 106,
+        "8": 317346,
+        "9": 79882,
+        "10": 100769,
+        "11": 14301,
+        "12": 344,
+        "13": 2022,
+        "14": 330,
+        "16": 27,
+        "17": 435228
+      },
+      "subsets": 25
+    },
+    "2016": {
+      "file": "mcd12q1_lc_type1_gabon_2016.tif",
+      "sha256": "bdc00ba7244367c2f3b7bfbb0e0368bf9f43c5cf3fee6191b582a6de24613243",
+      "histogram": {
+        "1": 27,
+        "2": 1352336,
+        "4": 11,
+        "6": 71,
+        "8": 331623,
+        "9": 83323,
+        "10": 100255,
+        "11": 14123,
+        "12": 307,
+        "13": 2035,
+        "14": 291,
+        "16": 27,
+        "17": 435231
+      },
+      "subsets": 25
+    },
+    "2017": {
+      "file": "mcd12q1_lc_type1_gabon_2017.tif",
+      "sha256": "9bb7587e4264c6c944ba0aea0dc94739269d9356dd2ad78dade3ae5fdb42f168",
+      "histogram": {
+        "1": 21,
+        "2": 1365210,
+        "4": 25,
+        "6": 43,
+        "8": 318292,
+        "9": 86815,
+        "10": 97289,
+        "11": 14217,
+        "12": 165,
+        "13": 2043,
+        "14": 276,
+        "16": 37,
+        "17": 435227
+      },
+      "subsets": 25
+    },
+    "2018": {
+      "file": "mcd12q1_lc_type1_gabon_2018.tif",
+      "sha256": "1c2e54a3f74ea9f210e64696158cb02dd989c1deff763cb05addfa3996566e45",
+      "histogram": {
+        "1": 18,
+        "2": 1400939,
+        "4": 16,
+        "6": 29,
+        "8": 280289,
+        "9": 90423,
+        "10": 95665,
+        "11": 14376,
+        "12": 228,
+        "13": 2049,
+        "14": 365,
+        "16": 34,
+        "17": 435229
+      },
+      "subsets": 25
+    },
+    "2019": {
+      "file": "mcd12q1_lc_type1_gabon_2019.tif",
+      "sha256": "819abd28805eb5f809e67e80ea39c8bcfec5410c4a45742b28f824305a6d69f8",
+      "histogram": {
+        "1": 14,
+        "2": 1422932,
+        "4": 6,
+        "5": 2,
+        "6": 34,
+        "8": 256827,
+        "9": 90783,
+        "10": 96616,
+        "11": 14416,
+        "12": 208,
+        "13": 2060,
+        "14": 496,
+        "16": 33,
+        "17": 435233
+      },
+      "subsets": 25
+    },
+    "2020": {
+      "file": "mcd12q1_lc_type1_gabon_2020.tif",
+      "sha256": "c7195752336bbd8d942c686e0edf87dbece3fda5c431a2ef3011e7b1c2363b3d",
+      "histogram": {
+        "1": 12,
+        "2": 1436558,
+        "4": 11,
+        "5": 2,
+        "6": 48,
+        "8": 245481,
+        "9": 88907,
+        "10": 96146,
+        "11": 14245,
+        "12": 310,
+        "13": 2070,
+        "14": 605,
+        "16": 30,
+        "17": 435235
+      },
+      "subsets": 25
+    },
+    "2021": {
+      "file": "mcd12q1_lc_type1_gabon_2021.tif",
+      "sha256": "8f5c9be0c19e770284cfb61fda305604383d4cd3e9cd591cf0c8f88860941663",
+      "histogram": {
+        "1": 7,
+        "2": 1437413,
+        "4": 2,
+        "6": 35,
+        "8": 246855,
+        "9": 88227,
+        "10": 94547,
+        "11": 14267,
+        "12": 293,
+        "13": 2074,
+        "14": 681,
+        "16": 23,
+        "17": 435236
+      },
+      "subsets": 25
+    },
+    "2022": {
+      "file": "mcd12q1_lc_type1_gabon_2022.tif",
+      "sha256": "50a6745c3a4bd1ec391c40939a77b96ed90447c70ba929b5d63664cd6a97cf06",
+      "histogram": {
+        "1": 6,
+        "2": 1450879,
+        "4": 2,
+        "6": 36,
+        "8": 233885,
+        "9": 86309,
+        "10": 96389,
+        "11": 13837,
+        "12": 370,
+        "13": 2080,
+        "14": 610,
+        "16": 29,
+        "17": 435228
+      },
+      "subsets": 25
+    },
+    "2023": {
+      "file": "mcd12q1_lc_type1_gabon_2023.tif",
+      "sha256": "aa2447db1fa9fba6740fc345d01eb46478a6fa1a619f5203e10dedf32998e49e",
+      "histogram": {
+        "1": 2,
+        "2": 1463558,
+        "4": 10,
+        "5": 1,
+        "6": 38,
+        "8": 217871,
+        "9": 91215,
+        "10": 94715,
+        "11": 14044,
+        "12": 374,
+        "13": 2082,
+        "14": 489,
+        "16": 26,
+        "17": 435235
+      },
+      "subsets": 25
+    },
+    "2024": {
+      "file": "mcd12q1_lc_type1_gabon_2024.tif",
+      "sha256": "c2c415b6b5bacefeaee83f2b041e1e83edd3ece23141ffa06b1b3afe1779ca8b",
+      "histogram": {
+        "1": 1,
+        "2": 1460435,
+        "4": 41,
+        "5": 2,
+        "6": 45,
+        "7": 1,
+        "8": 219020,
+        "9": 92601,
+        "10": 95388,
+        "11": 13903,
+        "12": 406,
+        "13": 2088,
+        "14": 470,
+        "16": 29,
+        "17": 435230
+      },
+      "subsets": 25
+    },
+    "2025": {
+      "file": "mcd12q1_lc_type1_gabon_2025.tif",
+      "sha256": "13f129f4bd470737148edd17090c21003147245d6cf23a148d3d05de1b2b393d",
+      "histogram": {
+        "1": 3,
+        "2": 1446931,
+        "4": 49,
+        "5": 7,
+        "6": 54,
+        "7": 1,
+        "8": 231462,
+        "9": 89782,
+        "10": 97296,
+        "11": 15689,
+        "12": 580,
+        "13": 2090,
+        "14": 465,
+        "16": 22,
+        "17": 435229
+      },
+      "subsets": 25
+    }
+  },
+  "verification": {
+    "method": "random pixels vs independent kmAboveBelow=0 ORNL queries, read back from GeoTIFF",
+    "seed": 20261115,
+    "years": [
+      2001,
+      2013,
+      2025
+    ],
+    "checked": 90,
+    "mismatches": 0,
+    "checks": [
+      {
+        "lat": 2.25625,
+        "lon": 11.127377,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 2.25625,
+        "lon": 11.127377,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 2.25625,
+        "lon": 11.127377,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -3.522917,
+        "lon": 12.634292,
+        "year": 2001,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      },
+      {
+        "lat": -3.522917,
+        "lon": 12.634292,
+        "year": 2013,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      },
+      {
+        "lat": -3.522917,
+        "lon": 12.634292,
+        "year": 2025,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      },
+      {
+        "lat": -2.69375,
+        "lon": 14.20528,
+        "year": 2001,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -2.69375,
+        "lon": 14.20528,
+        "year": 2013,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -2.69375,
+        "lon": 14.20528,
+        "year": 2025,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -0.53125,
+        "lon": 9.92751,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.53125,
+        "lon": 9.92751,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.53125,
+        "lon": 9.92751,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -3.48125,
+        "lon": 10.08319,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -3.48125,
+        "lon": 10.08319,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -3.48125,
+        "lon": 10.08319,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -1.389583,
+        "lon": 14.539693,
+        "year": 2001,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -1.389583,
+        "lon": 14.539693,
+        "year": 2013,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -1.389583,
+        "lon": 14.539693,
+        "year": 2025,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": 0.83125,
+        "lon": 13.916048,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 0.83125,
+        "lon": 13.916048,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 0.83125,
+        "lon": 13.916048,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 2.077083,
+        "lon": 9.366571,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.077083,
+        "lon": 9.366571,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.077083,
+        "lon": 9.366571,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -1.935417,
+        "lon": 10.603966,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.935417,
+        "lon": 10.603966,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.935417,
+        "lon": 10.603966,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 0.877083,
+        "lon": 14.370434,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 0.877083,
+        "lon": 14.370434,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 0.877083,
+        "lon": 14.370434,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.797917,
+        "lon": 9.836092,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.797917,
+        "lon": 9.836092,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.797917,
+        "lon": 9.836092,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.752083,
+        "lon": 13.195753,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.752083,
+        "lon": 13.195753,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.752083,
+        "lon": 13.195753,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.910417,
+        "lon": 9.911759,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.910417,
+        "lon": 9.911759,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.910417,
+        "lon": 9.911759,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.402083,
+        "lon": 14.623277,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.402083,
+        "lon": 14.623277,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.402083,
+        "lon": 14.623277,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.289583,
+        "lon": 11.454985,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.289583,
+        "lon": 11.454985,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.289583,
+        "lon": 11.454985,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.464583,
+        "lon": 11.668395,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.464583,
+        "lon": 11.668395,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.464583,
+        "lon": 11.668395,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.89375,
+        "lon": 11.691992,
+        "year": 2001,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": -2.89375,
+        "lon": 11.691992,
+        "year": 2013,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": -2.89375,
+        "lon": 11.691992,
+        "year": 2025,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": -2.177083,
+        "lon": 10.055175,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.177083,
+        "lon": 10.055175,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.177083,
+        "lon": 10.055175,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.739583,
+        "lon": 8.933126,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -2.739583,
+        "lon": 8.933126,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -2.739583,
+        "lon": 8.933126,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.402083,
+        "lon": 12.179452,
+        "year": 2001,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": 2.402083,
+        "lon": 12.179452,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 2.402083,
+        "lon": 12.179452,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.264583,
+        "lon": 11.632001,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.264583,
+        "lon": 11.632001,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.264583,
+        "lon": 11.632001,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -4.01875,
+        "lon": 11.133626,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -4.01875,
+        "lon": 11.133626,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -4.01875,
+        "lon": 11.133626,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -2.602083,
+        "lon": 11.334604,
+        "year": 2001,
+        "ornl": 10,
+        "mosaic": 10,
+        "geotiff": 10,
+        "ok": true
+      },
+      {
+        "lat": -2.602083,
+        "lon": 11.334604,
+        "year": 2013,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": -2.602083,
+        "lon": 11.334604,
+        "year": 2025,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      },
+      {
+        "lat": -0.764583,
+        "lon": 11.565613,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.764583,
+        "lon": 11.565613,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -0.764583,
+        "lon": 11.565613,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.727083,
+        "lon": 11.332231,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": 1.727083,
+        "lon": 11.332231,
+        "year": 2013,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": 1.727083,
+        "lon": 11.332231,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -4.09375,
+        "lon": 10.366031,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -4.09375,
+        "lon": 10.366031,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -4.09375,
+        "lon": 10.366031,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.177083,
+        "lon": 9.375517,
+        "year": 2001,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.177083,
+        "lon": 9.375517,
+        "year": 2013,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": 2.177083,
+        "lon": 9.375517,
+        "year": 2025,
+        "ornl": 17,
+        "mosaic": 17,
+        "geotiff": 17,
+        "ok": true
+      },
+      {
+        "lat": -2.985417,
+        "lon": 12.043428,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.985417,
+        "lon": 12.043428,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -2.985417,
+        "lon": 12.043428,
+        "year": 2025,
+        "ornl": 8,
+        "mosaic": 8,
+        "geotiff": 8,
+        "ok": true
+      },
+      {
+        "lat": -1.327083,
+        "lon": 9.35876,
+        "year": 2001,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.327083,
+        "lon": 9.35876,
+        "year": 2013,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.327083,
+        "lon": 9.35876,
+        "year": 2025,
+        "ornl": 2,
+        "mosaic": 2,
+        "geotiff": 2,
+        "ok": true
+      },
+      {
+        "lat": -1.360417,
+        "lon": 13.985192,
+        "year": 2001,
+        "ornl": 14,
+        "mosaic": 14,
+        "geotiff": 14,
+        "ok": true
+      },
+      {
+        "lat": -1.360417,
+        "lon": 13.985192,
+        "year": 2013,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      },
+      {
+        "lat": -1.360417,
+        "lon": 13.985192,
+        "year": 2025,
+        "ornl": 9,
+        "mosaic": 9,
+        "geotiff": 9,
+        "ok": true
+      }
+    ]
+  }
+}

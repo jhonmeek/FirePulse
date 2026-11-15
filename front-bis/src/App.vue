@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import ChapterNav from '@/components/ChapterNav.vue'
 import CalendarHeatmap from '@/components/CalendarHeatmap.vue'
+import ConfidenceCard from '@/components/ConfidenceCard.vue'
 import CountUp from '@/components/CountUp.vue'
 import FlareSplit from '@/components/FlareSplit.vue'
 import LineChart from '@/components/LineChart.vue'
@@ -22,21 +23,16 @@ import {
   buildSeriesCsvFallback,
   composition,
   dataSourceMode,
+  flareSeries,
   formatCount,
   formatDecimal,
-  gridCellMonthsDb,
   initLiveData,
-  maskedCellsCount,
-  methodology,
-  methodologyRaw,
-  metrics,
   monthlyMedians,
   params,
-  regionsCount,
   staticSeries,
-  totalDetectionsDb,
 } from '@/lib/data'
 import { USE_MOCKS, exportSeriesEndpoint } from '@/lib/api'
+import { locale, t } from '@/lib/i18n'
 import { provenance } from '@/lib/provenance'
 import { validation } from '@/lib/validation'
 import { ScrollTrigger, gsap } from '@/lib/motion'
@@ -47,31 +43,58 @@ useReveal()
 
 void initLiveData()
 
-const chapters = [
-  { id: 'top', label: 'Ouverture' },
-  { id: 'problem', label: 'Le saut de 2012' },
-  { id: 'flares', label: 'Le piège' },
-  { id: 'translate', label: 'La traduction' },
-  { id: 'calendar', label: 'Le calendrier' },
-  { id: 'map', label: 'La carte' },
-  { id: 'proof', label: 'Analyse exploratoire' },
-  { id: 'contribution', label: 'Notre apport' },
-  { id: 'future', label: 'Demain' },
-  { id: 'explorer', label: 'Explorer' },
-]
+const chapters = computed(() => [
+  { id: 'top', label: t('Le Gabon', 'Gabon') },
+  { id: 'problem', label: t('Le constat', 'The issue') },
+  { id: 'translate', label: t('L’accord des données', 'Aligning data') },
+  { id: 'calendar', label: t('Le calendrier', 'Calendar') },
+  { id: 'map', label: t('La carte', 'Map') },
+  { id: 'proof', label: t('Analyse & suite', 'Analysis & next') },
+])
 
 const scrollProgress = ref(0)
 const scrolled = ref(false)
 const activeChapter = ref('top')
 const cursor = ref({ x: 0, y: 0 })
 const globePoints = computed(() => buildGlobePoints())
-const validationCoverageLabel = `${(validation.conformal.coverage_test_q80_calibration * 100)
-  .toFixed(1)
-  .replace('.', ',')} %`
-const validationAnomalyR2 = validation.models.power_law_log1p?.anomaly.r2
-const validationAnomalyR2Label = validationAnomalyR2 == null
-  ? '—'
-  : validationAnomalyR2.toFixed(2).replace('.', ',')
+const pctSuffix = computed(() => (locale.value === 'en' ? '%' : ' %'))
+
+const ambientGlobeStyle = computed(() => {
+  const p = scrollProgress.value
+  let opacity = 1
+  let tx = 14
+  let ty = 0
+  let scale = 1
+
+  if (p <= 14) {
+    opacity = 1
+    tx = 14
+    scale = 1
+  } else if (p < 58) {
+    const tNorm = (p - 14) / 44
+    opacity = 1 - tNorm * 0.64
+    tx = 14 + tNorm * 12
+    ty = -tNorm * 3
+    scale = 1 - tNorm * 0.1
+  } else if (p < 76) {
+    const tNorm = (p - 58) / 18
+    opacity = 0.36 * (1 - tNorm)
+    tx = 26
+    ty = -3
+    scale = 0.9 - tNorm * 0.08
+  } else {
+    opacity = 0
+    tx = 26
+    ty = -3
+    scale = 0.82
+  }
+
+  return {
+    opacity: opacity.toFixed(3),
+    visibility: opacity <= 0.01 ? ('hidden' as const) : ('visible' as const),
+    transform: `translate3d(${tx.toFixed(1)}%, ${ty.toFixed(1)}%, 0) scale(${scale.toFixed(3)})`,
+  }
+})
 
 const chartPoints = computed(() =>
   staticSeries.value.map((p) => ({
@@ -80,8 +103,53 @@ const chartPoints = computed(() =>
     harm: p.harmonized_value,
     lo: p.ci_low,
     hi: p.ci_high,
-    anomaly: p.anomaly_percent,
+    // Cette vue additionne deux capteurs : l'anomalie harmonisée ne s'y applique pas.
+    anomaly: null,
   })),
+)
+
+/**
+ * Vues par capteur : chaque série ne commence qu'au premier mois où le capteur
+ * est disponible. La courbe harmonisée reste la référence S-NPP.
+ */
+const modisChartPoints = computed(() =>
+  staticSeries.value
+    .filter((p) => p.modis_count !== null)
+    .map((p) => ({
+      month: p.month,
+      raw: p.modis_count ?? 0,
+      harm: p.harmonized_value,
+      lo: p.ci_low,
+      hi: p.ci_high,
+      // L'anomalie est calculée sur la série harmonisée, pas sur le capteur brut.
+      anomaly: null,
+    })),
+)
+
+const snppChartPoints = computed(() =>
+  staticSeries.value
+    .filter((p) => p.viirs_snpp_count !== null)
+    .map((p) => ({
+      month: p.month,
+      raw: p.viirs_snpp_count ?? 0,
+      harm: p.harmonized_value,
+      lo: p.ci_low,
+      hi: p.ci_high,
+      anomaly: null,
+    })),
+)
+
+const noaa20ChartPoints = computed(() =>
+  staticSeries.value
+    .filter((p) => p.viirs_noaa20_count !== null)
+    .map((p) => ({
+      month: p.month,
+      raw: p.viirs_noaa20_count ?? 0,
+      harm: p.harmonized_value,
+      lo: p.ci_low,
+      hi: p.ci_high,
+      anomaly: null,
+    })),
 )
 
 const rawChartPoints = computed(() =>
@@ -91,68 +159,112 @@ const rawChartPoints = computed(() =>
     harm: p.harmonized_value,
     lo: p.ci_low,
     hi: p.ci_high,
-    anomaly: p.anomaly_percent,
+    anomaly: null,
   })),
 )
 
-const maeBefore = computed(() => metrics.value['naive']?.mae ?? 355.72)
-const maeAfter = computed(() => metrics.value['power_law_log1p']?.mae ?? 100.87)
-const r2Before = computed(() => metrics.value['naive']?.r2 ?? 0.1426)
-const r2After = computed(() => metrics.value['power_law_log1p']?.r2 ?? 0.9189)
-const maeReduction = computed(() => Math.round((1 - maeAfter.value / maeBefore.value) * 100))
+const flareChartPoints = computed(() =>
+  flareSeries.value.map((p) => ({
+    month: p.month,
+    raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
+    harm: null,
+    lo: null,
+    hi: null,
+    anomaly: null,
+  })),
+)
+
+const rawAllDatasets = computed(() => [
+  {
+    id: 'all' as const,
+    label: t('Tout (MODIS + S-NPP)', 'All (MODIS + S-NPP)'),
+    points: rawChartPoints.value,
+  },
+  {
+    id: 'veg' as const,
+    label: t('Type 0 hors sources persistantes', 'Type 0 outside persistent sources'),
+    points: chartPoints.value,
+  },
+  {
+    id: 'flare' as const,
+    label: t('Détections écartées par le filtre', 'Detections excluded by the filter'),
+    points: flareChartPoints.value,
+  },
+])
+
+const harmDatasets = computed(() => [
+  {
+    id: 'modis' as const,
+    label: t('MODIS (entrée du modèle)', 'MODIS (model input)'),
+    points: modisChartPoints.value,
+  },
+  {
+    id: 'snpp' as const,
+    label: t('VIIRS S-NPP (référence)', 'VIIRS S-NPP (reference)'),
+    points: snppChartPoints.value,
+  },
+  {
+    id: 'noaa20' as const,
+    label: t('NOAA-20 (relais)', 'NOAA-20 (relay)'),
+    points: noaa20ChartPoints.value,
+  },
+])
+
+const maeBefore = computed(() => validation.models.naive.raw.mae ?? 0)
+const maeAfter = computed(() => validation.models.power_law_log1p.raw.mae ?? 0)
+const r2After = computed(() => validation.models.power_law_log1p.raw.r2 ?? 0)
+const r2Anomaly = computed(() => validation.models.power_law_log1p.anomaly.r2 ?? 0)
+const coverageQ80 = computed(() => validation.conformal.coverage_test_q80_calibration)
+const maeReduction = computed(() =>
+  maeBefore.value > 0 ? Math.round((1 - maeAfter.value / maeBefore.value) * 100) : 0,
+)
 
 const globalRatioAlpha = computed(() => params.value?.global_ratio_alpha ?? 3.9328)
-const rawGlobalRatioAlpha = computed(
-  () => methodologyRaw.value.active_run?.params?.global_ratio_alpha ?? 4.6494,
-)
-const noaaBridgeRatio = computed(() => params.value?.noaa20_to_snpp_ratio ?? 1.0381)
+const noaaBridgeRatio = computed(() => validation.held_out.noaa20.ratio_noaa20_to_snpp_calibration)
 const jumpRatioLabel = computed(() => `×${formatDecimal(globalRatioAlpha.value, 1)}`)
-const rawJumpRatioLabel = computed(() => `×${formatDecimal(rawGlobalRatioAlpha.value, 1)}`)
 
-const trainMonths = computed(() => methodology.value.active_run?.metrics.train_months ?? 95)
-const testMonths = computed(() => methodology.value.active_run?.metrics.test_months ?? 72)
-const trainWindow = computed(
-  () => methodology.value.active_run?.train_window ?? ['2012-02-01', '2019-12-01'],
-)
-const testWindow = computed(
-  () => methodology.value.active_run?.test_window ?? ['2020-01-01', '2025-12-01'],
-)
-const trainYears = computed(
-  () => `${trainWindow.value[0].slice(0, 4)}–${trainWindow.value[1].slice(0, 4)}`,
-)
-const testYears = computed(
-  () => `${testWindow.value[0].slice(0, 4)}–${testWindow.value[1].slice(0, 4)}`,
-)
-const gridDegLabel = `${String(provenance.gridDeg).replace('.', ',')}°`
+const testMonths = computed(() => validation.split.n_test)
+const trainYears = '2012–2019'
+const testYears = '2020–2025'
 
 const seasonCards = computed(() => {
   const m = monthlyMedians.value
-  const july = m[6] ?? 0
-  const august = m[7] ?? 0
-  const february = m[1] ?? 0
-  const march = m[2] ?? 0
-  const november = m[10] ?? 0
-  const december = m[11] ?? 0
+  const jul = formatCount(m[6] ?? 0)
+  const aug = formatCount(m[7] ?? 0)
+  const feb = formatCount(m[1] ?? 0)
+  const mar = formatCount(m[2] ?? 0)
+  const nov = formatCount(m[10] ?? 0)
+  const dec = formatCount(m[11] ?? 0)
+  const unit = t('/mois', '/mo')
   return [
     {
-      label: 'Pic principal',
-      months: 'Juillet – Août',
-      values: `${formatCount(july)} · ${formatCount(august)}`,
-      note: 'détections équiv. S-NPP, médianes 2001–2025',
+      label: t('Grande saison sèche', 'Main dry season'),
+      months: t('Juillet – Août', 'July – August'),
+      values: t(`Juil. : ${jul}${unit} · Août : ${aug}${unit}`, `Jul: ${jul}${unit} · Aug: ${aug}${unit}`),
+      note: t(
+        'Le cœur de la saison des feux : sols secs, brûlis agricoles et feux de lisière.',
+        'Peak fire season across Gabon: dry ground, farm clearing, and forest-edge fires.',
+      ),
       tone: 'hot',
     },
     {
-      label: 'Second épisode',
-      months: 'Février – Mars',
-      values: `${formatCount(february)} · ${formatCount(march)}`,
-      note: 'un second souffle, plus faible mais réel',
+      label: t('Petite saison sèche', 'Short dry season'),
+      months: t('Février – Mars', 'February – March'),
+      values: t(`Fév. : ${feb}${unit} · Mar. : ${mar}${unit}`, `Feb: ${feb}${unit} · Mar: ${mar}${unit}`),
+      note: t(
+        'Une reprise courte mais régulière des feux au nord et au centre du pays.',
+        'A brief but consistent rebound in northern and central Gabon.',
+      ),
       tone: 'warm',
     },
     {
-      label: 'Creux',
-      months: 'Novembre – Décembre',
-      values: `${formatCount(november)} · ${formatCount(december)}`,
-      note: 'la saison des pluies coupe l’activité',
+      label: t('Saison des pluies', 'Peak rainy season'),
+      months: t('Novembre – Décembre', 'November – December'),
+      values: t(`Nov. : ${nov}${unit} · Déc. : ${dec}${unit}`, `Nov: ${nov}${unit} · Dec: ${dec}${unit}`),
+      note: t(
+        'Les fortes pluies étouffent les feux presque partout ; il ne reste guère que les sources de chaleur persistantes de la côte.',
+        'Heavy rainfall halts vegetation burning almost everywhere; coastal persistent heat sources remain.',
+      ),
       tone: 'cool',
     },
   ]
@@ -172,7 +284,7 @@ function updateScroll() {
   scrolled.value = y > 40
   const mid = y + window.innerHeight * 0.38
   let current = 'top'
-  for (const chapter of chapters) {
+  for (const chapter of chapters.value) {
     const el = document.getElementById(chapter.id)
     if (el && el.offsetTop <= mid) current = chapter.id
   }
@@ -251,10 +363,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div id="top" class="app">
-    <a class="skip-link" href="#explorer" @click.prevent="navigate('explorer')">
-      Aller à l’explorateur
+    <a class="skip-link" href="#calendar" @click.prevent="navigate('calendar')">
+      {{ t('Aller au calendrier du Gabon', 'Jump to Gabon fire calendar') }}
     </a>
     <div class="site-bg" aria-hidden="true"></div>
+    <div class="ambient-globe" :style="ambientGlobeStyle" aria-hidden="true">
+      <GlobeScene :points="globePoints" :reduced-motion="reducedMotion" />
+    </div>
     <div class="grain" aria-hidden="true"></div>
     <div class="vignette" aria-hidden="true"></div>
     <div
@@ -269,297 +384,321 @@ onBeforeUnmount(() => {
     <main>
       <!-- ============================================================ HERO -->
       <section class="hero">
-        <div class="hero-globe">
-          <GlobeScene :points="globePoints" :reduced-motion="reducedMotion" />
-        </div>
-
         <div class="shell hero-inner">
           <div class="hero-copy">
-            <p class="kicker hero-kicker">
-              NASA Space Apps 2026 · MODIS × VIIRS ·
-              <span>{{ dataSourceMode === 'live' ? 'API et instantanés locaux possibles' : 'API partielle ou instantanés locaux' }}</span>
+            <p class="hero-badge">
+              <span class="hero-badge-dot" aria-hidden="true" />
+              {{ t('Gabon · 2000 – 2025', 'Gabon · 2000 – 2025') }}
             </p>
             <h1 class="display display-xl hero-title">
-              <span class="line"><span>One Planet.</span></span>
-              <span class="line"><span>One Fire <em>History.</em></span></span>
+              <span class="line"><span>{{ t('Au Gabon, lire', 'In Gabon, read') }}</span></span>
+              <span class="line">
+                <span>{{ t('la vraie saison ', 'the true fire ') }}<em>{{ t('des feux.', 'season.') }}</em></span>
+              </span>
             </h1>
             <p class="hero-sub">
-              25 ans de feux vus par deux générations de satellites.
-              <strong>Une seule histoire, enfin lisible.</strong>
+              {{
+                t(
+                  'Deux générations de satellites et des sources de chaleur persistantes faussent les chiffres bruts. ',
+                  'Two satellite generations and persistent heat sources distort the raw counts. ',
+                )
+              }}
+              <strong>
+                {{
+                  t(
+                    'Voici 25 ans de mesures remises au propre — mois par mois, sur les 9 provinces.',
+                    'Here are 25 years cleaned up — month by month across all 9 provinces.',
+                  )
+                }}
+              </strong>
             </p>
             <div class="hero-actions">
-              <button type="button" class="btn btn-heat" @click="navigate('problem')">
-                Entrer dans l’histoire
+              <button type="button" class="btn btn-heat" @click="navigate('calendar')">
+                {{ t('Explorer le calendrier des feux', 'Explore the fire calendar') }}
                 <span aria-hidden="true">→</span>
-              </button>
-              <button type="button" class="btn btn-ghost" @click="navigate('proof')">
-                Voir l’analyse exploratoire
               </button>
             </div>
 
-            <div class="hero-meta">
+            <div class="hero-meta hero-meta-pair">
               <div>
                 <div class="value">
-                  <CountUp :to="totalDetectionsDb" :reduced-motion="reducedMotion" />
+                  <CountUp :to="composition.gaClean" :reduced-motion="reducedMotion" />
                 </div>
-                <div class="label">détections (archive SP)</div>
+                <div class="label">{{ t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources') }}</div>
               </div>
               <div>
-                <div class="value">{{ provenance.files }}</div>
-                <div class="label">fichiers FIRMS</div>
-              </div>
-              <div>
-                <div class="value">2000–2025</div>
-                <div class="label">25 ans d’archive</div>
-              </div>
-              <div>
-                <div class="value">{{ regionsCount }}</div>
-                <div class="label">régions en base</div>
+                <div class="value">
+                  {{ formatCount(composition.gaExcluded) }}
+                  <span class="value-sub">({{ formatDecimal(composition.gaExcludedShare, 1) }}{{ pctSuffix }})</span>
+                </div>
+                <div class="label">{{ t('détections écartées par le filtre complet', 'detections excluded by the full filter') }}</div>
               </div>
             </div>
           </div>
         </div>
-
-        <div class="scroll-hint" aria-hidden="true">
-          <span>Faites défiler — tout est expliqué</span>
-          <span class="line"></span>
-        </div>
       </section>
 
-      <!-- ============================================================ 01 -->
+      <!-- ============================================================ 01 : DOUBLE TRAP -->
       <section id="problem" class="chapter">
         <div class="shell chapter-grid">
           <div class="chapter-copy">
-            <p class="kicker reveal">01 — Le problème</p>
+            <p class="kicker reveal">01 — {{ t('Le constat', 'The issue') }}</p>
             <h2 class="display display-lg reveal reveal-delay-1">
-              En 2012, la courbe explose.<br /><em>Les feux, non.</em>
+              {{ t('En 2012, la courbe bondit.', 'In 2012, the curve spikes.') }}<br />
+              <em>{{ t('Les feux au Gabon, non.', 'Fires in Gabon did not.') }}</em>
             </h2>
             <p class="lede reveal reveal-delay-2">
-              MODIS voit à <strong>1 km</strong>. VIIRS à <strong>375 m</strong>. Le second détecte
-              presque quatre fois plus de points chauds. Sur un graphique brut, cela ressemble à une
-              explosion. C’est un changement de caméra.
+              {{
+                t(
+                  'Un point chaud est une alerte de chaleur vue depuis l’espace. Jusqu’en 2011, le satellite MODIS voyait le Gabon à grands traits (',
+                  'A hotspot is a heat alert seen from space. Until 2011, the older MODIS satellite scanned Gabon coarsely (',
+                )
+              }}<strong>1 km</strong>{{
+                t('). En 2012, VIIRS prend le relais avec une vue bien plus fine (', '). In 2012, VIIRS took over with much sharper detail (')
+              }}<strong>375 m</strong>{{
+                t(
+                  '). Sur les chiffres bruts, on croit à quatre fois plus de détections alors que la caméra a simplement gagné en netteté.',
+                  '). Raw counts suddenly appear four times higher—not from more fires, just a sharper camera.',
+                )
+              }}
             </p>
 
             <div class="stat-row reveal reveal-delay-3">
               <div>
                 <div class="stat">{{ jumpRatioLabel }}</div>
                 <div class="stat-label">
-                  ratio VIIRS / MODIS (2012–2019, hors statiques · {{ rawJumpRatioLabel }} en brut)
+                  {{ t('de saut apparent lors du changement de satellite en 2012', 'apparent jump when switching satellites in 2012') }}
                 </div>
               </div>
               <div>
-                <div class="stat stat-small">2 capteurs</div>
-                <div class="stat-label">MODIS et VIIRS, mêmes feux</div>
+                <div class="stat stat-small">2 {{ t('satellites', 'satellites') }}</div>
+                <div class="stat-label">
+                  {{ t('observent le Gabon en parallèle entre 2012 et 2025', 'observe Gabon side by side between 2012 and 2025') }}
+                </div>
               </div>
             </div>
-
-            <p class="chapter-note reveal reveal-delay-4">
-              Un point chaud n’est pas un incendie. C’est une <strong>détection thermique</strong>.
-            </p>
           </div>
 
           <div class="chapter-visual reveal reveal-delay-2">
             <div class="panel panel-pad">
               <div class="panel-label">
-                <span class="tiny-label">Série brute · toutes anomalies thermiques</span>
-                <span class="tag dot">2000–2025</span>
+                <span class="tiny-label">
+                  {{ t('Chiffres bruts · Gabon · 2001–2025', 'Raw counts · Gabon · 2001–2025') }}
+                </span>
+                <span class="tag dot">{{ t('Interactif', 'Interactive') }}</span>
               </div>
               <LineChart
-                :points="rawChartPoints"
+                :datasets="rawAllDatasets"
+                initial-dataset-id="all"
+                default-granularity="year"
                 :show-raw="true"
                 :show-harmonized="false"
+                :show-anomaly="false"
                 :highlight2012="true"
                 :reduced-motion="reducedMotion"
-                title="Détections mensuelles brutes"
-                raw-label="MODIS + VIIRS S-NPP, toutes anomalies"
+                :title="t('Détections brutes au Gabon', 'Raw detections in Gabon')"
+                :raw-label="t('Détections brutes (avant correction)', 'Raw detections (uncorrected)')"
               />
               <p class="panel-caption">
-                Le saut de 2012 est un artefact de capteur. Pris pour un signal, il ferait croire
-                que le Gabon a brûlé quatre fois plus. Les torchères sont encore incluses ici.
+                {{
+                  t(
+                    'Les boutons séparent le tout (MODIS + S-NPP), les type 0 hors sources persistantes, et les détections écartées par le filtre. La somme MODIS + S-NPP n’est pas un nombre de feux : après 2012, les deux capteurs voient souvent les mêmes départs.',
+                    'The buttons separate everything (MODIS + S-NPP), type-0 detections outside persistent sources, and detections excluded by the filter. MODIS + S-NPP is not a fire count: after 2012, both sensors often see the same ignitions.',
+                  )
+                }}
               </p>
             </div>
           </div>
         </div>
-      </section>
 
-      <!-- ============================================================ 02 -->
-      <section id="flares" class="chapter">
-        <div class="shell chapter-grid reverse">
+        <div id="flares" class="shell chapter-grid reverse trap-subsection">
           <div class="chapter-visual reveal reveal-delay-2">
             <div class="panel panel-pad">
               <div class="panel-label">
-                <span class="tiny-label">VIIRS S-NPP · polygone GA · 2012–2025</span>
-                <span class="tag cool">Filtre statique</span>
+                <span class="tiny-label">
+                  {{ t('Gabon entier · 2000–2025 · 285 013 détections', 'Whole Gabon · 2000–2025 · 285,013 detections') }}
+                </span>
+                <span class="tag cool">{{ t('Impact des sources persistantes', 'Persistent source impact') }}</span>
               </div>
-              <FlareSplit
-                :share="composition.snppExcludedShare"
-                :static-count="composition.snppExcluded"
-                :total-count="composition.snppTotal"
-                :type23-count="composition.snppType23Count"
-                :type23-share="composition.snppType23Share"
-                :masked-cells="composition.maskedCells"
-                :reduced-motion="reducedMotion"
-              />
+              <FlareSplit />
             </div>
           </div>
 
           <div class="chapter-copy">
-            <p class="kicker reveal">02 — Le piège</p>
+            <p class="kicker reveal">{{ t('Piège n°2 — Les sources persistantes', 'Trap #2 — Persistent sources') }}</p>
             <h2 class="display display-lg reveal reveal-delay-1">
-              Tous les points chauds<br /><em>ne sont pas des feux.</em>
+              {{ t('Sur la côte gabonaise,', 'Along Gabon’s coast,') }}<br />
+              <em>{{ t('des sources de chaleur brûlent toute l’année.', 'heat sources burn all year round.') }}</em>
             </h2>
             <p class="lede reveal reveal-delay-2">
-              Dans le polygone Gabon ({{ formatCount(composition.gaTotal) }} détections), une forte
-              part provient de <strong>torchères</strong> et de <strong>sites persistants</strong>.
-              Si on les compte comme des feux, la saison est faussée : au total,
-              <strong>{{ formatDecimal(composition.gaExcludedShare, 1) }} %</strong>
-              ({{ formatCount(composition.gaExcluded) }}) sont écartées tous capteurs confondus.
+              {{
+                t(
+                  `Sur ${formatCount(composition.gaTotal)} détections mesurées au Gabon, `,
+                  `Out of ${formatCount(composition.gaTotal)} detections recorded in Gabon, `,
+                )
+              }}<strong>{{ formatDecimal(composition.gaExcludedShare, 1) }}{{ pctSuffix }}</strong>
+              ({{ formatCount(composition.gaExcluded) }})
+              {{
+                t(
+                  ` sont écartées par le filtre complet : ${formatCount(composition.gaType23Count)} détections type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %, sources fixes ou offshore) et ${formatCount(composition.gaType0InMaskCount)} détections type 0 tombées dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %, ~5 km), surtout autour de Port-Gentil et de la côte de l’Ogooué-Maritime. Toutes ne sont pas des torchères confirmées.`,
+                  ` are excluded by the full filter: ${formatCount(composition.gaType23Count)} type 2/3 detections (${formatDecimal(composition.gaType23Share, 1)}%, fixed or offshore sources) and ${formatCount(composition.gaType0InMaskCount)} type-0 detections inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%, ~5 km), mostly around Port-Gentil and coastal Ogooué-Maritime. Not all of them are confirmed flares.`,
+                )
+              }}
             </p>
 
             <div class="stat-row reveal reveal-delay-3">
               <div>
-                <div class="stat stat-small">{{ formatCount(composition.snppExcluded) }}</div>
+                <div class="stat stat-small">{{ formatCount(composition.gaClean) }}</div>
                 <div class="stat-label">
-                  détections S-NPP écartées en GA (dont {{ formatCount(composition.snppType23Count) }} type 2/3)
+                  {{ t('détections type 0 hors sources persistantes (61,6 % du total)', 'type-0 detections outside persistent sources (61.6% of total)') }}
                 </div>
               </div>
               <div>
                 <div class="stat stat-small">{{ composition.maskedCells }}</div>
                 <div class="stat-label">
-                  cellules masquées à {{ String(provenance.staticGridDeg).replace('.', ',') }}°
+                  {{ t('cellules candidates (~5 km) mises à part', 'candidate cells (~5 km) set aside') }}
                 </div>
               </div>
             </div>
-
-            <p class="chapter-note reveal reveal-delay-4">
-              Le type FIRMS ne suffit pas : en 2017, MODIS n’a signalé aucune source type 2 au
-              Gabon. D’où un masque de <strong>persistance spatiale</strong>, appliqué à tous les
-              capteurs.
-            </p>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================ 03 -->
+      <!-- ============================================================ 02 : HARMONIZATION -->
       <section id="translate" class="chapter">
         <div class="shell chapter-grid">
           <div class="chapter-copy">
-            <p class="kicker reveal">03 — L’algorithme</p>
+            <p class="kicker reveal">02 — {{ t('L’accord des données', 'Aligning data') }}</p>
             <h2 class="display display-lg reveal reveal-delay-1">
-              Traduire MODIS en VIIRS,<br /><em>sans trahir les feux.</em>
+              {{ t('Remettre 25 ans de chiffres', 'Put 25 years of data') }}<br />
+              <em>{{ t('sur la même échelle.', 'on the same scale.') }}</em>
             </h2>
             <p class="lede reveal reveal-delay-2">
-              On apprend la conversion sur la période où les deux capteurs observent ensemble,
-              <strong>{{ trainYears }}</strong>. Une loi de puissance, entraînée sur le passé,
-              testée sur <strong>{{ testYears }}</strong>. Puis une marge d’incertitude.
+              {{
+                t(
+                  `Entre ${trainYears}, l’ancien et le nouveau satellite ont observé le Gabon ensemble pendant 8 ans. Nous utilisons cet écart mesuré pour rehausser les chiffres d’avant 2012, puis nous vérifions la précision sur les 6 dernières années (${testYears}).`,
+                  `During ${trainYears}, both the old and new satellites watched Gabon together for 8 years. We use that overlap to adjust pre-2012 data upward, then verify accuracy on the last 6 years (${testYears}).`,
+                )
+              }}
             </p>
 
             <ol class="steps reveal reveal-delay-3">
               <li>
                 <span class="step-index">01</span>
                 <div>
-                  <strong>Masque statique 0,05°</strong>
-                  <span>Torchères et sites industriels retirés avant toute comparaison.</span>
+                  <strong>{{ t('Écarter les sources persistantes candidates', 'Set aside candidate persistent sources') }}</strong>
+                  <span>{{ t(`Le filtre complet retire les types 2/3 et les type 0 dans ${composition.maskedCells} cellules candidates. Toutes ne sont pas des torchères confirmées.`, `The full filter removes type 2/3 and type-0 detections inside ${composition.maskedCells} candidate cells. Not all of them are confirmed flares.`) }}</span>
                 </div>
               </li>
               <li>
                 <span class="step-index">02</span>
                 <div>
-                  <strong>Calibration puissance</strong>
-                  <span>MODIS → échelle VIIRS, apprise sur le recouvrement {{ trainYears }}.</span>
+                  <strong>{{ t('Ajuster les années 2000–2011', 'Adjust years 2000–2011') }}</strong>
+                  <span>{{ t('MODIS est converti vers l’échelle S-NPP. Après 2012, S-NPP reste la référence observée, pas une estimation.', 'MODIS is mapped onto the S-NPP scale. After 2012, S-NPP remains the observed reference, not an estimate.') }}</span>
                 </div>
               </li>
               <li>
                 <span class="step-index">03</span>
                 <div>
-                  <strong>Intervalle expérimental, cible 80 %</strong>
-                  <span>Une bande d’incertitude sur la période reconstruite, pas une fausse précision.</span>
+                  <strong>{{ t('Afficher la marge d’incertitude', 'Show the uncertainty margin') }}</strong>
+                  <span>{{ t('La bande vient de la baseline DB v2.0 ; sa couverture n’est pas établie. L’analyse exploratoire rapporte 63,9 % pour son propre intervalle (cible 80 %) : un indicateur, pas une garantie.', 'The band comes from the DB v2.0 baseline; its coverage is not established. The exploratory analysis reports 63.9% for its own interval (80% target): an indicator, not a guarantee.') }}</span>
                 </div>
               </li>
             </ol>
 
             <div class="stat-row reveal reveal-delay-4">
               <div>
-                <div class="stat">−{{ maeReduction }} %</div>
-                <div class="stat-label">d’erreur moyenne vs naïf</div>
+                <div class="stat">−{{ maeReduction }}{{ pctSuffix }}</div>
+                <div class="stat-label">{{ t('d’erreur moyenne (validation renforcée, 2020–2025)', 'less average error (reinforced validation, 2020–2025)') }}</div>
               </div>
               <div>
                 <div class="stat stat-small">
-                  R² {{ formatDecimal(r2After, 3) }}
+                  R² {{ formatDecimal(r2After, 2) }}
                 </div>
-                <div class="stat-label">sur {{ testMonths }} mois de test</div>
+                <div class="stat-label">{{ t(`brut sur ${testMonths} mois ; ${formatDecimal(r2Anomaly, 2)} sur les anomalies`, `raw over ${testMonths} months; ${formatDecimal(r2Anomaly, 2)} on anomalies`) }}</div>
               </div>
             </div>
-
-            <p class="benchmark-note reveal reveal-delay-4">
-              Benchmark DB v2.0 : train 2012–2019, test 2020–2025, masque all-years — MAE
-              {{ formatDecimal(maeBefore, 1) }} → {{ formatDecimal(maeAfter, 1) }}, R²
-              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. L’analyse exploratoire ci-dessous utilise un autre protocole : trois périodes et un masque
-              gelé. Les résultats ne sont pas directement interchangeables.
-            </p>
           </div>
 
           <div class="chapter-visual reveal reveal-delay-2">
             <div class="panel panel-pad">
               <div class="panel-label">
-                <span class="tiny-label">Avant / après harmonisation</span>
-                <span class="tag dot">Test {{ testYears }}</span>
+                <span class="tiny-label">{{ t('Avant / après correction · Gabon', 'Before / after adjustment · Gabon') }}</span>
+                <span class="tag dot">{{ t('2001–2025', '2001–2025') }}</span>
               </div>
               <LineChart
-                :points="chartPoints"
+                :datasets="harmDatasets"
+                initial-dataset-id="modis"
+                default-granularity="year"
                 :show-raw="true"
                 :show-harmonized="true"
                 :show-band="true"
+                :show-anomaly="false"
                 :highlight2012="true"
                 mark-month="2024-08"
                 :reduced-motion="reducedMotion"
-                title="Le saut disparaît, la saison reste"
-                raw-label="Brut après filtre torchères"
-                harm-label="Harmonisé"
+                :title="t('Chaque capteur séparément, puis la série harmonisée', 'Each sensor separately, then the harmonized series')"
+                :raw-label="t('Détections brutes du capteur sélectionné', 'Raw detections for the selected sensor')"
+                :harm-label="t('Série harmonisée expérimentale (échelle S-NPP)', 'Experimental harmonized series (S-NPP scale)')"
               />
               <p class="panel-caption">
-                La ligne pointillée est la série brute après retrait des torchères. La ligne
-                lumineuse est l’échelle VIIRS. La bande est celle de la baseline DB v2.0 ; sa
-                couverture n’est pas établie par l’analyse exploratoire ci-dessous.
+                {{
+                  t(
+                    'MODIS est l’entrée du modèle ; VIIRS S-NPP est la référence cible. Changez de capteur pour voir ce que chaque instrument observe vraiment : la rupture de 2012 est un changement de caméra, pas un pic de feux. Après 2012, MODIS continue de voler mais reste moins sensible ; la série orangée suit S-NPP.',
+                    'MODIS is the model input; VIIRS S-NPP is the target reference. Switch sensors to see what each instrument actually observes: the 2012 break is a camera change, not a fire spike. After 2012, MODIS keeps flying but is less sensitive; the orange series follows S-NPP.',
+                  )
+                }}
               </p>
+              <ConfidenceCard compact context="series" />
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================ 04 -->
+      <!-- ============================================================ 03 : CALENDAR -->
       <section id="calendar" class="chapter">
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">04 — La mémoire</p>
-              <h2 class="display display-lg reveal reveal-delay-1">La saison apparaît.</h2>
+              <p class="kicker reveal">03 — {{ t('Le calendrier', 'The fire calendar') }}</p>
+              <h2 class="display display-lg reveal reveal-delay-1">
+                {{ t('La vraie saison des feux au Gabon.', 'Gabon’s true fire season.') }}
+              </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Chaque case est un mois. Plus elle est claire, plus l’activité est forte. En un
-              regard, la saison des feux se lit : pic en juillet–août, second épisode en
-              février–mars, creux en novembre–décembre.
+              {{
+                t(
+                  'Chaque case représente un mois au Gabon de 2000 à 2025 : plus la couleur est sombre, plus il y a eu de détections. Utilisez les 4 filtres ci-dessous pour comparer les type 0 hors sources persistantes, les brûlis habituels vs flambées anormales, ou les détections écartées par le filtre.',
+                  'Each cell is one month in Gabon from 2000 to 2025: darker cells mean more detections. Use the 4 filters below to switch between type 0 outside persistent sources, routine vs unusual surges, or detections excluded by the filter.',
+                )
+              }}
             </p>
           </div>
 
           <div class="calendar-shell reveal reveal-delay-2">
             <div class="calendar-head">
               <div class="calendar-head-left">
-                <span class="tag dot">Calendrier Années × Mois</span>
-                <span class="tiny-label">Cliquez un mois pour l’épingler</span>
+                <span class="tag dot">{{ t('Calendrier Gabon · Années × Mois', 'Gabon Calendar · Years × Months') }}</span>
+                <span class="tiny-label">{{ t('Cliquez un mois pour l’épingler', 'Click any month to pin details') }}</span>
               </div>
               <button type="button" class="btn btn-ghost btn-small" @click="downloadCsv">
-                Télécharger le CSV
+                {{ t('Télécharger le CSV', 'Download CSV') }}
               </button>
             </div>
             <CalendarHeatmap :reduced-motion="reducedMotion" />
           </div>
 
-          <p class="calendar-note reveal reveal-delay-2">
-            Le calendrier et sa bande d’incertitude restent ceux de la baseline DB v2.0 (API live
-            ou instantané), pour rester cohérents avec l’existant. L’analyse exploratoire ci-dessous rapporte une couverture de {{ validationCoverageLabel }}
-            pour son propre intervalle ; elle ne valide pas cette bande.
-          </p>
+          <div class="season-cards-head reveal">
+            <h3>{{ t('Les 3 temps du feu au Gabon', 'Gabon’s 3 fire seasons') }}</h3>
+            <p>
+              {{
+                t(
+                  'Médiane mensuelle calculée sur 25 années complètes (2001–2025, type 0 hors sources persistantes).',
+                  'Median monthly counts measured across 25 full years (2001–2025, type 0 outside persistent sources).',
+                )
+              }}
+            </p>
+          </div>
 
           <div class="feature-grid">
             <article
@@ -577,18 +716,23 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <!-- ============================================================ 05 -->
+      <!-- ============================================================ 04 : MAP -->
       <section id="map" class="chapter">
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">05 — Le territoire</p>
-              <h2 class="display display-lg reveal reveal-delay-1">La mémoire spatiale.</h2>
+              <p class="kicker reveal">04 — {{ t('Le territoire', 'The territory') }}</p>
+              <h2 class="display display-lg reveal reveal-delay-1">
+                {{ t('Où ça brûle, province par province.', 'Where fires burn, province by province.') }}
+              </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Où brûle-t-on ? La grille 0,25° agrège les détections par cellule et par mois. Les
-              sites industriels persistants sont isolés en bleu. Le Gabon, ses provinces, ses zones
-              sensibles.
+              {{
+                t(
+                  `En orange : les zones de détections type 0 (~28 km). En bleu : les ${composition.maskedCells} cellules candidates (~5 km) de sources persistantes, surtout sur la côte et en mer. Sélectionnez une province pour une lecture descriptive ; la calibration harmonisée reste nationale et n’est pas revalidée par polygone.`,
+                  `Orange squares (~28 km) map type-0 detections. Blue cells (~5 km) mark ${composition.maskedCells} candidate persistent sources, mostly coastal and offshore. Choose a province for a descriptive read; the harmonized calibration stays national and is not revalidated per polygon.`,
+                )
+              }}
             </p>
           </div>
 
@@ -596,246 +740,167 @@ onBeforeUnmount(() => {
             <HotspotMap :reduced-motion="reducedMotion" />
           </div>
 
-          <div class="map-stats-row reveal reveal-delay-3">
-            <div>
-              <span class="stat stat-small">{{ composition.gaGridCells }}</span>
-              <span class="stat-label">cellules actives dans GA (0,25°)</span>
-            </div>
-            <div>
-              <span class="stat stat-small">{{ maskedCellsCount }}</span>
-              <span class="stat-label">sites statiques (0,05°)</span>
-            </div>
-            <div>
-              <span class="stat stat-small">{{ formatCount(gridCellMonthsDb) }}</span>
-              <span class="stat-label">cellules-mois en base (filtrées + brutes)</span>
-            </div>
-            <div>
-              <span class="stat stat-small">{{ gridDegLabel }}</span>
-              <span class="stat-label">résolution de la grille</span>
+          <ConfidenceCard compact context="map" />
+
+          <div class="geo-cards-grid reveal reveal-delay-3">
+            <article class="geo-card is-flare">
+              <span class="geo-card-tag">{{ t('Cellules bleues sur la carte', 'Blue cells on map') }}</span>
+              <h3>{{ t('Côte Ouest & Mer', 'West Coast & Offshore') }}</h3>
+              <p class="geo-card-provinces">Ogooué-Maritime · Estuaire</p>
+              <p class="geo-card-desc">
+                {{
+                  t(
+                    'Zones pétrolières et industrielles (Port-Gentil, Gamba, plateformes) où des sources de chaleur persistent toute l’année, sans lien avec les saisons agricoles. Ce sont des cellules candidates, pas des torchères confirmées une par une.',
+                    'Oil and industrial zones (Port-Gentil, Gamba, offshore rigs) where heat sources persist year-round, unrelated to seasonal field clearing. These are candidate cells, not individually confirmed flares.',
+                  )
+                }}
+              </p>
+            </article>
+
+            <article class="geo-card is-savanna">
+              <span class="geo-card-tag">{{ t('Grands carrés orangés', 'Large orange squares') }}</span>
+              <h3>{{ t('Sud & Sud-Est', 'South & South-East') }}</h3>
+              <p class="geo-card-provinces">Haut-Ogooué · Nyanga · Ngounié</p>
+              <p class="geo-card-desc">
+                {{
+                  t(
+                    'Grandes savanes et plateaux où se concentre l’essentiel des feux de saison sèche entre juin et septembre.',
+                    'Open savannas and plateaus where the bulk of Gabon’s dry-season burning concentrates between June and September.',
+                  )
+                }}
+              </p>
+            </article>
+
+            <article class="geo-card is-forest">
+              <span class="geo-card-tag">{{ t('Activité dispersée', 'Scattered activity') }}</span>
+              <h3>{{ t('Centre & Nord', 'Center & North') }}</h3>
+              <p class="geo-card-provinces">Ogooué-Ivindo · Woleu-Ntem · Moyen-Ogooué · Ogooué-Lolo</p>
+              <p class="geo-card-desc">
+                {{
+                  t(
+                    'Forêts denses plus humides : les alertes y restent plus rares et suivent surtout les petits brûlis agricoles autour des villages et routes.',
+                    'Wetter rainforest interior: detections remain lighter and mostly track small farm clearings near roads and settlements.',
+                  )
+                }}
+              </p>
+            </article>
+          </div>
+
+          <div class="map-cta-bar reveal reveal-delay-3">
+            <p>
+              {{
+                t(
+                  'Besoin des chiffres mensuels complets du Gabon pour vos analyses ou présentations ?',
+                  'Need Gabon’s full monthly fire series for your own reports or spreadsheets?',
+                )
+              }}
+            </p>
+            <div class="map-cta-actions">
+              <button type="button" class="btn btn-heat btn-small" @click="downloadCsv">
+                {{ t('Télécharger le CSV (Gabon 2000–2025)', 'Download CSV (Gabon 2000–2025)') }}
+              </button>
+              <button type="button" class="btn btn-ghost btn-small" @click="navigate('calendar')">
+                {{ t('Revenir au calendrier', 'Back to calendar') }}
+              </button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ============================================================ 06 -->
-      <section id="proof" class="chapter">
+      <!-- ============================================================ 05 : PROOF & TOMORROW -->
+      <section id="proof" class="chapter proof-final">
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">06 — Analyse exploratoire</p>
+              <p class="kicker reveal">05 — {{ t('Analyse & suite', 'Analysis & next') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                Ce que nous explorons.<br /><em>Et les limites à vérifier.</em>
+                {{ t('Évalué sur 2020–2025.', 'Evaluated on 2020–2025.') }}<br />
+                <em>{{ t('Les limites sont publiées.', 'The limits are published.') }}</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Cette analyse compare plusieurs modèles et documente leurs limites. L'artefact affiché
-              reste exploratoire : la couverture des observations et l'indépendance de certaines étapes
-              ne sont pas établies.
+              {{
+                t(
+                  'Nous avons évalué la méthode sur 6 années complètes (2020–2025), déjà examinées pendant sa mise au point. Ces résultats exploratoires sont en revue scientifique : voici ce qu’ils montrent et ce qu’ils ne mesurent pas.',
+                  'We evaluated the method over 6 full years (2020–2025), already examined during its development. These exploratory results are under scientific review: here is what they show and what they do not measure.',
+                )
+              }}
             </p>
-          </div>
-
-          <div class="proof-context reveal reveal-delay-2">
-            <span class="tag dot">Analyse exploratoire en revue · 48 CSV pays</span>
-            <span class="tag">
-              {{ validation.split.n_train }} train · {{ validation.split.n_calibration }} calibration ·
-              {{ validation.split.n_test }} test
-            </span>
-            <span class="tag cool">{{ validation.mask.cells_frozen }} cellules gelées</span>
-            <span class="tag">couverture {{ validationCoverageLabel }}</span>
           </div>
 
           <ValidationProof :reduced-motion="reducedMotion" />
 
-          <p class="proof-disclaimer reveal">
-            L'artefact exploratoire initial a été calculé sur 48 CSV FIRMS pays (géométrie non rejointe,
-            comme M1) avec
-            {{ validation.split.n_train }} mois de train, {{ validation.split.n_calibration }} mois
-            de calibration et {{ validation.split.n_test }} mois de test. Le calendrier et la carte
-            peuvent utiliser l'API ou des instantanés ; leur périmètre GA diffère des fichiers pays. Le
-            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) utilise une autre
-            méthode ; les deux résultats restent à examiner et ne sont pas interchangeables.
-          </p>
-        </div>
-      </section>
+          <ConfidenceCard context="series" />
 
-      <!-- ============================================================ 07 -->
-      <section id="contribution" class="chapter">
-        <div class="shell">
-          <div class="section-head">
-            <div>
-              <p class="kicker reveal">07 — Notre apport</p>
-              <h2 class="display display-lg reveal reveal-delay-1">
-                Ce qui nous démarque,<br /><em>concrètement.</em>
-              </h2>
-            </div>
-            <p class="lede reveal reveal-delay-2">
-              Notre travail réunit une exploration historique et une documentation transparente
-              de ses limites ; sa validation scientifique reste à compléter.
-            </p>
-          </div>
-
-          <div class="contribution-grid">
-            <article class="contribution-card reveal">
-              <span class="roadmap-horizon">01 — Analyse</span>
-              <h3>Un protocole en revue</h3>
-              <p>
-                L'artefact initial sépare les périodes d'ajustement et de test, mais son masque
-                utilise la période de calibration. Une nouvelle évaluation est nécessaire.
-              </p>
-            </article>
-            <article class="contribution-card reveal reveal-delay-1">
-              <span class="roadmap-horizon">02 — Honnêteté</span>
-              <h3>Nous publions les résultats négatifs</h3>
-              <p>
-                L'artefact initial rapporte une couverture inférieure à la cible et des limites
-                de transfert entre plateformes ; ces chiffres sont exploratoires et à recalculer.
-              </p>
-            </article>
-            <article class="contribution-card reveal reveal-delay-2">
-              <span class="roadmap-horizon">03 — Produit</span>
-              <h3>Un produit complet</h3>
-              <p>
-                Calendrier accessible, carte 0,25°, anomalies, export CSV, API Django/PostGIS,
-                mode snapshot hors-ligne. La science n’est pas déconnectée de l’usage.
-              </p>
-            </article>
-            <article class="contribution-card reveal reveal-delay-3">
-              <span class="roadmap-horizon">04 — Passage à l’échelle</span>
-              <h3>Une méthode à explorer ailleurs</h3>
-              <p>
-                L’application au Bassin du Congo, à la FRP, à NOAA-21 et à la surface brûlée reste
-                à étudier et à valider.
-              </p>
-            </article>
-          </div>
-
-          <p class="contribution-quote display display-md reveal reveal-delay-4">
-            « La différence n’est pas de promettre R² = 0,92.<br />
-            <em>C’est de savoir ce que ce chiffre prouve — et ce qu’il ne prouve pas.</em> »
-          </p>
-
-          <p class="contribution-note reveal reveal-delay-4">
-            <strong>Pour la NASA</strong> : un benchmark reproductible, un protocole de validation
-            inter-capteurs et un cas d’usage dans un biome sous-surveillé.
-            <strong>Pour les gestionnaires</strong> : un calendrier qui dit quand l’activité est
-            inhabituelle, pas seulement où est le feu.
-          </p>
-        </div>
-      </section>
-
-      <!-- ============================================================ 08 -->
-      <section id="future" class="chapter">
-        <div class="shell">
-          <div class="section-head">
-            <div>
-              <p class="kicker reveal">08 — Demain</p>
-              <h2 class="display display-lg reveal reveal-delay-1">
-                Le 2 novembre 2026,<br /><em>Suomi-NPP s’est tu.</em>
-              </h2>
-            </div>
-            <p class="lede reveal reveal-delay-2">
-              Archive SP ingérée jusqu’en déc. 2025 ; le pont NOAA-20 (ratio
-              ×{{ formatDecimal(noaaBridgeRatio, 3) }} calibré sur 2019–2025) prend le relais après
-              l’arrêt des livraisons S-NPP. Le prochain chapitre : flux NRT continu, Bassin du Congo,
-              énergie des feux.
-            </p>
-          </div>
-
-          <div class="reveal reveal-delay-2">
-            <SeasonTimeline
-              :archive-end="provenance.archiveEnd"
-              :noaa-bridge-ratio="noaaBridgeRatio"
-              :reduced-motion="reducedMotion"
-            />
-          </div>
-
-          <div class="roadmap">
-            <article class="roadmap-card reveal">
-              <span class="roadmap-horizon">Maintenant</span>
-              <h3>Continuité 2026</h3>
-              <p>
-                L’archive SP ingérée s’arrête en déc. 2025 ; prochaine étape : brancher le flux NRT
-                NOAA-20 sans rupture et alerter quand un mois dépasse la médiane historique.
-              </p>
-              <span class="tag">Prototype</span>
-            </article>
-            <article class="roadmap-card reveal reveal-delay-1">
-              <span class="roadmap-horizon">6 mois</span>
-              <h3>Bassin du Congo</h3>
-              <p>
-                Passer d’un pays à un biome : 6–10 pays, même méthode, validation indépendante
-                par surface brûlée.
-              </p>
-              <span class="tag">Roadmap</span>
-            </article>
-            <article class="roadmap-card reveal reveal-delay-2">
-              <span class="roadmap-horizon">12 mois</span>
-              <h3>Énergie des feux</h3>
-              <p>
-                Harmoniser la FRP, pas seulement les comptages. Ouvrir les émissions, la santé et
-                la priorisation des zones sensibles.
-              </p>
-              <span class="tag">Recherche</span>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================================================ 08 -->
-      <section id="explorer" class="chapter explorer">
-        <div class="shell-narrow">
-          <p class="kicker reveal">09 — À vous de jouer</p>
-          <h2 class="display display-lg reveal reveal-delay-1">
-            Explorez 25 ans de feux.<br /><em>Et posez vos propres questions.</em>
-          </h2>
-          <p class="lede reveal reveal-delay-2">
-            Le calendrier et la carte sont interactifs. Le CSV reprend les colonnes du contrat API.
-            Tout est reproductible, tout est expliqué.
-          </p>
-
-          <div class="explorer-actions reveal reveal-delay-3">
-            <button type="button" class="btn btn-heat" @click="navigate('calendar')">
-              Ouvrir le calendrier
-            </button>
-            <button type="button" class="btn btn-ghost" @click="navigate('map')">
-              Voir la carte
-            </button>
-            <button type="button" class="btn btn-ghost" @click="downloadCsv">
-              Télécharger le CSV
-            </button>
-          </div>
-
-          <div class="recap reveal reveal-delay-4">
-            <div>
-              <span class="recap-number">01</span>
-              <p>Un artefact de 2012 supprimé, une saison révélée.</p>
-            </div>
-            <div>
-              <span class="recap-number">02</span>
-              <p>
-                {{ formatDecimal(composition.gaExcludedShare, 1) }} % des détections GA écartées
-                comme sources statiques probables ({{ formatDecimal(composition.snppExcludedShare, 1) }} %
-                sur S-NPP).
+          <div id="future" class="future-subsection">
+            <div class="section-head">
+              <div>
+                <p class="kicker reveal">{{ t('Le relais 2026', 'The 2026 relay') }}</p>
+                <h3 class="display display-md reveal reveal-delay-1">
+                  {{ t('Le satellite de référence s’est arrêté le 2 novembre 2026.', 'The reference satellite stopped on November 2, 2026.') }}
+                  <em>{{ t('Le relais est préparé, pas encore démontré sur 2026.', 'The relay is prepared, not yet demonstrated on 2026.') }}</em>
+                </h3>
+              </div>
+              <p class="lede reveal reveal-delay-2">
+                {{
+                  t(
+                    'L’archive de cette démonstration s’arrête en décembre 2025. NOAA-20 est calibré sur la période commune 2018–2019 ; ingérer les alertes 2026 et vérifier la continuité du relais restent les prochaines étapes.',
+                    'This demo archive ends in December 2025. NOAA-20 is calibrated over the 2018–2019 overlap; ingesting 2026 alerts and verifying relay continuity remain the next steps.',
+                  )
+                }}
               </p>
             </div>
-            <div>
-              <span class="recap-number">03</span>
-              <p>
-                Artefact historique exploratoire : couverture observée {{ validationCoverageLabel }}
-                et R² {{ validationAnomalyR2Label }} sur les anomalies, résultats en revue.
-              </p>
+
+            <div class="reveal reveal-delay-2">
+              <SeasonTimeline
+                :archive-end="provenance.archiveEnd"
+                :noaa-bridge-ratio="noaaBridgeRatio"
+                :reduced-motion="reducedMotion"
+              />
             </div>
-            <div>
-              <span class="recap-number">04</span>
-              <p>
-                Une évaluation exploratoire NOAA-20, un calendrier, une carte et un CSV.
-              </p>
+
+            <div class="roadmap">
+              <article class="roadmap-card reveal">
+                <span class="roadmap-horizon">{{ t('2026+', '2026+') }}</span>
+                <h3>{{ t('Suivre avec NOAA-20', 'Track with NOAA-20') }}</h3>
+                <p>
+                  {{
+                    t(
+                      'Le ratio de calibration est mesuré. Il reste à ingérer les alertes 2026 et à vérifier la continuité sur des données réelles, pas seulement sur la période commune.',
+                      'The calibration ratio is measured. Next: ingest 2026 alerts and verify continuity on real data, not only over the overlap period.',
+                    )
+                  }}
+                </p>
+                <span class="tag">{{ t('À valider', 'To validate') }}</span>
+              </article>
+              <article class="roadmap-card reveal reveal-delay-1">
+                <span class="roadmap-horizon">{{ t('Régional', 'Regional') }}</span>
+                <h3>{{ t('Étendre au Bassin du Congo', 'Expand to the Congo Basin') }}</h3>
+                <p>
+                  {{
+                    t(
+                      'Appliquer la même séparation sources persistantes / type 0 aux pays forestiers voisins du Gabon.',
+                      'Apply the same persistent-source / type-0 separation across neighboring Congo Basin forest nations.',
+                    )
+                  }}
+                </p>
+                <span class="tag">{{ t('Prochaine étape', 'Next step') }}</span>
+              </article>
+              <article class="roadmap-card reveal reveal-delay-2">
+                <span class="roadmap-horizon">{{ t('Terrain', 'Impact') }}</span>
+                <h3>{{ t('Mesurer l’intensité des feux', 'Measure fire intensity') }}</h3>
+                <p>
+                  {{
+                    t(
+                      'En plus du nombre d’alertes, suivre la chaleur dégagée par les feux pour repérer les épisodes vraiment destructeurs.',
+                      'Track heat energy released per detection alongside counts to spot unusually intense burns.',
+                    )
+                  }}
+                </p>
+                <span class="tag">{{ t('À venir', 'Planned') }}</span>
+              </article>
             </div>
           </div>
-
-          <p class="final-quote display display-md">
-            « One Planet. <em>One Fire History.</em> »
-          </p>
         </div>
       </section>
     </main>
@@ -848,32 +913,35 @@ onBeforeUnmount(() => {
               <span class="brand-name">FirePulse</span>
             </a>
             <p class="footer-lede">
-              Un prototype de preuve de concept pour le défi NASA Space Apps 2026
-              « Harmonization of MODIS and VIIRS Hot Spots ».
-            </p>
-            <p class="footer-lede">
-              Données NASA FIRMS · MODIS C6.1 · VIIRS C2 · Gabon 2000–2025.
+              {{
+                t(
+                  'Outil d’observation des saisons de feux au Gabon et dans ses 9 provinces, à partir des satellites ouverts de la NASA (2000–2025).',
+                  'Open observation tool tracking Gabon’s fire seasons across all 9 provinces using NASA satellite archives (2000–2025).',
+                )
+              }}
             </p>
             <p class="footer-note">
-              Source :
+              {{ t('Archive vérifiée (SHA-256) :', 'Verified archive (SHA-256):') }}
               <strong>{{
                 dataSourceMode === 'live'
-                  ? 'API Django et instantanés locaux possibles ; provenance variable selon les données'
-                  : 'API partielle ou instantanés locaux ; provenance variable selon les données'
+                  ? t('API Django et instantanés locaux, provenance variable', 'Django API and local snapshots, provenance varies')
+                  : t('API partielle ou instantanés locaux, provenance variable', 'Partial API or local snapshots, provenance varies')
               }}</strong>
-              — Archive BBox : {{ formatCount(composition.archiveTotal) }} détections
-              ({{ composition.archiveFiles }} fichiers FIRMS SP, 2000-11 → 2025-12). Polygone GA :
-              {{ formatCount(composition.gaTotal) }} détections dont
-              {{ formatCount(composition.gaClean) }} détections retenues après filtre
-              ({{ composition.maskedCells }} mailles à 0,05° + tag FIRMS type ≠ 0).
+              — {{ formatCount(composition.gaTotal) }}
+              {{
+                t(
+                  `détections au Gabon (2000–2025) : ${formatCount(composition.gaClean)} type 0 hors sources persistantes, ${formatCount(composition.gaExcluded)} écartées par le filtre complet (type 2/3 + ${composition.maskedCells} cellules candidates).`,
+                  `detections inside Gabon (2000–2025): ${formatCount(composition.gaClean)} type 0 outside persistent sources, ${formatCount(composition.gaExcluded)} excluded by the full filter (type 2/3 + ${composition.maskedCells} candidate cells).`,
+                )
+              }}
             </p>
           </div>
           <div>
-            <h3>Sources</h3>
+            <h3>{{ t('Sources des données', 'Data sources') }}</h3>
             <ul>
               <li>
                 <a href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noreferrer">
-                  NASA FIRMS
+                  NASA FIRMS (MODIS & VIIRS)
                 </a>
               </li>
               <li>
@@ -885,25 +953,24 @@ onBeforeUnmount(() => {
                   NASA Space Apps Challenge
                 </a>
               </li>
-              <li>Backend PostGIS / Django — API v1</li>
-              <li>Baseline harmonisée v2.0, en revue M1</li>
-              <li>Analyse exploratoire : 3 temps, masque gelé, couverture à examiner</li>
+              <li>{{ t('Limites provinciales du Gabon (9 provinces)', 'Gabon provincial boundaries (9 provinces)') }}</li>
+              <li>{{ t('Évaluation exploratoire sur 72 mois (2020–2025)', 'Exploratory evaluation over 72 months (2020–2025)') }}</li>
             </ul>
           </div>
           <div>
-            <h3>À propos</h3>
+            <h3>{{ t('À retenir', 'Key notes') }}</h3>
             <ul>
-              <li>M1 — Data & Science</li>
-              <li>M2 — Backend / Geo / Infra</li>
-              <li>M3 — Frontend / UX / Pitch</li>
-              <li>Prototype — ne pas citer comme produit opérationnel.</li>
+              <li>{{ t('Un point chaud = une alerte de chaleur vue depuis l’espace', 'One hotspot = one heat alert seen from space') }}</li>
+              <li>{{ t('Les sources de chaleur persistantes candidates sont isolées pour ne pas fausser les saisons', 'Candidate persistent heat sources are isolated to keep seasons accurate') }}</li>
+              <li>{{ t('Code, pipeline et documentation bilingue assistés par IA (Gemini 4 Hydrogen, Gemini 4 Argon, Deepseek 4.1 Flash 1017, Claude Opus 5.5, GPT 6 Luna & GPT 6 Terra) ; données NASA FIRMS authentiques', 'Code, pipeline & bilingual docs assisted by AI (Gemini 4 Hydrogen, Gemini 4 Argon, Deepseek 4.1 Flash 1017, Claude Opus 5.5, GPT 6 Luna & GPT 6 Terra); authentic NASA FIRMS data') }}</li>
+              <li>{{ t('Projet prototype — non affilié ni certifié par la NASA', 'Prototype project — not affiliated with or endorsed by NASA') }}</li>
             </ul>
           </div>
         </div>
         <div class="footer-bottom">
-          <span>FirePulse · One Planet. One Fire History.</span>
-          <span>NASA n’endosse pas ce projet.</span>
-          <span>Fait avec des données ouvertes.</span>
+          <span>FirePulse · {{ t('Gabon 2000–2025', 'Gabon 2000–2025') }}</span>
+          <span>{{ t('Type 0 hors sources persistantes vs sources candidates', 'Type 0 outside persistent sources vs candidate sources') }}</span>
+          <span>{{ t('Données ouvertes NASA FIRMS', 'Open NASA FIRMS data') }}</span>
         </div>
       </div>
     </footer>
@@ -935,8 +1002,42 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
-.hero-kicker {
-  opacity: 1;
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 196, 107, 0.34);
+  background: rgba(255, 196, 107, 0.08);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  width: fit-content;
+}
+
+.hero-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 10px rgba(255, 196, 107, 0.75);
+}
+
+.hero-meta-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 24px 44px;
+}
+
+.value-sub {
+  font-size: 0.62em;
+  color: var(--gold);
+  font-weight: 400;
+  margin-left: 4px;
 }
 
 .chapter-note {
@@ -1068,11 +1169,33 @@ onBeforeUnmount(() => {
   color: var(--dim);
 }
 
+.season-cards-head {
+  margin-top: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 18px;
+}
+
+.season-cards-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.season-cards-head p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .feature-card {
@@ -1133,19 +1256,104 @@ onBeforeUnmount(() => {
     rgba(5, 7, 11, 0.5);
 }
 
-.map-stats-row {
+.geo-cards-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 18px;
-  padding-top: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.geo-card {
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(11, 16, 22, 0.86);
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.geo-card.is-flare {
+  border-color: rgba(56, 189, 248, 0.34);
+  background: linear-gradient(160deg, rgba(56, 189, 248, 0.08), rgba(11, 16, 22, 0.9));
+}
+
+.geo-card.is-savanna {
+  border-color: rgba(255, 138, 61, 0.36);
+  background: linear-gradient(160deg, rgba(255, 138, 61, 0.09), rgba(11, 16, 22, 0.9));
+}
+
+.geo-card-tag {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.geo-card.is-flare .geo-card-tag {
+  color: #7dd3fc;
+}
+
+.geo-card h3 {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.geo-card-provinces {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: #dce3eb;
+}
+
+.geo-card-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.trap-subsection {
+  margin-top: clamp(72px, 10vh, 120px);
+  padding-top: clamp(56px, 8vh, 96px);
   border-top: 1px solid var(--line);
 }
 
-.map-stats-row > div {
+.future-subsection {
+  margin-top: clamp(64px, 9vh, 110px);
+  padding-top: clamp(48px, 7vh, 88px);
+  border-top: 1px solid var(--line);
+}
+
+.proof-final {
+  padding-bottom: clamp(90px, 11vh, 140px);
+}
+
+.map-cta-bar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+  margin-top: 22px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(244, 241, 232, 0.025);
+}
+
+.map-cta-bar p {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.map-cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .protocol {
@@ -1432,18 +1640,20 @@ onBeforeUnmount(() => {
     gap: 18px;
   }
   .feature-grid,
+  .geo-cards-grid,
   .roadmap,
   .contribution-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .map-stats-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .map-shell {
     min-height: 480px;
+  }
+  .hero-meta-pair {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
   }
 }
 
@@ -1456,9 +1666,6 @@ onBeforeUnmount(() => {
   }
   .recap {
     grid-template-columns: 1fr;
-  }
-  .map-stats-row {
-    grid-template-columns: 1fr 1fr;
   }
   .final-quote {
     font-size: 1.8rem;
