@@ -26,12 +26,13 @@ npm run preview        # Local preview on http://localhost:5174
 ## What Is Inside
 
 - **3D Globe (`Three.js`)**: Starfield, geographic graticule, orbital paths, Gabon polygon boundary, and additive hotspot particles.
-- **Scroll-Driven Story (`6` chapters)**: Opening globe, the 2012 sensor break (`FlareSplit`), MODIS-to-VIIRS translation (`LineChart`), accessible 25-year seasonal calendar (`CalendarHeatmap`), interactive PostGIS/MapLibre map (`HotspotMap`), and exploratory protocol review + 2026 relay (`ValidationProof`, `SeasonTimeline`).
+- **Scroll-Driven Story (`7` chapters)**: Opening globe, the 2012 sensor break (`FlareSplit`), MODIS-to-VIIRS translation (`LineChart`), accessible 25-year seasonal calendar (`CalendarHeatmap`), interactive PostGIS/MapLibre map (`HotspotMap`), exploratory protocol review + 2026 relay (`ValidationProof`, `SeasonTimeline`), and a calibrated 2026–2035 forest-fire outlook (`PredictionExplorer`).
 - **Animated SVG Charts (`LineChart`)**: Per-sensor views (MODIS, VIIRS S-NPP, VIIRS NOAA-20), experimental harmonized series, nominal 80% uncertainty band, and enlarged axis labels (`16.5px`) for legible presentation.
 - **Accessible Year × Month Calendar (`CalendarHeatmap`)**: Inverted light-to-dark intensity ramp (`#f7efe2` → `#2a0606`), keyboard navigation, month detail inspector, historical rank, composition breakdown, and CSV export.
 - **Interactive Gabon & Maritime Map (`HotspotMap`)**: Dark data-first MapLibre canvas (`0.25°` grid, Gabon & 9 province outlines, `183` candidate `0.05°` persistent-source cells, optional exploratory NOAA-20 NRT maritime layer from `public/data/gabon-maritime-observations.geojson`), plus `Ctrl/Meta + wheel` / `"Scroll zoom: locked / on"` protection against accidental page-scroll zooming.
 - **Regional Auto-Localization (`FR / EN`)**: Browser timezone + language detection (`Africa/Libreville`, Francophone countries, bilingual fallbacks) with optional `/cdn-cgi/trace` enhancement when deployed behind Cloudflare (fails gracefully offline / non-Cloudflare) and strict session priority (`sessionStorage`) for manual `FR` / `EN` switches.
 - **Confidence Cards (`ConfidenceCard`)**: Explicit data source, period, satellite, protocol, empirical coverage, and scientific caveats below every visual.
+- **Future Risk Outlook (`PredictionExplorer`)**: Province-filtered `2026–2035` × month calendar, `0.25°` forest-fire probability map, floating cell/province detail card on hover/click, and a validation/calibration note. Climatological projection, not a weather forecast; forest mask from ESA WorldCover 2021; target is `type 0` outside candidate persistent cells.
 
 ---
 
@@ -48,6 +49,7 @@ npm run preview        # Local preview on http://localhost:5174
 | `/api/v1/coverage/` | `coverage.json` | Sensor temporal availability & S-NPP / NOAA-20 status |
 | `/api/v1/regions/` | `regions.json` | Gabon (`GA`) & `9` provinces (`GA-1`–`GA-9`) GeoJSON |
 | `/api/v1/export/` | Client CSV fallback (`buildSeriesCsvFallback`) | Schema-exact CSV export conforming to `docs/api-contract.json` |
+| Static prediction artifact | `prediction.json` | `2026–2035` forest-fire outlook (MVP climatology + province trend) |
 
 Response provenance should always be verified per runtime (`live` API vs `snapshot` fallback).
 
@@ -57,14 +59,16 @@ Response provenance should always be verified per runtime (`live` API vs `snapsh
 
 To avoid conflating raw series differences or anomaly thresholds with causal classifications:
 
-- **`staticSeries`** (`filter_static=true`): `type = 0` thermal detections outside candidate `0.05°` persistent-source cells (`86,882` summed raw detections in `calendar-static.json`).
-- **`allSeries`** (`filter_static=false`): all thermal detections (`type 0`, `2`, `3`, all cells; `144,060` summed detections in `calendar-all.json`).
-- **`flareSeries` (*Excluded thermal detections — exploratory category*)**:
-  Computed month-by-month in `src/lib/data.ts` as non-negative residual differences:
-  $$\Delta c_{t,s} = \max(0,\, c_{t,s}^{\text{all}} - c_{t,s}^{\text{static}}), \qquad \Delta h_t = \max(0,\, \text{round}((h_t^{\text{all}} - h_t^{\text{static}}) \times 10) / 10)$$
-  Over the `GA` archive series (`292,589` BBox / `285,013` GA total observations; `57,178` summed residual across `calendar-all` minus `calendar-static` S-NPP/MODIS/NOAA-20 counts), excluded detections combine **`31,110` NASA `type 2/3` anomalies** and **`26,068` `type 0` detections inside candidate `0.05°` cells**. Because candidate cells flag spatio-temporal persistence rather than field-verified infrastructure, excluded detections are explicitly labeled **exploratory thermal detection categories — not all confirmed flares**.
+- **`staticSeries`** (`filter_static=true`): `type = 0` thermal detections outside candidate `0.05°` persistent-source cells (`175,500` summed GA detections across MODIS, S-NPP, and NOAA-20 in `calendar-static.json`, `61.6%` of `285,013`).
+- **`allSeries`** (`filter_static=false`): all thermal detections (`type 0`, `2`, `3`, all cells; `285,013` summed GA detections in `calendar-all.json`).
+- **`flareSeries` / `computeExcludedSeries(allPoints, cleanPoints)` (*Excluded thermal detections — exploratory category*)**:
+  Computed month-by-month in `src/lib/data.ts` as the exact residual difference (`allPoints - cleanPoints`) only when both inputs exist and the difference is non-negative (`>= 0`):
+  $$\Delta c_{t,s} = c_{t,s}^{\text{all}} - c_{t,s}^{\text{static}} \;\; (\text{or } \text{null} \text{ if } < 0 \text{ or input missing}), \qquad \Delta h_t = \text{round}((h_t^{\text{all}} - h_t^{\text{static}}) \times 10) / 10 \;\; (\text{or } \text{null} \text{ if } < 0 \text{ or } h \text{ missing})$$
+  Missing harmonized inputs or absent months do **not** fall back to `modis + snpp`, and negative deltas are **not** clamped to `0`: affected points return `null` (unavailable) and flag `uncertainty_note` (`missing_clean_month`, `missing_sensor_input:*`, `missing_harmonized_input:harmonized_value`, `negative_series_delta:*`). Pre-launch both-`null` sensor entries remain `null`.
+- **`composition` (`excludedBySensorPartition` vs `provenanceAudit`)**:
+  Dynamic series differences (`gaExcluded = 109,513` across the GA snapshot) are partitioned exclusively by instrument and active observation period (`MODIS 2000-11 → 2025-12`, `VIIRS S-NPP 2012-01 → 2025-12`, `VIIRS NOAA-20 2018-04 → 2025-12`). Static FIRMS `type` counts over the ingested PostGIS SP archive (`285,013` GA rows; `57,934` type `2/3` = `20.3%` and `51,579` type `0` inside `183` candidate `0.05°` cells = `18.1%`) are exposed separately in `provenanceAudit` (`isIndependentStaticAudit: true`) and never mixed into the dynamic delta denominator.
 - **Calendar Seasonal Regime Labels (*Routine activity vs Abnormal surges*)**:
-  Visual anomaly highlights compare harmonized monthly values against `2001–2025` `baseline_median` values (`>= +25%` with `delta >= 80` or `>= 1.35×` median). They represent exploratory statistical regimes of thermal detections, not causal ground truth.
+  Visual anomaly highlights compare harmonized monthly values against `2001–2025` `baseline_median` values (`> +50%` statistical surplus highlighted as exploratory surges). They represent exploratory statistical regimes of thermal detections, not causal ground truth.
 
 ---
 

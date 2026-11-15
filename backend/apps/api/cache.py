@@ -98,6 +98,9 @@ def cached_api_response(
         payload = fallback()
         if payload is not None:
             return _apply_http_cache_headers(Response(payload), "FALLBACK", 0)
+        return offline_unavailable_response(
+            "Requested resource is unavailable in offline snapshot fallback mode."
+        )
 
     cache_ttl = getattr(settings, "API_CACHE_SECONDS", 300) if timeout is None else timeout
     max_age = getattr(settings, "HTTP_CACHE_MAX_AGE", 60) if http_max_age is None else http_max_age

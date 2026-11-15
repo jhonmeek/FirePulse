@@ -103,3 +103,10 @@ python front-bis/scripts/validate_harmonization.py
 ```
 
 Outputs: [`front-bis/src/data/validation.json`](../front-bis/src/data/validation.json) and [`front-bis/src/data/validation_series.csv`](../front-bis/src/data/validation_series.csv).
+
+---
+
+## 5. Derived UI Display Series (`front-bis/src/lib/data.ts`)
+
+- **`computeExcludedSeries(allPoints, cleanPoints)` / `flareSeries`**: Computes exploratory excluded thermal detections by exact subtraction (`allPoints - cleanPoints`) when both inputs are non-null and `allPoints >= cleanPoints`. Missing inputs (`null` or absent month), pre-launch both-`null` sensor fields, and negative deltas (`all < clean`) stay `null` (unavailable) with explicit diagnostic tokens appended to `uncertainty_note` (`missing_clean_month`, `missing_sensor_input:*`, `missing_harmonized_input:harmonized_value`, `negative_series_delta:*`) rather than falling back to `modis + snpp` or clamping to `0`.
+- **Sensor Partition vs Static Provenance Audit (`composition`)**: The dynamic series exclusion total (`gaExcluded`) is partitioned exclusively by active instrument/period (`excludedBySensorPartition`: MODIS `2000-11`→`2025-12`, VIIRS S-NPP `2012-01`→`2025-12`, VIIRS NOAA-20 `2018-04`→`2025-12`). Static FIRMS `type` counts (`57,934` type 2/3 and `51,579` type 0 in `183` candidate cells) are exposed separately in `provenanceAudit`, normalized solely over the `285,013` ingested GA SP rows (`2000-11`→`2025-12`).

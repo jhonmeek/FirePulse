@@ -15,10 +15,12 @@ import {
   allSeries,
   buildSeriesCsvFallback,
   composition,
+  computeExcludedSeries,
   flareSeries,
   monthlyMedians,
   staticSeries,
 } from '@/lib/data'
+import type { CalendarPoint } from '@/lib/types'
 import {
   MANUAL_SESSION_KEY,
   detectRegionFromEdge,
@@ -155,35 +157,112 @@ describe('i18n real-world conditions (timezone, browser, /cdn-cgi/trace, manual 
 })
 
 describe('Derived series calculations and M1 scientific wording', () => {
-  it('computes non-negative flareSeries as max(0, allSeries - staticSeries)', () => {
+  it('computes flareSeries exact deltas, preserves pre-launch nulls, and partitions composition cleanly', () => {
     expect(flareSeries.value.length).toBe(allSeries.value.length)
     const staticByMonth = new Map(staticSeries.value.map((p) => [p.month, p]))
 
     for (const point of flareSeries.value) {
       const allPt = allSeries.value.find((p) => p.month === point.month)!
       const cleanPt = staticByMonth.get(point.month)
-      expect(point.modis_count).toBe(
-        Math.max(0, (allPt.modis_count ?? 0) - (cleanPt?.modis_count ?? 0)),
-      )
+      const expectDiff = (a: number | null | undefined, b: number | null | undefined) => {
+        if (a == null && b == null) return null
+        if (a == null || b == null || a < b) return null
+        return a - b
+      }
+      expect(point.modis_count).toBe(expectDiff(allPt.modis_count, cleanPt?.modis_count))
       expect(point.viirs_snpp_count).toBe(
-        Math.max(0, (allPt.viirs_snpp_count ?? 0) - (cleanPt?.viirs_snpp_count ?? 0)),
+        expectDiff(allPt.viirs_snpp_count, cleanPt?.viirs_snpp_count),
       )
       expect(point.viirs_noaa20_count).toBe(
-        Math.max(0, (allPt.viirs_noaa20_count ?? 0) - (cleanPt?.viirs_noaa20_count ?? 0)),
+        expectDiff(allPt.viirs_noaa20_count, cleanPt?.viirs_noaa20_count),
       )
-      expect(point.harmonized_value).toBeGreaterThanOrEqual(0)
+      if (point.month < '2012-01') {
+        expect(point.viirs_snpp_count).toBeNull()
+      }
+      if (point.month < '2018-04') {
+        expect(point.viirs_noaa20_count).toBeNull()
+      }
+      if (point.harmonized_value !== null) {
+        expect(point.harmonized_value).toBeGreaterThanOrEqual(0)
+      }
     }
 
     expect(monthlyMedians.value).toHaveLength(12)
     expect(composition.value.gaTotal).toBe(285013)
     expect(composition.value.gaClean).toBe(175500)
     expect(composition.value.gaExcluded).toBe(109513)
+
+    const partitionSum = composition.value.excludedBySensorPartition.reduce(
+      (acc, item) => acc + (item.excluded ?? 0),
+      0,
+    )
+    expect(composition.value.excludedBySensorPartition).toHaveLength(3)
+    expect(partitionSum).toBe(composition.value.gaExcluded)
+    expect(composition.value.provenanceAudit.isIndependentStaticAudit).toBe(true)
+    expect(composition.value.provenanceAudit.scopeTotal).toBe(285013)
     expect(
-      composition.value.gaType23Count + composition.value.gaType0InMaskCount,
-    ).toBe(composition.value.gaExcluded)
+      composition.value.provenanceAudit.type23Count +
+        composition.value.provenanceAudit.type0InMaskCount,
+    ).toBe(109513)
   })
 
-  it('explicitly renders exploratory thermal detection caveats in FR and EN UI views', () => {
+  it('marks missing harmonized inputs and negative deltas unavailable without fallback or zero clamping', () => {
+    const mkPoint = (month: string, overrides: Partial<CalendarPoint> = {}): CalendarPoint => ({
+      month,
+      modis_count: 20,
+      modis_terra_count: 10,
+      modis_aqua_count: 10,
+      viirs_snpp_count: 80,
+      viirs_noaa20_count: 75,
+      harmonized_value: 80,
+      ci_low: null,
+      ci_high: null,
+      baseline_median: null,
+      baseline_iqr: null,
+      anomaly_percent: null,
+      anomaly_absolute: null,
+      sensor_regime: 'viirs_snpp_observed',
+      coverage_status: 'complete_sp',
+      uncertainty_note: '',
+      ...overrides,
+    })
+
+    const excluded = computeExcludedSeries(
+      [
+        mkPoint('2023-08', { modis_count: 25, viirs_snpp_count: 90, harmonized_value: null }),
+        mkPoint('2024-08', { modis_count: 15, viirs_snpp_count: 70, harmonized_value: 60 }),
+        mkPoint('2025-08', { modis_count: 30, viirs_snpp_count: 100, harmonized_value: 100 }),
+      ],
+      [
+        mkPoint('2023-08', { modis_count: 20, viirs_snpp_count: 80, harmonized_value: 70 }),
+        mkPoint('2024-08', { modis_count: 25, viirs_snpp_count: 60, harmonized_value: 80 }),
+      ],
+    )
+
+    const missingHarm = excluded[0]!
+    expect(missingHarm.modis_count).toBe(5)
+    expect(missingHarm.viirs_snpp_count).toBe(10)
+    expect(missingHarm.harmonized_value).toBeNull()
+    expect(missingHarm.baseline_median).toBeNull()
+    expect(missingHarm.anomaly_absolute).toBeNull()
+    expect(missingHarm.anomaly_percent).toBeNull()
+    expect(missingHarm.uncertainty_note).toContain('missing_harmonized_input:harmonized_value')
+
+    const negativeDelta = excluded[1]!
+    expect(negativeDelta.modis_count).toBeNull()
+    expect(negativeDelta.viirs_snpp_count).toBe(10)
+    expect(negativeDelta.harmonized_value).toBeNull()
+    expect(negativeDelta.uncertainty_note).toContain('negative_series_delta:modis_count')
+    expect(negativeDelta.uncertainty_note).toContain('negative_series_delta:harmonized_value')
+
+    const missingMonth = excluded[2]!
+    expect(missingMonth.harmonized_value).toBeNull()
+    expect(missingMonth.modis_count).toBeNull()
+    expect(missingMonth.uncertainty_note).toContain('missing_clean_month')
+    expect(missingMonth.uncertainty_note).toContain('missing_harmonized_input:harmonized_value')
+  })
+
+  it('explicitly renders exploratory thermal detection caveats in FR UI views', () => {
     setLocale('fr', true)
     const calendarFr = mount(CalendarHeatmap, {
       global: { stubs: { LineChart: true } },
@@ -191,16 +270,21 @@ describe('Derived series calculations and M1 scientific wording', () => {
     expect(calendarFr.text().toLowerCase()).toContain('détections thermiques')
     expect(calendarFr.text().toLowerCase()).toContain('catégories exploratoires')
     expect(calendarFr.text().toLowerCase()).toContain('pas toutes des torchères confirmées')
+    calendarFr.unmount()
 
     const splitFr = mount(FlareSplit)
     expect(splitFr.text().toLowerCase()).toContain('détections thermiques')
     expect(splitFr.text().toLowerCase()).toContain('catégorie exploratoire')
+    splitFr.unmount()
 
     const proofFr = mount(ValidationProof, {
       global: { stubs: { LineChart: true } },
     })
     expect(proofFr.text().toLowerCase()).toContain('résultats exploratoires')
+    proofFr.unmount()
+  }, 30000)
 
+  it('explicitly renders exploratory thermal detection caveats in EN UI views and App copy', () => {
     setLocale('en', true)
     const calendarEn = mount(CalendarHeatmap, {
       global: { stubs: { LineChart: true } },
@@ -208,10 +292,12 @@ describe('Derived series calculations and M1 scientific wording', () => {
     expect(calendarEn.text().toLowerCase()).toContain('thermal detections')
     expect(calendarEn.text().toLowerCase()).toContain('exploratory categories')
     expect(calendarEn.text().toLowerCase()).toContain('not all confirmed gas flares')
+    calendarEn.unmount()
 
     const splitEn = mount(FlareSplit)
     expect(splitEn.text().toLowerCase()).toContain('thermal detections')
     expect(splitEn.text().toLowerCase()).toContain('exploratory category')
+    splitEn.unmount()
 
     const hotspotMapSource = readFileSync(
       resolve(__dirname, '../components/HotspotMap.vue'),
@@ -220,7 +306,14 @@ describe('Derived series calculations and M1 scientific wording', () => {
     expect(hotspotMapSource.toLowerCase()).toContain('détections thermiques')
     expect(hotspotMapSource.toLowerCase()).toContain('thermal detections')
     expect(hotspotMapSource.toLowerCase()).toContain('catégories exploratoires')
-  })
+
+    const appSource = readFileSync(resolve(__dirname, '../App.vue'), 'utf-8').toLowerCase()
+    expect(appSource).not.toContain('vraie saison des feux')
+    expect(appSource).not.toContain('true fire season')
+    expect(appSource).not.toContain('brûlis agricoles')
+    expect(appSource).not.toContain('feux de lisière')
+    expect(appSource).not.toContain('farm clearing')
+  }, 30000)
 })
 
 describe('M2 API contract alignment across snapshots and CSV fallback', () => {

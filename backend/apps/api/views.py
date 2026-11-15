@@ -72,7 +72,7 @@ DOCUMENTED_LIMITATIONS = [
     "Hotspot counts measure thermal detections, not distinct individual wildfire events.",
     "MODIS Terra operated without Aqua from 2000-11 through 2002-06; calibrated separately.",
     "Suomi-NPP VIIRS operational FIRMS delivery ended 2026-11-02; NOAA-20 VIIRS provides continuity.",
-    "Persistent industrial/oil gas flares (~21-24% of raw VIIRS in Gabon) are filtered when filter_static=true.",
+    "When filter_static=true, type 2/3 detections and type 0 detections inside 183 persistent 0.05° candidate cells (~5.5 km grids, ~21-24% of raw VIIRS in Gabon; not individually ground-verified industrial facilities) are excluded.",
     "NASA FIRMS June 15, 2025 notice: some VIIRS Vxx14IMGML Collection 2 files had type 0/2 differences between versions 1/2 and reprocessed version 3.",
 ]
 
@@ -691,6 +691,9 @@ def _export_series_csv(request, region_code: str, filter_static: bool, start_mon
         fb = fallback_export_series_csv(region_code, filter_static, start_month, end_month, custom_geom)
         if fb is not None:
             return fb
+        return offline_unavailable_response(
+            "Requested export scope is unavailable in offline snapshot fallback mode."
+        )
 
     try:
         if custom_geom is not None:

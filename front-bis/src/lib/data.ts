@@ -339,23 +339,83 @@ export const secondarySeason = computed(() =>
     .map((d) => d.month),
 )
 
-/** Série mensuelle des détections écartées par le filtre complet (différence entre tout confondu et type 0 hors sources persistantes). */
-export const flareSeries = computed<CalendarPoint[]>(() => {
-  const cleanByMonth = new Map(staticSeries.value.map((p) => [p.month, p]))
-  const rawDiffs = allSeries.value.map((allPt) => {
+function diffSensorCount(
+  allVal: number | null | undefined,
+  cleanVal: number | null | undefined,
+  field: string,
+  issues: string[],
+): number | null {
+  if (allVal == null && cleanVal == null) {
+    return null
+  }
+  if (allVal == null || cleanVal == null) {
+    issues.push(`missing_sensor_input:${field}`)
+    return null
+  }
+  const diff = allVal - cleanVal
+  if (diff < 0) {
+    issues.push(`negative_series_delta:${field}`)
+    return null
+  }
+  return diff
+}
+
+/**
+ * Série mensuelle des détections écartées (différence exploratoire `allPoints - cleanPoints`).
+ * Aucune valeur manquante n'est remplacée par MODIS + S-NPP et aucun écart négatif n'est écrêté à 0 :
+ * ces cas deviennent indisponibles (`null`) et sont signalés dans `uncertainty_note`.
+ */
+export function computeExcludedSeries(
+  allPoints: CalendarPoint[],
+  cleanPoints: CalendarPoint[],
+): CalendarPoint[] {
+  const cleanByMonth = new Map(cleanPoints.map((p) => [p.month, p]))
+  const rawDiffs = allPoints.map((allPt) => {
     const cleanPt = cleanByMonth.get(allPt.month)
-    const modis = Math.max(0, (allPt.modis_count ?? 0) - (cleanPt?.modis_count ?? 0))
-    const terra = Math.max(0, (allPt.modis_terra_count ?? 0) - (cleanPt?.modis_terra_count ?? 0))
-    const aqua = Math.max(0, (allPt.modis_aqua_count ?? 0) - (cleanPt?.modis_aqua_count ?? 0))
-    const snpp = Math.max(0, (allPt.viirs_snpp_count ?? 0) - (cleanPt?.viirs_snpp_count ?? 0))
-    const noaa20 = Math.max(0, (allPt.viirs_noaa20_count ?? 0) - (cleanPt?.viirs_noaa20_count ?? 0))
-    const harm =
-      allPt.harmonized_value !== null &&
-      cleanPt?.harmonized_value !== null &&
-      cleanPt?.harmonized_value !== undefined
-        ? Math.max(0, Math.round((allPt.harmonized_value - cleanPt.harmonized_value) * 10) / 10)
-        : modis + snpp
-    return { allPt, modis, terra, aqua, snpp, noaa20, harm }
+    const issues: string[] = []
+    if (!cleanPt) {
+      issues.push('missing_clean_month')
+    }
+
+    const modis = diffSensorCount(allPt.modis_count, cleanPt?.modis_count, 'modis_count', issues)
+    const terra = diffSensorCount(
+      allPt.modis_terra_count,
+      cleanPt?.modis_terra_count,
+      'modis_terra_count',
+      issues,
+    )
+    const aqua = diffSensorCount(
+      allPt.modis_aqua_count,
+      cleanPt?.modis_aqua_count,
+      'modis_aqua_count',
+      issues,
+    )
+    const snpp = diffSensorCount(
+      allPt.viirs_snpp_count,
+      cleanPt?.viirs_snpp_count,
+      'viirs_snpp_count',
+      issues,
+    )
+    const noaa20 = diffSensorCount(
+      allPt.viirs_noaa20_count,
+      cleanPt?.viirs_noaa20_count,
+      'viirs_noaa20_count',
+      issues,
+    )
+
+    let harm: number | null = null
+    if (allPt.harmonized_value != null && cleanPt?.harmonized_value != null) {
+      const diff = Math.round((allPt.harmonized_value - cleanPt.harmonized_value) * 10) / 10
+      if (diff < 0) {
+        issues.push('negative_series_delta:harmonized_value')
+      } else {
+        harm = diff
+      }
+    } else {
+      issues.push('missing_harmonized_input:harmonized_value')
+    }
+
+    return { allPt, modis, terra, aqua, snpp, noaa20, harm, issues }
   })
 
   const medians = Array.from({ length: 12 }, (_, idx) => {
@@ -363,13 +423,20 @@ export const flareSeries = computed<CalendarPoint[]>(() => {
     const vals = rawDiffs
       .filter((d) => yearOf(d.allPt.month) >= 2001 && monthNumber(d.allPt.month) === calMonth)
       .map((d) => d.harm)
-    return median(vals)
+      .filter((v): v is number => v !== null)
+    return vals.length ? median(vals) : null
   })
 
-  return rawDiffs.map(({ allPt, modis, terra, aqua, snpp, noaa20, harm }) => {
-    const base = medians[monthNumber(allPt.month) - 1] ?? 0
-    const abs = harm - base
-    const pct = base > 0 ? Math.round((abs / base) * 1000) / 10 : null
+  return rawDiffs.map(({ allPt, modis, terra, aqua, snpp, noaa20, harm, issues }) => {
+    const base = medians[monthNumber(allPt.month) - 1] ?? null
+    const baseRounded = base !== null ? Math.round(base * 10) / 10 : null
+    const abs = harm !== null && base !== null ? Math.round((harm - base) * 10) / 10 : null
+    const pct =
+      harm !== null && base !== null && base > 0 ? Math.round((abs! / base) * 1000) / 10 : null
+    const uncertaintyNote = issues.length
+      ? [allPt.uncertainty_note, ...issues].filter(Boolean).join('; ')
+      : allPt.uncertainty_note
+
     return {
       ...allPt,
       modis_count: modis,
@@ -380,12 +447,18 @@ export const flareSeries = computed<CalendarPoint[]>(() => {
       harmonized_value: harm,
       ci_low: null,
       ci_high: null,
-      baseline_median: Math.round(base * 10) / 10,
-      anomaly_absolute: Math.round(abs * 10) / 10,
+      baseline_median: baseRounded,
+      anomaly_absolute: abs,
       anomaly_percent: pct,
+      uncertainty_note: uncertaintyNote,
     }
   })
-})
+}
+
+/** Série mensuelle des détections écartées par le filtre complet (différence entre tout confondu et type 0 hors sources persistantes). */
+export const flareSeries = computed<CalendarPoint[]>(() =>
+  computeExcludedSeries(allSeries.value, staticSeries.value),
+)
 
 /** Profil mensuel moyen (médiane 2001–2025) comparant type 0 hors sources persistantes et détections écartées. */
 export const monthlySeasonComparison = computed(() =>
@@ -742,17 +815,84 @@ function sumSensors(series: CalendarPoint[]) {
   return { modis, snpp, noaa20, total: modis + snpp + noaa20 }
 }
 
+function diffAggregate(allVal: number, cleanVal: number): number | null {
+  const diff = allVal - cleanVal
+  return diff >= 0 ? diff : null
+}
+
+function shareOf(part: number | null, total: number | null): number | null {
+  if (part === null || total === null || total <= 0) return null
+  return Math.round((part / total) * 1000) / 10
+}
+
+function sensorPeriod(
+  series: CalendarPoint[],
+  key: 'modis_count' | 'viirs_snpp_count' | 'viirs_noaa20_count',
+): [string | null, string | null] {
+  const months = series.filter((p) => p[key] !== null).map((p) => p.month)
+  return months.length ? [months[0]!, months[months.length - 1]!] : [null, null]
+}
+
 /**
  * Composition chiffrée calculée en direct depuis les séries DB (polygone Gabon `GA`)
- * et complétée par l'audit des tags FIRMS `type` sur les détections sources.
+ * avec une partition exclusive par capteur et période d'observation, distincte de
+ * l'audit statique indépendant des tags FIRMS `type` sur les détections sources SP.
  */
 export const composition = computed(() => {
   const gaAll = sumSensors(allSeries.value)
   const gaClean = sumSensors(staticSeries.value)
-  const gaExcluded = Math.max(0, gaAll.total - gaClean.total)
-  const snppExcluded = Math.max(0, gaAll.snpp - gaClean.snpp)
-  const noaa20Excluded = Math.max(0, gaAll.noaa20 - gaClean.noaa20)
-  const modisExcluded = Math.max(0, gaAll.modis - gaClean.modis)
+  const gaExcluded = diffAggregate(gaAll.total, gaClean.total)
+  const modisExcluded = diffAggregate(gaAll.modis, gaClean.modis)
+  const snppExcluded = diffAggregate(gaAll.snpp, gaClean.snpp)
+  const noaa20Excluded = diffAggregate(gaAll.noaa20, gaClean.noaa20)
+
+  const excludedBySensorPartition = [
+    {
+      id: 'modis' as const,
+      label: 'MODIS (Terra + Aqua · 1 km)',
+      period: sensorPeriod(allSeries.value, 'modis_count'),
+      all: gaAll.modis,
+      clean: gaClean.modis,
+      excluded: modisExcluded,
+      shareOfAll: shareOf(modisExcluded, gaAll.modis),
+      shareOfExcluded: shareOf(modisExcluded, gaExcluded),
+    },
+    {
+      id: 'snpp' as const,
+      label: 'VIIRS S-NPP (375 m)',
+      period: sensorPeriod(allSeries.value, 'viirs_snpp_count'),
+      all: gaAll.snpp,
+      clean: gaClean.snpp,
+      excluded: snppExcluded,
+      shareOfAll: shareOf(snppExcluded, gaAll.snpp),
+      shareOfExcluded: shareOf(snppExcluded, gaExcluded),
+    },
+    {
+      id: 'noaa20' as const,
+      label: 'VIIRS NOAA-20 (375 m)',
+      period: sensorPeriod(allSeries.value, 'viirs_noaa20_count'),
+      all: gaAll.noaa20,
+      clean: gaClean.noaa20,
+      excluded: noaa20Excluded,
+      shareOfAll: shareOf(noaa20Excluded, gaAll.noaa20),
+      shareOfExcluded: shareOf(noaa20Excluded, gaExcluded),
+    },
+  ]
+
+  // Audit indépendant sur les lignes PostGIS ingérées (archive SP 2000-11 -> 2025-12) :
+  // ses parts sont calculées sur `provenance.ga.totalDetections`, jamais sur la série dynamique.
+  const provenanceAudit = {
+    isIndependentStaticAudit: true as const,
+    period: [provenance.archiveStart, provenance.archiveEnd] as const,
+    scopeTotal: provenance.ga.totalDetections,
+    filteredTotal: provenance.ga.filteredTotal,
+    type23Count: provenance.ga.totalType23Count,
+    type23ShareOfScope:
+      Math.round((provenance.ga.totalType23Count / provenance.ga.totalDetections) * 1000) / 10,
+    type0InMaskCount: provenance.ga.totalType0InMaskCount,
+    type0InMaskShareOfScope:
+      Math.round((provenance.ga.totalType0InMaskCount / provenance.ga.totalDetections) * 1000) / 10,
+  }
 
   return {
     archiveTotal: totalDetectionsDb.value,
@@ -760,38 +900,26 @@ export const composition = computed(() => {
     gaTotal: gaAll.total,
     gaClean: gaClean.total,
     gaExcluded,
-    gaExcludedShare: gaAll.total > 0 ? Math.round((gaExcluded / gaAll.total) * 1000) / 10 : 0,
-    gaCleanShare: gaAll.total > 0 ? Math.round((gaClean.total / gaAll.total) * 1000) / 10 : 0,
+    gaExcludedShare: shareOf(gaExcluded, gaAll.total),
+    gaCleanShare: shareOf(gaClean.total, gaAll.total),
 
-    // Décomposition du filtre complet (type 2/3 hors masque + type 0 dans une cellule candidate).
-    gaType23Count: provenance.ga.totalType23Count,
-    gaType23Share:
-      gaAll.total > 0
-        ? Math.round((provenance.ga.totalType23Count / gaAll.total) * 1000) / 10
-        : 0,
-    gaType0InMaskCount: provenance.ga.totalType0InMaskCount,
-    gaType0InMaskShare:
-      gaAll.total > 0
-        ? Math.round((provenance.ga.totalType0InMaskCount / gaAll.total) * 1000) / 10
-        : 0,
+    excludedBySensorPartition,
+    provenanceAudit,
 
     modisTotal: gaAll.modis,
     modisClean: gaClean.modis,
     modisExcluded,
-    modisExcludedShare:
-      gaAll.modis > 0 ? Math.round((modisExcluded / gaAll.modis) * 1000) / 10 : 0,
+    modisExcludedShare: shareOf(modisExcluded, gaAll.modis),
 
     snppTotal: gaAll.snpp,
     snppClean: gaClean.snpp,
     snppExcluded,
-    snppExcludedShare:
-      gaAll.snpp > 0 ? Math.round((snppExcluded / gaAll.snpp) * 1000) / 10 : 0,
+    snppExcludedShare: shareOf(snppExcluded, gaAll.snpp),
 
     noaa20Total: gaAll.noaa20,
     noaa20Clean: gaClean.noaa20,
     noaa20Excluded,
-    noaa20ExcludedShare:
-      gaAll.noaa20 > 0 ? Math.round((noaa20Excluded / gaAll.noaa20) * 1000) / 10 : 0,
+    noaa20ExcludedShare: shareOf(noaa20Excluded, gaAll.noaa20),
 
     snppType23Count: provenance.ga.snppType23Count,
     snppType23Share:

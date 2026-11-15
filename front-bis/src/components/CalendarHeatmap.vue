@@ -40,23 +40,28 @@ const activeSeries = computed<CalendarPoint[]>(() => {
 
 const byMonth = computed(() => new Map(activeSeries.value.map((p) => [p.month, p])))
 
-function getPointRaw(p: CalendarPoint | undefined): number {
-  if (!p) return 0
+function getPointRaw(p: CalendarPoint | undefined): number | null {
+  if (!p) return null
   const y = yearOf(p.month)
   if (y < 2012) {
-    return p.modis_count ?? 0
+    return p.modis_count ?? null
   }
-  return p.viirs_snpp_count ?? p.modis_count ?? 0
+  return p.viirs_snpp_count ?? p.modis_count ?? null
 }
 
-function getPointValue(p: CalendarPoint | undefined, scale: ScaleMode = scaleMode.value): number {
-  if (!p) return 0
+function getPointValue(
+  p: CalendarPoint | undefined,
+  scale: ScaleMode = scaleMode.value,
+): number | null {
+  if (!p) return null
   if (scale === 'raw') return getPointRaw(p)
-  return p.harmonized_value ?? 0
+  return p.harmonized_value ?? null
 }
 
 const maxValue = computed(() => {
-  const vals = activeSeries.value.map((p) => getPointValue(p))
+  const vals = activeSeries.value
+    .map((p) => getPointValue(p))
+    .filter((v): v is number => v !== null)
   return Math.max(...vals, 1)
 })
 
@@ -74,6 +79,7 @@ const activeMedians = computed(() =>
     const vals = activeSeries.value
       .filter((p) => yearOf(p.month) >= 2001 && monthNumber(p.month) === calMonth)
       .map((p) => getPointValue(p))
+      .filter((v): v is number => v !== null)
     return median(vals)
   }),
 )
@@ -219,33 +225,38 @@ const flarePoint = computed<CalendarPoint | undefined>(() =>
 
 const activeValue = computed(() => getPointValue(active.value))
 
-const monthVegCount = computed(() =>
+const monthVegCount = computed<number | null>(() =>
   scaleMode.value === 'raw'
     ? getPointValue(cleanPoint.value, 'raw')
-    : (cleanPoint.value?.harmonized_value ?? 0),
+    : (cleanPoint.value?.harmonized_value ?? null),
 )
-const monthFlareCount = computed(() =>
-  scaleMode.value === 'raw'
-    ? Math.max(0, getPointValue(allPoint.value, 'raw') - getPointValue(cleanPoint.value, 'raw'))
-    : (flarePoint.value?.harmonized_value ??
-       Math.max(0, (allPoint.value?.harmonized_value ?? 0) - (cleanPoint.value?.harmonized_value ?? 0))),
-)
-const monthTotalCount = computed(() =>
+const monthFlareCount = computed<number | null>(() => {
+  if (scaleMode.value === 'raw') {
+    const allVal = getPointValue(allPoint.value, 'raw')
+    const vegVal = getPointValue(cleanPoint.value, 'raw')
+    if (allVal === null || vegVal === null || allVal < vegVal) return null
+    return allVal - vegVal
+  }
+  return flarePoint.value?.harmonized_value ?? null
+})
+const monthTotalCount = computed<number | null>(() =>
   scaleMode.value === 'raw'
     ? getPointValue(allPoint.value, 'raw')
-    : (allPoint.value?.harmonized_value ?? (monthVegCount.value + monthFlareCount.value)),
+    : (allPoint.value?.harmonized_value ?? null),
 )
-const monthVegShare = computed(() => {
+const monthVegShare = computed<number | null>(() => {
   const tot = monthTotalCount.value
-  return tot > 0 ? Math.round((monthVegCount.value / tot) * 1000) / 10 : 0
+  const veg = monthVegCount.value
+  return tot !== null && tot > 0 && veg !== null ? Math.round((veg / tot) * 1000) / 10 : null
 })
-const monthFlareShare = computed(() => {
+const monthFlareShare = computed<number | null>(() => {
   const tot = monthTotalCount.value
-  return tot > 0 ? Math.round((monthFlareCount.value / tot) * 1000) / 10 : 0
+  const flare = monthFlareCount.value
+  return tot !== null && tot > 0 && flare !== null ? Math.round((flare / tot) * 1000) / 10 : null
 })
 
-const activeHarmonizedValue = computed(() => active.value.harmonized_value ?? 0)
-const activeBaselineMedian = computed(() => active.value.baseline_median ?? 0)
+const activeHarmonizedValue = computed(() => active.value.harmonized_value)
+const activeBaselineMedian = computed(() => active.value.baseline_median)
 const activeAnomalyDiff = computed(() =>
   active.value.baseline_median !== null && active.value.harmonized_value !== null
     ? Math.round((active.value.harmonized_value - active.value.baseline_median) * 10) / 10
@@ -287,6 +298,15 @@ const rankInfo = computed(() => {
 
 const activeInterpretation = computed(() => {
   if (calendarMode.value === 'flare') {
+    if (getPointValue(active.value) === null) {
+      return {
+        text: t(
+          'Différence écartée indisponible (valeur harmonisée manquante ou écart négatif)',
+          'Excluded difference unavailable (missing harmonized value or negative delta)',
+        ),
+        tone: 'neutral',
+      }
+    }
     return {
       text: t(
         'Détections écartées (types 2/3 + masque 0,05° · catégorie exploratoire)',
@@ -707,13 +727,13 @@ onMounted(async () => {
           <div class="type-ratio-bar" aria-hidden="true">
             <div
               class="ratio-segment veg"
-              :style="{ width: `${monthVegShare}%` }"
-              :title="`Type 0 hors sources : ${monthVegShare}%`"
+              :style="{ width: `${monthVegShare ?? 0}%` }"
+              :title="`Type 0 hors sources : ${monthVegShare ?? '—'}%`"
             ></div>
             <div
               class="ratio-segment flare"
-              :style="{ width: `${monthFlareShare}%` }"
-              :title="`Détections écartées : ${monthFlareShare}%`"
+              :style="{ width: `${monthFlareShare ?? 0}%` }"
+              :title="`Détections écartées : ${monthFlareShare ?? '—'}%`"
             ></div>
           </div>
 
@@ -725,7 +745,7 @@ onMounted(async () => {
                 <div>
                   <div class="type-name-line">
                     <span class="type-name">{{ t('Type 0 hors sources persistantes (exploratoire)', 'Type 0 outside persistent sources (exploratory)') }}</span>
-                    <span class="type-badge-veg">{{ monthVegShare }} %</span>
+                    <span class="type-badge-veg">{{ monthVegShare !== null ? `${monthVegShare} %` : '—' }}</span>
                   </div>
                   <p class="type-desc">{{ t('Détections thermiques type 0 hors des 183 cellules candidates du masque 0,05°.', 'Type-0 thermal detections outside the 183 candidate 0.05° mask cells.') }}</p>
                 </div>
@@ -742,7 +762,7 @@ onMounted(async () => {
                 <div>
                   <div class="type-name-line">
                     <span class="type-name">{{ t('Détections écartées par le filtre (exploratoire)', 'Detections excluded by filter (exploratory)') }}</span>
-                    <span class="type-badge-flare">{{ monthFlareShare }} %</span>
+                    <span class="type-badge-flare">{{ monthFlareShare !== null ? `${monthFlareShare} %` : '—' }}</span>
                   </div>
                   <p class="type-desc">{{ t('Différence de séries (types 2/3 + type 0 dans les cellules du masque ; pas toutes des torchères confirmées).', 'Series difference (types 2/3 + type 0 inside mask cells; not all confirmed gas flares).') }}</p>
                 </div>

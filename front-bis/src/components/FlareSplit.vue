@@ -11,11 +11,11 @@ import {
   monthlySeasonComparison,
 } from '@/lib/data'
 import { locale, t } from '@/lib/i18n'
-import { provenance } from '@/lib/provenance'
 
 const showMixed = ref(true)
 const hoveredMonth = ref<number | null>(null)
-const gaTagCount = provenance.ga.totalType23Count
+const sensorPartition = computed(() => composition.value.excludedBySensorPartition)
+const provenanceAudit = computed(() => composition.value.provenanceAudit)
 
 const monthShort = computed(() => (locale.value === 'en' ? MONTH_SHORT_EN : MONTH_SHORT))
 const monthNames = computed(() => (locale.value === 'en' ? MONTH_NAMES_EN : MONTH_NAMES))
@@ -95,8 +95,8 @@ const activeBar = computed(() => {
     <!-- Barre proportionnelle unique des 285 013 détections au Gabon -->
     <div class="split-block">
       <div class="split-bar" role="img" :aria-label="t('Répartition entre type 0 hors sources persistantes et détections écartées par le filtre', 'Type-0 outside persistent sources vs detections excluded by the filter')">
-        <div class="split-veg" :style="{ width: `${vegShare}%` }"></div>
-        <div class="split-flare" :style="{ width: `${flareShare}%` }"></div>
+        <div class="split-veg" :style="{ width: `${vegShare ?? 0}%` }"></div>
+        <div class="split-flare" :style="{ width: `${flareShare ?? 0}%` }"></div>
       </div>
 
       <div class="split-stats">
@@ -118,8 +118,8 @@ const activeBar = computed(() => {
           <p>
             {{
               t(
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %) + ${formatCount(composition.gaType0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates 0,05° (${formatDecimal(composition.gaType0InMaskShare, 1)} %) — pas toutes des torchères confirmées.`,
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)}%) + ${formatCount(composition.gaType0InMaskCount)} type 0 inside ${composition.maskedCells} candidate 0.05° cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%) — not all confirmed flares.`,
+                `Partition exclusive par capteur/période : ${sensorPartition.map((s) => `${s.label.split(' (')[0]} (${s.period[0] ?? '—'} → ${s.period[1] ?? '—'}) : ${formatCount(s.excluded)}`).join(' · ')}. Toutes ne sont pas des torchères confirmées.`,
+                `Exclusive partition by sensor/period: ${sensorPartition.map((s) => `${s.label.split(' (')[0]} (${s.period[0] ?? '—'} → ${s.period[1] ?? '—'}): ${formatCount(s.excluded)}`).join(' · ')}. Not all are confirmed flares.`,
               )
             }}
           </p>
@@ -184,8 +184,8 @@ const activeBar = computed(() => {
     <p class="flare-note">
       {{
         t(
-          `La NASA classe ${formatCount(gaTagCount)} détections en type 2/3 (sources fixes ou offshore). Les ${formatCount(composition.gaType0InMaskCount)} autres sont des type 0 tombées dans ${composition.maskedCells} cellules candidates. Le filtre complet écarte ${formatCount(flareCount)} détections, mais toutes ne sont pas des torchères confirmées : c’est une exposition au critère, pas un taux de faux positifs.`,
-          `NASA tags ${formatCount(gaTagCount)} detections as type 2/3 (fixed or offshore sources). The other ${formatCount(composition.gaType0InMaskCount)} are type-0 detections inside ${composition.maskedCells} candidate cells. The full filter excludes ${formatCount(flareCount)} detections, but not all are confirmed flares: this is exposure to the criterion, not a false-positive rate.`,
+          `Audit indépendant de l’archive source SP (${provenanceAudit.period[0]}–${provenanceAudit.period[1]}, ${formatCount(provenanceAudit.scopeTotal)} lignes GA) : la NASA classe ${formatCount(provenanceAudit.type23Count)} détections en type 2/3 (${formatDecimal(provenanceAudit.type23ShareOfScope, 1)} %) et ${formatCount(provenanceAudit.type0InMaskCount)} en type 0 dans ${composition.maskedCells} cellules candidates 0,05° (${formatDecimal(provenanceAudit.type0InMaskShareOfScope, 1)} %). Ces sous-compteurs sont indépendants de la différence dynamique des séries : c’est une exposition au critère, pas un taux de faux positifs.`,
+          `Independent SP source archive audit (${provenanceAudit.period[0]}–${provenanceAudit.period[1]}, ${formatCount(provenanceAudit.scopeTotal)} GA rows): NASA tags ${formatCount(provenanceAudit.type23Count)} detections as type 2/3 (${formatDecimal(provenanceAudit.type23ShareOfScope, 1)}%) and ${formatCount(provenanceAudit.type0InMaskCount)} type-0 detections inside ${composition.maskedCells} candidate 0.05° cells (${formatDecimal(provenanceAudit.type0InMaskShareOfScope, 1)}%). Reported independently of the dynamic series difference: this reflects criterion exposure, not a false-positive rate.`,
         )
       }}
     </p>

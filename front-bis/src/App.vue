@@ -163,14 +163,16 @@ const rawChartPoints = computed(() =>
 )
 
 const flareChartPoints = computed(() =>
-  flareSeries.value.map((p) => ({
-    month: p.month,
-    raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
-    harm: null,
-    lo: null,
-    hi: null,
-    anomaly: null,
-  })),
+  flareSeries.value
+    .filter((p) => p.modis_count !== null || p.viirs_snpp_count !== null)
+    .map((p) => ({
+      month: p.month,
+      raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
+      harm: null,
+      lo: null,
+      hi: null,
+      anomaly: null,
+    })),
 )
 
 const rawAllDatasets = computed(() => [
@@ -241,8 +243,8 @@ const seasonCards = computed(() => {
       months: t('Juillet – Août', 'July – August'),
       values: t(`Juil. : ${jul}${unit} · Août : ${aug}${unit}`, `Jul: ${jul}${unit} · Aug: ${aug}${unit}`),
       note: t(
-        'Le cœur de la saison des feux : sols secs, brûlis agricoles et feux de lisière.',
-        'Peak fire season across Gabon: dry ground, farm clearing, and forest-edge fires.',
+        'Pic annuel des détections thermiques type 0 hors sources persistantes (catégorie exploratoire sans validation causale terrain).',
+        'Annual peak in type-0 thermal detections outside persistent sources (exploratory category without causal ground validation).',
       ),
       tone: 'hot',
     },
@@ -251,8 +253,8 @@ const seasonCards = computed(() => {
       months: t('Février – Mars', 'February – March'),
       values: t(`Fév. : ${feb}${unit} · Mar. : ${mar}${unit}`, `Feb: ${feb}${unit} · Mar: ${mar}${unit}`),
       note: t(
-        'Une reprise courte mais régulière des feux au nord et au centre du pays.',
-        'A brief but consistent rebound in northern and central Gabon.',
+        'Rebond secondaire mais régulier des détections thermiques au nord et au centre du pays.',
+        'A brief but recurring secondary rebound in thermal detections across northern and central Gabon.',
       ),
       tone: 'warm',
     },
@@ -261,8 +263,8 @@ const seasonCards = computed(() => {
       months: t('Novembre – Décembre', 'November – December'),
       values: t(`Nov. : ${nov}${unit} · Déc. : ${dec}${unit}`, `Nov: ${nov}${unit} · Dec: ${dec}${unit}`),
       note: t(
-        'Les fortes pluies étouffent les feux presque partout ; il ne reste guère que les sources de chaleur persistantes de la côte.',
-        'Heavy rainfall halts vegetation burning almost everywhere; coastal persistent heat sources remain.',
+        'Les fortes pluies réduisent fortement les détections de type 0 ; il subsiste surtout les sources de chaleur persistantes de la côte.',
+        'Heavy rainfall sharply curtails type-0 detections; coastal persistent heat sources remain.',
       ),
       tone: 'cool',
     },
@@ -390,9 +392,9 @@ onBeforeUnmount(() => {
               {{ t('Gabon · 2000 – 2025', 'Gabon · 2000 – 2025') }}
             </p>
             <h1 class="display display-xl hero-title">
-              <span class="line"><span>{{ t('Au Gabon, lire', 'In Gabon, read') }}</span></span>
+              <span class="line"><span>{{ t('Au Gabon, lire', 'In Gabon, reading') }}</span></span>
               <span class="line">
-                <span>{{ t('la vraie saison ', 'the true fire ') }}<em>{{ t('des feux.', 'season.') }}</em></span>
+                <span>{{ t('25 ans de détections ', '25 years of thermal ') }}<em>{{ t('thermiques.', 'detections.') }}</em></span>
               </span>
             </h1>
             <p class="hero-sub">
@@ -542,8 +544,8 @@ onBeforeUnmount(() => {
               ({{ formatCount(composition.gaExcluded) }})
               {{
                 t(
-                  ` sont écartées par le filtre complet : ${formatCount(composition.gaType23Count)} détections type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %, sources fixes ou offshore) et ${formatCount(composition.gaType0InMaskCount)} détections type 0 tombées dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %, ~5 km), surtout autour de Port-Gentil et de la côte de l’Ogooué-Maritime. Toutes ne sont pas des torchères confirmées.`,
-                  ` are excluded by the full filter: ${formatCount(composition.gaType23Count)} type 2/3 detections (${formatDecimal(composition.gaType23Share, 1)}%, fixed or offshore sources) and ${formatCount(composition.gaType0InMaskCount)} type-0 detections inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%, ~5 km), mostly around Port-Gentil and coastal Ogooué-Maritime. Not all of them are confirmed flares.`,
+                  ` sont écartées par le filtre complet (partition exclusive par capteur : ${composition.excludedBySensorPartition.map((s) => `${s.label.split(' (')[0]} ${formatCount(s.excluded)}`).join(', ')}). Sur l’audit indépendant de l’archive source SP (${formatCount(composition.provenanceAudit.scopeTotal)} lignes), on observe ${formatCount(composition.provenanceAudit.type23Count)} détections type 2/3 (${formatDecimal(composition.provenanceAudit.type23ShareOfScope, 1)} %) et ${formatCount(composition.provenanceAudit.type0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.provenanceAudit.type0InMaskShareOfScope, 1)} %, ~5 km) — pas toutes des torchères confirmées.`,
+                  ` are excluded by the full filter (exclusive partition by sensor: ${composition.excludedBySensorPartition.map((s) => `${s.label.split(' (')[0]} ${formatCount(s.excluded)}`).join(', ')}). In the independent SP source archive audit (${formatCount(composition.provenanceAudit.scopeTotal)} rows), ${formatCount(composition.provenanceAudit.type23Count)} are type 2/3 (${formatDecimal(composition.provenanceAudit.type23ShareOfScope, 1)}%) and ${formatCount(composition.provenanceAudit.type0InMaskCount)} are type-0 detections inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.provenanceAudit.type0InMaskShareOfScope, 1)}%, ~5 km) — not all confirmed flares.`,
                 )
               }}
             </p>
@@ -552,7 +554,7 @@ onBeforeUnmount(() => {
               <div>
                 <div class="stat stat-small">{{ formatCount(composition.gaClean) }}</div>
                 <div class="stat-label">
-                  {{ t('détections type 0 hors sources persistantes (61,6 % du total)', 'type-0 detections outside persistent sources (61.6% of total)') }}
+                  {{ t(`détections type 0 hors sources persistantes (${formatDecimal(composition.gaCleanShare, 1)} % du total)`, `type-0 detections outside persistent sources (${formatDecimal(composition.gaCleanShare, 1)}% of total)`) }}
                 </div>
               </div>
               <div>
@@ -664,14 +666,14 @@ onBeforeUnmount(() => {
             <div>
               <p class="kicker reveal">03 — {{ t('Le calendrier', 'The fire calendar') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                {{ t('La vraie saison des feux au Gabon.', 'Gabon’s true fire season.') }}
+                {{ t('25 ans de détections thermiques au Gabon.', '25 years of thermal detections in Gabon.') }}
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  'Chaque case représente un mois au Gabon de 2000 à 2025 : plus la couleur est sombre, plus il y a eu de détections. Utilisez les 4 filtres ci-dessous pour comparer les type 0 hors sources persistantes, les brûlis habituels vs flambées anormales, ou les détections écartées par le filtre.',
-                  'Each cell is one month in Gabon from 2000 to 2025: darker cells mean more detections. Use the 4 filters below to switch between type 0 outside persistent sources, routine vs unusual surges, or detections excluded by the filter.',
+                  'Chaque case représente un mois au Gabon de 2000 à 2025 : plus la couleur est sombre, plus il y a eu de détections. Utilisez les 4 filtres ci-dessous pour explorer les détections thermiques type 0 hors sources persistantes, les écarts statistiques à la médiane (catégories exploratoires) ou la série des détections écartées.',
+                  'Each cell is one month in Gabon from 2000 to 2025: darker cells mean more detections. Use the 4 filters below to explore type-0 thermal detections outside persistent sources, statistical deviations from the median (exploratory categories), or the excluded detections series.',
                 )
               }}
             </p>
@@ -752,8 +754,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Zones pétrolières et industrielles (Port-Gentil, Gamba, plateformes) où des sources de chaleur persistent toute l’année, sans lien avec les saisons agricoles. Ce sont des cellules candidates, pas des torchères confirmées une par une.',
-                    'Oil and industrial zones (Port-Gentil, Gamba, offshore rigs) where heat sources persist year-round, unrelated to seasonal field clearing. These are candidate cells, not individually confirmed flares.',
+                    'Zones pétrolières et industrielles (Port-Gentil, Gamba, plateformes) où des sources de chaleur persistent toute l’année, sans lien avec la saisonnalité des détections type 0. Ce sont des cellules candidates, pas des torchères confirmées une par une.',
+                    'Oil and industrial zones (Port-Gentil, Gamba, offshore rigs) where heat sources persist year-round, unrelated to seasonal type-0 detection patterns. These are candidate cells, not individually confirmed flares.',
                   )
                 }}
               </p>
@@ -766,8 +768,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Grandes savanes et plateaux où se concentre l’essentiel des feux de saison sèche entre juin et septembre.',
-                    'Open savannas and plateaus where the bulk of Gabon’s dry-season burning concentrates between June and September.',
+                    'Grandes savanes et plateaux où se concentre l’essentiel des détections thermiques type 0 entre juin et septembre (sans attribution causale directe).',
+                    'Open savannas and plateaus where most dry-season type-0 thermal detections concentrate between June and September (without direct causal attribution).',
                   )
                 }}
               </p>
@@ -780,8 +782,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Forêts denses plus humides : les alertes y restent plus rares et suivent surtout les petits brûlis agricoles autour des villages et routes.',
-                    'Wetter rainforest interior: detections remain lighter and mostly track small farm clearings near roads and settlements.',
+                    'Forêts denses plus humides : les détections thermiques type 0 y restent plus rares et dispersées (catégorie exploratoire, sans validation causale locale).',
+                    'Wetter rainforest interior: type-0 thermal detections remain sparser and more dispersed (exploratory category, without causal ground validation).',
                   )
                 }}
               </p>
