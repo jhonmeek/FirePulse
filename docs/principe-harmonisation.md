@@ -33,6 +33,9 @@ Without separating candidate persistent sources and rescaling MODIS onto VIIRS s
 
 ---
 
+### Step 2 — Train on the Overlap and Evaluate Out-of-Sample
+Models are fitted on **`2012-02` → `2019-12`** (`95` training months) and metrics are computed on **`2020-01` → `2025-12`** (`72` test months). These historical results are **exploratory**: the test window has been used during prior development iterations and does not constitute independent validation.
+
 ## 2. Live Baseline `v2.0` Pipeline
 
 Implemented in [`build_baseline_series.py`](../backend/apps/harmonization/management/commands/build_baseline_series.py) using **VIIRS S-NPP 375 m** (`VIIRS_375m_SNPP_equiv`) as the unified scale:
@@ -47,16 +50,13 @@ $$
 \hat{y} = \exp\big(p \cdot \ln(1 + x) + q\big) - 1
 $$
 
-Exploratory historical `v2.0` Gabon baseline figures (`GA`, `filter_static=true`):
-- **MODIS Terra + Aqua (`power_law_log1p`)**: `p ≈ 0.944`, `q ≈ 1.653`
-- **MODIS Terra-only (`terra_only_power_law`, `< 2002-07`)**: `p ≈ 0.691`, `q ≈ 3.681`
-- **2020–2025 evaluation (`v2.0` live export)**: Naive MAE `≈ 355.6` (`R² ≈ 0.143`) → `power_law_log1p` MAE `≈ 100.8` (`R² ≈ 0.919`, bias `≈ +41.8`).
+Exploratory historical Gabon figures (`GA`, `filter_static=true`, `v2.0`):
+- **MODIS Terra + Aqua (`power_law_log1p`)**: `p = 0.9438`, `q = 1.6529`
+- **MODIS Terra-only (`terra_only_power_law`, `< 2002-07`)**: `p = 0.691`, `q = 3.6809`
+- **2020–2025 Evaluation (`GA`, `filter_static=true`)**: Average monthly error (`MAE`) drops from **`355.72`** (`naive`, `R² = 0.1426`) to **`100.87`** (`power_law_log1p`, **`R² = 0.9189`**).
 
-These historical results are exploratory: the test period was also used for other choices and is not an independent validation.
-
-### Step 3 — Nominal 80% Uncertainty Band & Timeline Assembly
-Reconstructed MODIS months (`2000-11`–`2012-01`) carry an asymmetric nominal 80% band `[ci_low, ci_high]` (`conformal_q80_log ≈ 0.524`, `conformal_q80_terra_log = 0.6445`), followed by direct S-NPP observations (`2012-02`–`2025-12` in the archive) and the post-2026 NOAA-20 bridge projection (`2026-11+`). Calendar months are normalized against their `2001–2025` calendar-month medians to measure seasonal anomalies (`%` and absolute deltas).
-In the historical baseline, the quantile uses test-period residuals: independent coverage is not demonstrated. A nominal 80% target does not guarantee 80% coverage, especially for time series.
+### Step 3 — Plot a Nominal 80% Uncertainty Band
+For the reconstructed MODIS history (`2000–2012`), residual spread is quantified in log space (`conformal_q80_log = 0.5309`, `conformal_q80_terra_log = 0.6445`) to plot a `[ci_low, ci_high]` uncertainty envelope around the estimated curve. In the historical baseline, the quantile uses test-period residuals, so independent coverage is not established. A nominal 80% target does not guarantee 80% empirical coverage, particularly on time-series data.
 
 > The `2012-02`–`2026-10` S-NPP and `2026-11+` NOAA-20 regimes describe the **reconstruction**, not observed demo data: no 2026 observations are ingested. The NOAA-20 ratio used by the live reconstruction (`1.0381`, `2019–2025`) differs from the held-out validation ratio (`0.940`, `2018–2019`).
 
@@ -103,3 +103,10 @@ python front-bis/scripts/validate_harmonization.py
 ```
 
 Outputs: [`front-bis/src/data/validation.json`](../front-bis/src/data/validation.json) and [`front-bis/src/data/validation_series.csv`](../front-bis/src/data/validation_series.csv).
+
+---
+
+## 5. Derived UI Display Series (`front-bis/src/lib/data.ts`)
+
+- **`computeExcludedSeries(allPoints, cleanPoints)` / `flareSeries`**: Computes exploratory excluded thermal detections by exact subtraction (`allPoints - cleanPoints`) when both inputs are non-null and `allPoints >= cleanPoints`. Missing inputs (`null` or absent month), pre-launch both-`null` sensor fields, and negative deltas (`all < clean`) stay `null` (unavailable) with explicit diagnostic tokens appended to `uncertainty_note` (`missing_clean_month`, `missing_sensor_input:*`, `missing_harmonized_input:harmonized_value`, `negative_series_delta:*`) rather than falling back to `modis + snpp` or clamping to `0`.
+- **Sensor Partition vs Static Provenance Audit (`composition`)**: The dynamic series exclusion total (`gaExcluded`) is partitioned exclusively by active instrument/period (`excludedBySensorPartition`: MODIS `2000-11`→`2025-12`, VIIRS S-NPP `2012-01`→`2025-12`, VIIRS NOAA-20 `2018-04`→`2025-12`). Static FIRMS `type` counts (`57,934` type 2/3 and `51,579` type 0 in `183` candidate cells) are exposed separately in `provenanceAudit`, normalized solely over the `285,013` ingested GA SP rows (`2000-11`→`2025-12`).

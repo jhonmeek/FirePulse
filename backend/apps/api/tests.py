@@ -244,6 +244,13 @@ class FirePulseModelsAndApiTests(TestCase):
         meth = self.client.get("/api/v1/methodology/?region=GA")
         self.assertEqual(meth.status_code, 200)
         self.assertEqual(meth.json()["static_mask_summary"]["masked_cells_count"], 1)
+        self.assertTrue(
+            any(
+                "0.05° candidate cells" in item
+                and "not individually ground-verified industrial facilities" in item
+                for item in meth.json()["limitations"]
+            )
+        )
 
         export = self.client.get("/api/v1/export/?region=GA")
         self.assertEqual(export.status_code, 200)
@@ -958,6 +965,29 @@ class FirePulseModelsAndApiTests(TestCase):
                     self.assertEqual(pts_503.status_code, 503)
                     self.assertEqual(pts_503["X-FirePulse-Cache"], "BYPASS")
 
+                    poly_geojson = json.dumps(
+                        {
+                            "type": "Polygon",
+                            "coordinates": [[[11.0, -2.0], [12.0, -2.0], [12.0, -1.0], [11.0, -1.0], [11.0, -2.0]]],
+                        }
+                    )
+                    csv_bbox_503 = self.client.get(
+                        "/api/v1/export/?dataset=series&bbox=11.0,-2.0,12.0,-1.0"
+                    )
+                    self.assertEqual(csv_bbox_503.status_code, 503)
+                    self.assertEqual(csv_bbox_503["X-FirePulse-Cache"], "BYPASS")
+                    self.assertIn("no-store", csv_bbox_503["Cache-Control"])
+                    self.assertIn("error", csv_bbox_503.json())
+
+                    csv_poly_503 = self.client.get(
+                        "/api/v1/export/",
+                        {"dataset": "series", "polygon": poly_geojson},
+                    )
+                    self.assertEqual(csv_poly_503.status_code, 503)
+                    self.assertEqual(csv_poly_503["X-FirePulse-Cache"], "BYPASS")
+                    self.assertIn("no-store", csv_poly_503["Cache-Control"])
+                    self.assertIn("error", csv_poly_503.json())
+
             cache.clear()
             invalidate_api_cache()
             with override_settings(DEMO_SNAPSHOT_DIR=out, FORCE_SNAPSHOT_FALLBACK=False):
@@ -985,6 +1015,31 @@ class FirePulseModelsAndApiTests(TestCase):
                     bbox_err = self.client.get("/api/v1/calendar/?bbox=11.0,-2.0,12.0,-1.0")
                     self.assertEqual(bbox_err.status_code, 503)
                     self.assertEqual(bbox_err["Cache-Control"], "no-store")
+
+                    csv_bbox_err = self.client.get(
+                        "/api/v1/export/?dataset=series&bbox=11.0,-2.0,12.0,-1.0"
+                    )
+                    self.assertEqual(csv_bbox_err.status_code, 503)
+                    self.assertEqual(csv_bbox_err["X-FirePulse-Cache"], "BYPASS")
+                    self.assertIn("no-store", csv_bbox_err["Cache-Control"])
+                    self.assertIn("error", csv_bbox_err.json())
+
+                    csv_poly_err = self.client.get(
+                        "/api/v1/export/",
+                        {
+                            "dataset": "series",
+                            "polygon": json.dumps(
+                                {
+                                    "type": "Polygon",
+                                    "coordinates": [[[11.0, -2.0], [12.0, -2.0], [12.0, -1.0], [11.0, -1.0], [11.0, -2.0]]],
+                                }
+                            ),
+                        },
+                    )
+                    self.assertEqual(csv_poly_err.status_code, 503)
+                    self.assertEqual(csv_poly_err["X-FirePulse-Cache"], "BYPASS")
+                    self.assertIn("no-store", csv_poly_err["Cache-Control"])
+                    self.assertIn("error", csv_poly_err.json())
 
                 (out / "coverage.json").write_text('{"tampered": true}\n', encoding="utf-8")
                 with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")), patch(

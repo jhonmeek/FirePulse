@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { heatColor, HEAT_GRADIENT } from '@/lib/heatScale'
 import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
 import { gsap, ScrollTrigger } from '@/lib/motion'
 import {
@@ -22,10 +23,12 @@ import { locale, t } from '@/lib/i18n'
 import type { CalendarPoint } from '@/lib/types'
 
 type CalendarMode = 'veg' | 'anomalies' | 'flare' | 'all'
+type ScaleMode = 'harmonized' | 'raw'
 
 const props = defineProps<{ reducedMotion?: boolean }>()
 
 const calendarMode = ref<CalendarMode>('veg')
+const scaleMode = ref<ScaleMode>('harmonized')
 const monthNames = computed(() => (locale.value === 'en' ? MONTH_NAMES_EN : MONTH_NAMES))
 const monthShort = computed(() => (locale.value === 'en' ? MONTH_SHORT_EN : MONTH_SHORT))
 
@@ -36,22 +39,46 @@ const activeSeries = computed<CalendarPoint[]>(() => {
 })
 
 const byMonth = computed(() => new Map(activeSeries.value.map((p) => [p.month, p])))
-const maxValue = computed(() =>
-  Math.max(...activeSeries.value.map((p) => p.harmonized_value ?? 0), 1),
-)
+
+function getPointRaw(p: CalendarPoint | undefined): number | null {
+  if (!p) return null
+  const y = yearOf(p.month)
+  if (y < 2012) {
+    return p.modis_count ?? null
+  }
+  return p.viirs_snpp_count ?? p.modis_count ?? null
+}
+
+function getPointValue(
+  p: CalendarPoint | undefined,
+  scale: ScaleMode = scaleMode.value,
+): number | null {
+  if (!p) return null
+  if (scale === 'raw') return getPointRaw(p)
+  return p.harmonized_value ?? null
+}
+
+const maxValue = computed(() => {
+  const vals = activeSeries.value
+    .map((p) => getPointValue(p))
+    .filter((v): v is number => v !== null)
+  return Math.max(...vals, 1)
+})
 
 const activeMedians = computed(() =>
   Array.from({ length: 12 }, (_, idx) => {
     const calMonth = idx + 1
-    const sample = activeSeries.value.find(
-      (p) => yearOf(p.month) >= 2001 && monthNumber(p.month) === calMonth && p.baseline_median !== null,
-    )
-    if (sample?.baseline_median !== null && sample?.baseline_median !== undefined) {
-      return sample.baseline_median
+    if (scaleMode.value === 'harmonized') {
+      const sample = activeSeries.value.find(
+        (p) => yearOf(p.month) >= 2001 && monthNumber(p.month) === calMonth && p.baseline_median !== null,
+      )
+      if (sample?.baseline_median !== null && sample?.baseline_median !== undefined) {
+        return sample.baseline_median
+      }
     }
     const vals = activeSeries.value
       .filter((p) => yearOf(p.month) >= 2001 && monthNumber(p.month) === calMonth)
-      .map((p) => p.harmonized_value)
+      .map((p) => getPointValue(p))
       .filter((v): v is number => v !== null)
     return median(vals)
   }),
@@ -66,29 +93,89 @@ const modeButtons = computed(() => [
   {
     id: 'veg' as CalendarMode,
     label: t(
-      `Type 0 hors sources persistantes (${formatCount(composition.value.gaClean)})`,
-      `Type 0 outside persistent sources (${formatCount(composition.value.gaClean)})`,
+      `Détections thermiques · Type 0 hors sources persistantes (${formatCount(composition.value.gaClean)})`,
+      `Thermal detections · Type 0 outside persistent sources (${formatCount(composition.value.gaClean)})`,
     ),
   },
   {
     id: 'anomalies' as CalendarMode,
-    label: t('Brûlis habituels vs Flambées anormales', 'Routine burning vs Abnormal surges'),
+    label: t(
+      'Brûlis habituels vs Flambées anormales (catégories exploratoires)',
+      'Routine burning vs Abnormal surges (exploratory categories)',
+    ),
   },
   {
     id: 'flare' as CalendarMode,
     label: t(
-      `Détections écartées (${formatCount(composition.value.gaExcluded)})`,
-      `Detections excluded (${formatCount(composition.value.gaExcluded)})`,
+      `Détections écartées (${formatCount(composition.value.gaExcluded)} · catégorie exploratoire)`,
+      `Excluded detections (${formatCount(composition.value.gaExcluded)} · exploratory category)`,
     ),
   },
   {
     id: 'all' as CalendarMode,
     label: t(
-      `Toutes détections (${formatCount(composition.value.gaTotal)})`,
-      `All detections (${formatCount(composition.value.gaTotal)})`,
+      `Toutes détections thermiques (${formatCount(composition.value.gaTotal)})`,
+      `All thermal detections (${formatCount(composition.value.gaTotal)})`,
     ),
   },
 ])
+
+const activeModeDetails = computed(() => {
+  switch (calendarMode.value) {
+    case 'veg':
+      return {
+        shortName: t('Type 0 hors masque', 'Type 0 outside mask'),
+        title: t(
+          'Détections thermiques · Type 0 hors sources persistantes (catégorie exploratoire)',
+          'Thermal detections · Type 0 outside persistent sources (exploratory category)',
+        ),
+        countText: `${formatCount(composition.value.gaClean)} ${t('détections thermiques', 'thermal detections')}`,
+        description: t(
+          'Retient les détections thermiques NASA type 0 hors des 183 cellules candidates (0,05°) de sources persistantes. Il s’agit de candidats feux de végétation (catégorie exploratoire), sans validation causale terrain.',
+          'Retains NASA type-0 thermal detections outside the 183 candidate persistent-source cells (0.05°). These are vegetation fire candidates (exploratory category), without causal field validation.',
+        ),
+      }
+    case 'anomalies':
+      return {
+        shortName: t('Écarts saisonniers (exploratoire)', 'Seasonal deviations (exploratory)'),
+        title: t(
+          'Catégories exploratoires : Brûlis habituels vs Flambées anormales (écarts à la médiane)',
+          'Exploratory categories: Routine burning vs Abnormal surges (deviations from median)',
+        ),
+        countText: t('Écart statistique à la médiane 2001–2025', 'Statistical deviation vs 2001–2025 median'),
+        description: t(
+          'Colore chaque mois selon l’écart statistique des détections thermiques à la médiane mensuelle 2001–2025. Ces seuils (+15 %, +25 %, +50 %) sont des catégories exploratoires de lecture statistique et ne constituent pas une classification causale des feux.',
+          'Colors each month by the statistical deviation of thermal detections from the 2001–2025 monthly median. These thresholds (+15%, +25%, +50%) are exploratory statistical reading categories, not a causal classification of fire origin.',
+        ),
+      }
+    case 'flare':
+      return {
+        shortName: t('Détections écartées (exploratoire)', 'Excluded detections (exploratory)'),
+        title: t(
+          'Détections thermiques écartées (catégorie exploratoire : différence de séries)',
+          'Excluded thermal detections (exploratory category: series difference)',
+        ),
+        countText: `${formatCount(composition.value.gaExcluded)} ${t('détections écartées', 'excluded detections')}`,
+        description: t(
+          'Série exploratoire calculée par différence max(0, allSeries − staticSeries). Elle regroupe les types 2/3 de la NASA et les détections type 0 situées dans les 183 cellules candidates du masque 0,05° : elles ne sont pas toutes des torchères confirmées.',
+          'Exploratory series computed by difference max(0, allSeries − staticSeries). It combines NASA type 2/3 detections and type-0 detections inside the 183 candidate 0.05° mask cells: they are not all confirmed gas flares.',
+        ),
+      }
+    case 'all':
+      return {
+        shortName: t('Toutes détections thermiques', 'All thermal detections'),
+        title: t(
+          'Toutes détections thermiques confondues (sans filtre statique)',
+          'All thermal detections combined (without static filter)',
+        ),
+        countText: `${formatCount(composition.value.gaTotal)} ${t('détections thermiques', 'thermal detections')}`,
+        description: t(
+          'Somme brute de toutes les détections thermiques satellitaires (type 0, type 2/3 et cellules candidates confondus) avant application du filtre des sources persistantes.',
+          'Raw sum of all satellite thermal detections (type 0, type 2/3, and candidate cells combined) before applying the persistent-source filter.',
+        ),
+      }
+  }
+})
 
 function coverageLabel(value: string): string {
   switch (value) {
@@ -126,6 +213,73 @@ const fallbackPoint = computed(
 )
 const active = computed<CalendarPoint>(() => byMonth.value.get(activeMonth.value) ?? fallbackPoint.value)
 
+const cleanPoint = computed<CalendarPoint | undefined>(() =>
+  staticSeries.value.find((p) => p.month === activeMonth.value),
+)
+const allPoint = computed<CalendarPoint | undefined>(() =>
+  allSeries.value.find((p) => p.month === activeMonth.value),
+)
+const flarePoint = computed<CalendarPoint | undefined>(() =>
+  flareSeries.value.find((p) => p.month === activeMonth.value),
+)
+
+const activeValue = computed(() => getPointValue(active.value))
+
+const monthVegCount = computed<number | null>(() =>
+  scaleMode.value === 'raw'
+    ? getPointValue(cleanPoint.value, 'raw')
+    : (cleanPoint.value?.harmonized_value ?? null),
+)
+const monthFlareCount = computed<number | null>(() => {
+  if (scaleMode.value === 'raw') {
+    const allVal = getPointValue(allPoint.value, 'raw')
+    const vegVal = getPointValue(cleanPoint.value, 'raw')
+    if (allVal === null || vegVal === null || allVal < vegVal) return null
+    return allVal - vegVal
+  }
+  return flarePoint.value?.harmonized_value ?? null
+})
+const monthTotalCount = computed<number | null>(() =>
+  scaleMode.value === 'raw'
+    ? getPointValue(allPoint.value, 'raw')
+    : (allPoint.value?.harmonized_value ?? null),
+)
+const monthVegShare = computed<number | null>(() => {
+  const tot = monthTotalCount.value
+  const veg = monthVegCount.value
+  return tot !== null && tot > 0 && veg !== null ? Math.round((veg / tot) * 1000) / 10 : null
+})
+const monthFlareShare = computed<number | null>(() => {
+  const tot = monthTotalCount.value
+  const flare = monthFlareCount.value
+  return tot !== null && tot > 0 && flare !== null ? Math.round((flare / tot) * 1000) / 10 : null
+})
+
+const activeHarmonizedValue = computed(() => active.value.harmonized_value)
+const activeBaselineMedian = computed(() => active.value.baseline_median)
+const activeAnomalyDiff = computed(() =>
+  active.value.baseline_median !== null && active.value.harmonized_value !== null
+    ? Math.round((active.value.harmonized_value - active.value.baseline_median) * 10) / 10
+    : null,
+)
+
+const isHarmonizedPeriod = computed(() => yearOf(active.value.month) < 2012)
+const sensorRegimeLabel = computed(() => {
+  const regime = active.value.sensor_regime
+  switch (regime) {
+    case 'partial_year':
+      return t('Démarrage partiel (Terra seul)', 'Partial launch (Terra only)')
+    case 'modis_terra_only':
+      return t('Satellite Terra seul (MODIS 1 km)', 'Terra satellite only (MODIS 1km)')
+    case 'modis_terra_aqua':
+      return t('Satellites Terra + Aqua (MODIS 1 km)', 'Terra + Aqua satellites (MODIS 1km)')
+    case 'viirs_snpp_observed':
+      return t('Satellite Suomi-NPP (VIIRS 375 m)', 'Suomi-NPP satellite (VIIRS 375m)')
+    default:
+      return regime ? regime.replaceAll('_', ' ') : t('Observation satellite', 'Satellite observation')
+  }
+})
+
 const rankInfo = computed(() => {
   const pt = active.value
   const m = monthNumber(pt.month)
@@ -144,8 +298,20 @@ const rankInfo = computed(() => {
 
 const activeInterpretation = computed(() => {
   if (calendarMode.value === 'flare') {
+    if (getPointValue(active.value) === null) {
+      return {
+        text: t(
+          'Différence écartée indisponible (valeur harmonisée manquante ou écart négatif)',
+          'Excluded difference unavailable (missing harmonized value or negative delta)',
+        ),
+        tone: 'neutral',
+      }
+    }
     return {
-      text: t('Site industriel continu (hors saison)', 'Year-round industrial flaring'),
+      text: t(
+        'Détections écartées (types 2/3 + masque 0,05° · catégorie exploratoire)',
+        'Excluded detections (type 2/3 + 0.05° mask · exploratory category)',
+      ),
       tone: 'cool',
     }
   }
@@ -154,15 +320,27 @@ const activeInterpretation = computed(() => {
     return { text: t('Mois partiel (2000)', 'Partial start month (2000)'), tone: 'neutral' }
   }
   if (pct > 50) {
-    return { text: t('Flambée anormale — alerte sécheresse / forêt', 'Abnormal surge — severe wildfire risk'), tone: 'extreme' }
+    return {
+      text: t(
+        'Excédent statistique > +50 % (flambée anormale · catégorie exploratoire)',
+        'Statistical surplus > +50% (abnormal surge · exploratory category)',
+      ),
+      tone: 'extreme',
+    }
   }
   if (pct >= 25) {
-    return { text: t('Au-dessus de la normale saisonnière', 'Above seasonal normal'), tone: 'warm' }
+    return { text: t('Au-dessus de la médiane saisonnière', 'Above seasonal median'), tone: 'warm' }
   }
   if (pct <= -20) {
     return { text: t('Mois plus calme que d’habitude', 'Quieter than normal'), tone: 'cool' }
   }
-  return { text: t('Activité habituelle (brûlis & savane)', 'Routine seasonal activity (clearing & savanna)'), tone: 'neutral' }
+  return {
+    text: t(
+      'Proche de la médiane saisonnière (catégorie exploratoire)',
+      'Near seasonal median (exploratory category)',
+    ),
+    tone: 'neutral',
+  }
 })
 
 const isPinned = computed(() => selected.value !== null && selected.value === active.value.month)
@@ -175,31 +353,9 @@ function monthId(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
-// Échelle inversée : 0 = beige très clair → intense = bordeaux/noir très sombre.
-const STOPS_DARK_INTENSE: [number, [number, number, number]][] = [
-  [0, [247, 239, 226]],
-  [0.18, [236, 204, 162]],
-  [0.42, [219, 122, 59]],
-  [0.72, [163, 42, 25]],
-  [1, [42, 6, 6]],
-]
-
-function mix(a: [number, number, number], b: [number, number, number], ratio: number) {
-  return a.map((v, i) => Math.round(v + (b[i]! - v) * ratio)) as [number, number, number]
-}
-
 function colorForIntensity(value: number | null | undefined): string {
   if (value === null || value === undefined) return 'rgba(59, 42, 34, 0.08)'
-  const normalized = Math.sqrt(Math.max(0, Math.min(1, value / maxValue.value)))
-  for (let i = 1; i < STOPS_DARK_INTENSE.length; i++) {
-    const [p1, c1] = STOPS_DARK_INTENSE[i]!
-    const [p0, c0] = STOPS_DARK_INTENSE[i - 1]!
-    if (normalized <= p1) {
-      const local = (normalized - p0) / (p1 - p0)
-      return `rgb(${mix(c0, c1, local).join(', ')})`
-    }
-  }
-  return `rgb(${STOPS_DARK_INTENSE[STOPS_DARK_INTENSE.length - 1]![1].join(', ')})`
+  return heatColor(value, maxValue.value)
 }
 
 function colorForAnomaly(point: CalendarPoint | undefined): string {
@@ -215,13 +371,13 @@ function cellStyle(point: CalendarPoint | undefined) {
   if (calendarMode.value === 'anomalies') {
     return { backgroundColor: colorForAnomaly(point) }
   }
-  return { backgroundColor: colorForIntensity(point?.harmonized_value) }
+  return { backgroundColor: colorForIntensity(getPointValue(point)) }
 }
 
 function ariaLabel(point: CalendarPoint | undefined, year: number, month: number): string {
   const mName = monthNames.value[month - 1]
   if (!point) return `${mName} ${year} — ${t('aucune donnée', 'no data')}`
-  const value = formatCount(point.harmonized_value)
+  const value = formatCount(getPointValue(point))
   const anomaly =
     point.anomaly_percent !== null
       ? `, ${t('écart à la normale', 'vs normal')} ${formatPercent(point.anomaly_percent)}`
@@ -296,14 +452,72 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- Encart pédagogique : Brûlis volontaires vs Feux de forêt anormaux -->
+    <!-- Bannière contextuelle expliquant la pertinence du filtre sélectionné -->
+    <div class="filter-context-banner" :class="calendarMode">
+      <div class="filter-context-header">
+        <span class="filter-context-pill">{{ activeModeDetails.title }}</span>
+        <span class="filter-context-count">{{ activeModeDetails.countText }}</span>
+      </div>
+      <p class="filter-context-desc">{{ activeModeDetails.description }}</p>
+    </div>
+
+    <!-- Encart pédagogique : catégories exploratoires & clarification du code "Type 0" -->
     <div class="burner-callout">
-      <strong>{{ t('Comment distinguer les brûlis habituels des feux anormaux ?', 'How do we tell routine clearing fires apart from abnormal wildfires?') }}</strong>
+      <strong>
+        {{
+          t(
+            'Que signifient ces catégories exploratoires (« brûlis habituels », « flambées anormales », « détections écartées » et « Type 0 ») ?',
+            'What do these exploratory categories ("routine burning", "abnormal surges", "excluded detections", and "Type 0") mean?',
+          )
+        }}
+      </strong>
       <p>
         {{
           t(
-            'Depuis l’espace, un satellite mesure la chaleur sans voir qui a allumé le feu. Mais sur 25 ans, les brûlis et feux de végétation présumés reviennent chaque année aux mêmes mois (la normale saisonnière). Quand un mois bondit très au-dessus de sa normale — comme août 2024 (+79 %) —, cela signale une sécheresse inhabituelle où les départs gagnent la forêt. Le type 0 reste une classification du produit, pas une validation terrain.',
-            'From space, sensors detect heat without knowing who started it. Over 25 years, routine clearing and presumed vegetation fires repeat at the same time each year (the seasonal normal). When a month jumps sharply above its normal — such as August 2024 (+79%) — it flags unusual drought where fires escape toward forest edges. Type 0 remains a product classification, not field validation.',
+            'Depuis l’espace, un satellite mesure des détections thermiques sans observer directement la cause d’un feu. La NASA attribue le code produit « Type 0 » aux anomalies thermiques compatibles avec la végétation, par opposition aux codes « Types 2 et 3 » (sources fixes ou offshore). Les libellés « brûlis habituels » et « flambées anormales » sont des catégories exploratoires fondées uniquement sur l’écart statistique à la médiane mensuelle 2001–2025 (comme août 2024 à +79 %) et non des preuves causales. De même, les « détections écartées » (différence de séries) regroupent des types 2/3 et des type 0 situés dans les 183 cellules candidates du masque 0,05° : elles ne sont pas toutes des torchères confirmées.',
+            'From space, satellites measure thermal detections without directly observing what ignited a fire. NASA assigns product code "Type 0" to vegetation-compatible thermal anomalies, as opposed to "Types 2 & 3" (fixed or offshore sources). The labels "routine burning" and "abnormal surges" are exploratory categories based strictly on statistical deviation from the 2001–2025 monthly median (such as August 2024 at +79%), not causal proof. Likewise, "excluded detections" (series difference) combine NASA types 2/3 and type-0 detections inside the 183 candidate 0.05° mask cells: they are not all confirmed gas flares.',
+          )
+        }}
+      </p>
+    </div>
+
+    <!-- Barre de superposition d'échelle : Harmonisé vs Brut -->
+    <div class="scale-superposition-bar">
+      <div class="scale-label-group">
+        <span class="scale-title">{{ t('Superposition d’échelle :', 'Scale overlay:') }}</span>
+        <span class="scale-subtitle">{{ t('Harmonisation multi-capteurs MODIS ↔ VIIRS', 'Multi-sensor MODIS ↔ VIIRS harmonization') }}</span>
+      </div>
+      <div class="scale-toggle-group" role="radiogroup" :aria-label="t('Choisir l’échelle des données', 'Choose data scale')">
+        <button
+          type="button"
+          class="scale-toggle-btn"
+          :class="{ active: scaleMode === 'harmonized' }"
+          @click="scaleMode = 'harmonized'"
+        >
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">{{ t('Échelle unifiée harmonisée (équiv. VIIRS 375 m)', 'Unified harmonized scale (VIIRS 375m equiv.)') }}</span>
+          <span class="toggle-badge-rec">{{ t('Recommandé', 'Recommended') }}</span>
+        </button>
+        <button
+          type="button"
+          class="scale-toggle-btn"
+          :class="{ active: scaleMode === 'raw' }"
+          @click="scaleMode = 'raw'"
+        >
+          <span class="toggle-indicator"></span>
+          <span class="toggle-text">{{ t('Données brutes des satellites (non harmonisées)', 'Raw satellite data (unharmonized)') }}</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Alerte pédagogique quand le mode brut est activé -->
+    <div v-if="scaleMode === 'raw'" class="raw-alert-banner">
+      <span class="alert-icon">⚠️</span>
+      <p>
+        {{
+          t(
+            'Mode brut actif : les années 2000–2011 apparaissent artificiellement 4× plus claires que 2012–2025. Cette rupture visuelle n’est pas due au climat mais au passage du capteur MODIS (1 km) à VIIRS (375 m). Activez l’Échelle unifiée harmonisée pour comparer les années sans ce biais.',
+            'Raw mode active: years 2000–2011 appear artificially 4× paler than 2012–2025. This visual discontinuity reflects sensor physics (MODIS 1km to VIIRS 375m upgrade), not wildfire changes. Switch to Unified harmonized scale to compare years fairly.',
           )
         }}
       </p>
@@ -311,7 +525,10 @@ onMounted(async () => {
 
     <div class="calendar-top">
       <div class="season-strip" aria-hidden="true">
-        <span class="season-caption">{{ t('Profil moyen sur 12 mois (médiane 2001–2025)', 'Average 12-month profile (2001–2025 median)') }}</span>
+        <span class="season-caption">
+          {{ t('Profil moyen sur 12 mois (médiane 2001–2025)', 'Average 12-month profile (2001–2025 median)') }}
+          <span class="scale-hint">({{ scaleMode === 'harmonized' ? t('échelle unifiée VIIRS 375 m', 'unified VIIRS 375m scale') : t('comptes bruts non alignés', 'unaligned raw counts') }})</span>
+        </span>
         <div class="season-bars">
           <div
             v-for="(value, index) in activeMedians"
@@ -342,7 +559,7 @@ onMounted(async () => {
         <span class="tiny-label">{{ t('Plus c’est sombre, plus c’est intense', 'Darker = higher fire intensity') }}</span>
         <div class="legend-scale">
           <span class="legend-min">{{ t('0 (clair)', '0 (light)') }}</span>
-          <span class="legend-gradient"></span>
+          <span class="legend-gradient" :style="{ background: HEAT_GRADIENT }"></span>
           <span class="legend-max">{{ formatCount(maxValue) }} {{ t('(sombre)', '(dark)') }}</span>
         </div>
       </div>
@@ -350,6 +567,12 @@ onMounted(async () => {
 
     <div class="calendar-layout">
       <div class="calendar-scroll">
+        <!-- Légende des régimes de satellites le long des années -->
+        <div class="calendar-era-legend">
+          <span class="era-tag era-modis">{{ t('2000–2011 : MODIS 1 km (Reconstruit à l’échelle VIIRS)', '2000–2011: MODIS 1km (Reconstructed to VIIRS scale)') }}</span>
+          <span class="era-tag era-viirs">{{ t('2012–2025 : VIIRS 375 m (Observation satellite directe)', '2012–2025: VIIRS 375m (Direct satellite observation)') }}</span>
+        </div>
+
         <div class="calendar-grid" ref="grid" @keydown="onKeydown">
           <div class="grid-corner"></div>
           <div v-for="month in monthShort" :key="month" class="month-head">
@@ -357,7 +580,10 @@ onMounted(async () => {
           </div>
 
           <template v-for="year in YEARS" :key="year">
-            <div class="year-head">{{ year }}</div>
+            <div class="year-head" :class="{ 'is-modis-era': year < 2012, 'is-viirs-era': year >= 2012 }">
+              <span class="year-text">{{ year }}</span>
+              <span class="year-era-dot" :title="year < 2012 ? t('Période MODIS 1 km (harmonisée)', 'MODIS 1km period (harmonized)') : t('Période VIIRS 375 m (directe)', 'VIIRS 375m period (direct)')"></span>
+            </div>
             <template v-for="month in 12" :key="`${year}-${month}`">
               <div
                 v-if="year === 2000 && month < 11"
@@ -397,11 +623,15 @@ onMounted(async () => {
       </div>
 
       <aside class="detail panel" aria-live="polite">
+        <!-- En-tête : Mois sélectionné & statut -->
         <div class="detail-head">
           <div>
-            <p class="tiny-label">
-              {{ isPinned ? t('Mois sélectionné', 'Selected month') : t('Survol en direct', 'Live preview') }}
-            </p>
+            <div class="detail-status-row">
+              <span class="detail-status-pill" :class="{ pinned: isPinned }">
+                {{ isPinned ? t('📌 Mois épinglé', '📌 Pinned month') : t('👁️ Survol en direct', '👁️ Live preview') }}
+              </span>
+              <span class="detail-mode-pill">{{ activeModeDetails.shortName }}</span>
+            </div>
             <h3 class="detail-month">{{ monthNames[Number(active.month.slice(5, 7)) - 1] }}</h3>
             <p class="detail-year">{{ active.month.slice(0, 4) }}</p>
           </div>
@@ -411,34 +641,190 @@ onMounted(async () => {
             :class="{
               negative: active.anomaly_percent < 0,
               extreme: active.anomaly_percent > 50,
+              warm: active.anomaly_percent >= 25 && active.anomaly_percent <= 50,
             }"
+            :title="t('Écart par rapport à la médiane historique de ce mois', 'Deviation from the historical median of this month')"
           >
             {{ formatPercent(active.anomaly_percent) }}
           </span>
         </div>
 
+        <!-- Valeur principale affichée -->
         <div class="detail-value">
-          <span class="stat">{{ formatCount(active.harmonized_value) }}</span>
-          <span class="detail-unit">{{ t('points chauds (échelle unifiée)', 'hotspots (unified scale)') }}</span>
+          <span class="stat">{{ formatCount(activeValue) }}</span>
+          <span class="detail-unit">
+            {{
+              scaleMode === 'harmonized'
+                ? t('points chauds (échelle unifiée équiv. VIIRS 375 m)', 'hotspots (unified VIIRS 375m scale)')
+                : t('détections brutes satellites (non harmonisées)', 'raw satellite detections (unharmonized)')
+            }}
+          </span>
         </div>
 
-        <p class="detail-verdict" :class="activeInterpretation.tone">
-          {{ activeInterpretation.text }}
-        </p>
+        <!-- BLOC 1 : Documentation pédagogique du pourcentage d'anomalie -->
+        <div v-if="active.anomaly_percent !== null" class="detail-block anomaly-doc-block">
+          <div class="block-header">
+            <span class="block-title">{{ t('Écart à la normale saisonnière', 'Seasonal baseline deviation') }}</span>
+            <span class="block-badge" :class="{ 'is-high': active.anomaly_percent > 25, 'is-calm': active.anomaly_percent < 0 }">
+              {{ formatPercent(active.anomaly_percent) }}
+            </span>
+          </div>
 
-        <div class="detail-bar" aria-hidden="true">
-          <i
-            class="detail-bar-value"
-            :style="{ width: `${Math.min(100, ((active.harmonized_value ?? 0) / maxValue) * 100)}%` }"
-          ></i>
-          <i
-            class="detail-bar-median"
-            :style="{ left: `${Math.min(100, ((active.baseline_median ?? 0) / maxValue) * 100)}%` }"
-          ></i>
+          <p class="anomaly-benchmark-text">
+            {{
+              t(
+                `Ce pourcentage compare l’activité d’${monthNames[Number(active.month.slice(5, 7)) - 1]} ${active.month.slice(0, 4)} à la normale historique de tous les mois de ${monthNames[Number(active.month.slice(5, 7)) - 1]} sur 25 ans (médiane 2001–2025).`,
+                `This percentage compares ${monthNames[Number(active.month.slice(5, 7)) - 1]} ${active.month.slice(0, 4)} activity to the 25-year historical normal for all ${monthNames[Number(active.month.slice(5, 7)) - 1]}s (2001–2025 median).`,
+              )
+            }}
+          </p>
+
+          <div class="anomaly-benchmark-grid">
+            <div class="anom-stat-item">
+              <span class="anom-stat-lbl">{{ t('Ce mois-ci', 'This month') }}</span>
+              <span class="anom-stat-num">{{ formatCount(activeHarmonizedValue) }}</span>
+            </div>
+            <div class="anom-stat-item">
+              <span class="anom-stat-lbl">{{ t('Normale 25 ans', '25-yr normal') }}</span>
+              <span class="anom-stat-num">{{ formatCount(activeBaselineMedian) }}</span>
+            </div>
+            <div class="anom-stat-item">
+              <span class="anom-stat-lbl">{{ t('Écart net', 'Net gap') }}</span>
+              <span class="anom-stat-num" :class="(activeAnomalyDiff ?? 0) >= 0 ? 'text-fire' : 'text-cool'">
+                {{ (activeAnomalyDiff ?? 0) > 0 ? '+' : '' }}{{ formatCount(activeAnomalyDiff) }}
+              </span>
+            </div>
+          </div>
+
+          <p class="detail-verdict" :class="activeInterpretation.tone">
+            {{ activeInterpretation.text }}
+          </p>
+
+          <div class="detail-bar" aria-hidden="true">
+            <i
+              class="detail-bar-value"
+              :style="{ width: `${Math.min(100, ((active.harmonized_value ?? 0) / maxValue) * 100)}%` }"
+            ></i>
+            <i
+              class="detail-bar-median"
+              :style="{ left: `${Math.min(100, ((active.baseline_median ?? 0) / maxValue) * 100)}%` }"
+            ></i>
+          </div>
+          <div class="detail-bar-labels">
+            <span><i class="label-swatch value"></i>{{ t('ce mois', 'this month') }}</span>
+            <span><i class="label-swatch median"></i>{{ t('normale 2001–2025 :', '2001–2025 normal:') }} {{ formatCount(active.baseline_median) }}</span>
+          </div>
         </div>
-        <div class="detail-bar-labels">
-          <span><i class="label-swatch value"></i>{{ t('ce mois', 'this month') }}</span>
-          <span><i class="label-swatch median"></i>{{ t('normale 2001–2025 :', '2001–2025 normal:') }} {{ formatCount(active.baseline_median) }}</span>
+
+        <!-- BLOC 2 : NOUVEAU - Décomposition par type de feux pour ce mois -->
+        <div class="detail-block breakdown-block">
+          <div class="block-header">
+            <span class="block-title">{{ t('Décomposition des détections thermiques (catégories exploratoires)', 'Thermal detections breakdown (exploratory categories)') }}</span>
+            <span class="block-subtitle">{{ active.month }}</span>
+          </div>
+
+          <!-- Jauge visuelle proportionnelle -->
+          <div class="type-ratio-bar" aria-hidden="true">
+            <div
+              class="ratio-segment veg"
+              :style="{ width: `${monthVegShare ?? 0}%` }"
+              :title="`Type 0 hors sources : ${monthVegShare ?? '—'}%`"
+            ></div>
+            <div
+              class="ratio-segment flare"
+              :style="{ width: `${monthFlareShare ?? 0}%` }"
+              :title="`Détections écartées : ${monthFlareShare ?? '—'}%`"
+            ></div>
+          </div>
+
+          <div class="type-rows">
+            <!-- Type 0 hors sources -->
+            <div class="type-row">
+              <div class="type-info">
+                <span class="type-bullet veg"></span>
+                <div>
+                  <div class="type-name-line">
+                    <span class="type-name">{{ t('Type 0 hors sources persistantes (exploratoire)', 'Type 0 outside persistent sources (exploratory)') }}</span>
+                    <span class="type-badge-veg">{{ monthVegShare !== null ? `${monthVegShare} %` : '—' }}</span>
+                  </div>
+                  <p class="type-desc">{{ t('Détections thermiques type 0 hors des 183 cellules candidates du masque 0,05°.', 'Type-0 thermal detections outside the 183 candidate 0.05° mask cells.') }}</p>
+                </div>
+              </div>
+              <div class="type-numbers">
+                <span class="type-count">{{ formatCount(monthVegCount) }}</span>
+              </div>
+            </div>
+
+            <!-- Détections écartées -->
+            <div class="type-row">
+              <div class="type-info">
+                <span class="type-bullet flare"></span>
+                <div>
+                  <div class="type-name-line">
+                    <span class="type-name">{{ t('Détections écartées par le filtre (exploratoire)', 'Detections excluded by filter (exploratory)') }}</span>
+                    <span class="type-badge-flare">{{ monthFlareShare !== null ? `${monthFlareShare} %` : '—' }}</span>
+                  </div>
+                  <p class="type-desc">{{ t('Différence de séries (types 2/3 + type 0 dans les cellules du masque ; pas toutes des torchères confirmées).', 'Series difference (types 2/3 + type 0 inside mask cells; not all confirmed gas flares).') }}</p>
+                </div>
+              </div>
+              <div class="type-numbers">
+                <span class="type-count">{{ formatCount(monthFlareCount) }}</span>
+              </div>
+            </div>
+
+            <!-- Total combiné brut -->
+            <div class="type-row total">
+              <div class="type-info">
+                <span class="type-bullet total"></span>
+                <div>
+                  <span class="type-name">{{ t('Total détections thermiques', 'Total thermal detections') }}</span>
+                </div>
+              </div>
+              <div class="type-numbers">
+                <span class="type-count total-val">{{ formatCount(monthTotalCount) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLOC 3 : NOUVEAU - Statut d'harmonisation & Capteurs satellites -->
+        <div class="detail-block harmonization-block" :class="isHarmonizedPeriod ? 'era-model' : 'era-viirs'">
+          <div class="block-header">
+            <span class="harm-era-badge">
+              <i class="harm-icon">{{ isHarmonizedPeriod ? '🔬' : '🛰️' }}</i>
+              {{ isHarmonizedPeriod ? t('Période harmonisée par modèle (M2)', 'Model-harmonized period (M2)') : t('Observation satellite directe', 'Direct satellite observation') }}
+            </span>
+            <span class="harm-sensor-tag">{{ isHarmonizedPeriod ? 'MODIS 1 km → VIIRS' : 'VIIRS 375 m' }}</span>
+          </div>
+
+          <p class="harm-body-text">
+            {{
+              isHarmonizedPeriod
+                ? t(
+                    `En ${active.month.slice(0, 4)}, seul MODIS (1 km) était en orbite (${formatCount(active.modis_count)} détections brutes). Pour comparer équitablement avec les années récentes sans le faux bond ×4, notre modèle Power-Law log1p reconstruit l’équivalent VIIRS 375 m (IC 95 % : [${formatCount(active.ci_low)} – ${formatCount(active.ci_high)}]).`,
+                    `In ${active.month.slice(0, 4)}, only MODIS (1 km) was operational (${formatCount(active.modis_count)} raw detections). To compare fairly with recent years without the artificial ×4 jump, our Power-Law log1p model reconstructs the VIIRS 375m equivalent (95% CI: [${formatCount(active.ci_low)} – ${formatCount(active.ci_high)}]).`,
+                  )
+                : t(
+                    `Observé directement par le capteur étalon haute résolution VIIRS Suomi-NPP (375 m). Aucune estimation par modèle nécessaire : c’est la mesure physique directe (${formatCount(active.viirs_snpp_count)} détections).`,
+                    `Directly observed by high-resolution reference sensor VIIRS Suomi-NPP (375 m). No model estimation needed: this is the direct physical measurement (${formatCount(active.viirs_snpp_count)} detections).`,
+                  )
+            }}
+          </p>
+
+          <div class="sensor-raw-pills">
+            <div v-if="active.modis_count !== null" class="sensor-pill">
+              <span class="sp-name">MODIS (1 km) :</span>
+              <span class="sp-val">{{ formatCount(active.modis_count) }}</span>
+            </div>
+            <div v-if="active.viirs_snpp_count !== null" class="sensor-pill">
+              <span class="sp-name">VIIRS S-NPP (375 m) :</span>
+              <span class="sp-val">{{ formatCount(active.viirs_snpp_count) }}</span>
+            </div>
+            <div v-if="active.viirs_noaa20_count !== null" class="sensor-pill">
+              <span class="sp-name">NOAA-20 :</span>
+              <span class="sp-val">{{ formatCount(active.viirs_noaa20_count) }}</span>
+            </div>
+          </div>
         </div>
 
         <dl class="detail-grid">
@@ -449,20 +835,8 @@ onMounted(async () => {
             </dd>
           </div>
           <div>
-            <dt>{{ t('Fiabilité', 'Data completeness') }}</dt>
+            <dt>{{ t('Couverture satellite', 'Satellite coverage') }}</dt>
             <dd>{{ coverageLabel(active.coverage_status) }}</dd>
-          </div>
-          <div>
-            <dt>MODIS ({{ t('brut', 'raw') }})</dt>
-            <dd>{{ formatCount(active.modis_count) }}</dd>
-          </div>
-          <div>
-            <dt>VIIRS S-NPP ({{ t('brut', 'raw') }})</dt>
-            <dd>{{ formatCount(active.viirs_snpp_count) }}</dd>
-          </div>
-          <div>
-            <dt>VIIRS NOAA-20 ({{ t('brut', 'raw') }})</dt>
-            <dd>{{ formatCount(active.viirs_noaa20_count) }}</dd>
           </div>
         </dl>
 
@@ -518,6 +892,179 @@ onMounted(async () => {
   font-weight: 600;
 }
 
+/* Bannière d'explication du filtre actif */
+.filter-context-banner {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 196, 107, 0.25);
+  background: rgba(255, 196, 107, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.filter-context-banner.anomalies {
+  border-color: rgba(255, 90, 95, 0.3);
+  background: rgba(255, 90, 95, 0.06);
+}
+
+.filter-context-banner.flare {
+  border-color: rgba(34, 211, 238, 0.3);
+  background: rgba(34, 211, 238, 0.05);
+}
+
+.filter-context-banner.all {
+  border-color: rgba(244, 241, 232, 0.2);
+  background: rgba(244, 241, 232, 0.04);
+}
+
+.filter-context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-context-pill {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.filter-context-count {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--gold);
+}
+
+.filter-context-desc {
+  font-size: 0.77rem;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Encart d'échelle en superposition */
+.scale-superposition-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(14, 18, 27, 0.55);
+  border: 1px solid var(--line);
+}
+
+.scale-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scale-title {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.scale-subtitle {
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.scale-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.scale-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: rgba(244, 241, 232, 0.03);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scale-toggle-btn:hover {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
+.scale-toggle-btn.active {
+  background: rgba(255, 196, 107, 0.12);
+  border-color: var(--gold);
+  color: var(--ink);
+}
+
+.toggle-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  transition: background 0.2s ease;
+}
+
+.scale-toggle-btn.active .toggle-indicator {
+  background: var(--gold);
+  box-shadow: 0 0 6px var(--gold);
+}
+
+.toggle-badge-rec {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(34, 197, 94, 0.16);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #86efac;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Alerte du mode brut */
+.raw-alert-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border-left: 3px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.alert-icon {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.raw-alert-banner p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: #fde68a;
+}
+
+.scale-hint {
+  font-weight: normal;
+  text-transform: none;
+  color: var(--dim);
+}
+
 .burner-callout {
   padding: 12px 16px;
   border-left: 3px solid var(--gold);
@@ -555,10 +1102,10 @@ onMounted(async () => {
   display: block;
   margin-bottom: 7px;
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: #cbd5e1;
 }
 
 .season-bars {
@@ -566,7 +1113,7 @@ onMounted(async () => {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 4px;
   align-items: end;
-  height: 48px;
+  height: 64px;
 }
 
 .season-bar {
@@ -574,7 +1121,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 5px;
   height: 100%;
   min-width: 0;
 }
@@ -598,9 +1145,10 @@ onMounted(async () => {
 
 .season-bar span {
   font-family: var(--font-mono);
-  font-size: 0.56rem;
+  font-size: 0.8rem;
+  font-weight: 500;
   text-align: center;
-  color: var(--muted);
+  color: #dce5f0;
 }
 
 .season-bar.main span {
@@ -610,7 +1158,7 @@ onMounted(async () => {
 
 .legend {
   flex: none;
-  min-width: 230px;
+  min-width: 245px;
 }
 
 .legend-scale {
@@ -632,8 +1180,8 @@ onMounted(async () => {
 .legend-min,
 .legend-max {
   font-family: var(--font-mono);
-  font-size: 0.62rem;
-  color: var(--muted);
+  font-size: 0.78rem;
+  color: #dce5f0;
 }
 
 .anomaly-swatches {
@@ -641,8 +1189,8 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 8px 14px;
   margin-top: 6px;
-  font-size: 0.7rem;
-  color: var(--muted);
+  font-size: 0.78rem;
+  color: #dce5f0;
 }
 
 .anomaly-swatches span {
@@ -660,7 +1208,7 @@ onMounted(async () => {
 
 .calendar-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 310px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 22px;
   align-items: start;
 }
@@ -675,38 +1223,83 @@ onMounted(async () => {
   scrollbar-width: thin;
 }
 
+.calendar-era-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: rgba(59, 42, 34, 0.08);
+  border-radius: 6px;
+}
+
+.era-tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.era-modis {
+  color: #1e3a8a;
+}
+
+.era-viirs {
+  color: #9a3412;
+}
+
 .calendar-grid {
   display: grid;
-  grid-template-columns: 3.3rem repeat(12, minmax(0, 1fr));
+  grid-template-columns: 3.8rem repeat(12, minmax(0, 1fr));
   gap: 4px;
   min-width: 640px;
 }
 
 .grid-corner {
-  height: 20px;
+  height: 26px;
 }
 
 .month-head,
 .year-head {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #4a3529;
+  color: #362218;
 }
 
 .month-head {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  height: 20px;
+  height: 26px;
 }
 
 .year-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding-right: 8px;
+}
+
+.year-text {
+  font-size: 0.84rem;
+}
+
+.year-era-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(59, 42, 34, 0.25);
+}
+
+.year-head.is-modis-era .year-era-dot {
+  background: #2563eb;
+}
+
+.year-head.is-viirs-era .year-era-dot {
+  background: #ea580c;
 }
 
 .cell {
@@ -781,7 +1374,13 @@ onMounted(async () => {
 .detail {
   padding: 20px;
   position: sticky;
-  top: 90px;
+  top: 80px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .detail-head {
@@ -789,6 +1388,41 @@ onMounted(async () => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.detail-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.detail-status-pill {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  background: rgba(244, 241, 232, 0.08);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.detail-status-pill.pinned {
+  background: rgba(255, 196, 107, 0.15);
+  border-color: var(--gold);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.detail-mode-pill {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--dim);
 }
 
 .detail-month {
@@ -832,11 +1466,17 @@ onMounted(async () => {
   color: #fda4af;
 }
 
+.anomaly-badge.warm {
+  background: rgba(255, 122, 61, 0.18);
+  border-color: rgba(255, 122, 61, 0.45);
+  color: #fed7aa;
+}
+
 .detail-value {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 18px;
+  margin: 0;
 }
 
 .detail-unit {
@@ -844,8 +1484,305 @@ onMounted(async () => {
   color: var(--muted);
 }
 
+/* Blocs généraux de détails */
+.detail-block {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(244, 241, 232, 0.03);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.block-title {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+
+.block-subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--dim);
+}
+
+.block-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.block-badge.is-high {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.block-badge.is-calm {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+}
+
+.anomaly-benchmark-text {
+  font-size: 0.73rem;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0;
+}
+
+.anomaly-benchmark-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(244, 241, 232, 0.05);
+}
+
+.anom-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.anom-stat-lbl {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.anom-stat-num {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.text-fire {
+  color: #f87171 !important;
+}
+
+.text-cool {
+  color: #38bdf8 !important;
+}
+
+/* Styles Décomposition par type de feu */
+.breakdown-block {
+  border-color: rgba(255, 180, 100, 0.15);
+  background: rgba(255, 180, 100, 0.02);
+}
+
+.type-ratio-bar {
+  display: flex;
+  height: 8px;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ratio-segment.veg {
+  background: linear-gradient(90deg, #f97316, #ef4444);
+  transition: width 0.3s ease;
+}
+
+.ratio-segment.flare {
+  background: linear-gradient(90deg, #0ea5e9, #6366f1);
+  transition: width 0.3s ease;
+}
+
+.type-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.type-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.type-row.total {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  background: transparent;
+}
+
+.type-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+}
+
+.type-bullet {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.type-bullet.veg {
+  background: #f97316;
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.6);
+}
+
+.type-bullet.flare {
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+}
+
+.type-bullet.total {
+  background: var(--muted);
+}
+
+.type-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.type-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.type-badge-veg {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(249, 115, 22, 0.15);
+  color: #fb923c;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.type-badge-flare {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #7dd3fc;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.type-desc {
+  margin: 2px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--dim);
+}
+
+.type-numbers {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.type-count {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.total-val {
+  color: var(--gold);
+}
+
+/* Styles Harmonisation */
+.harmonization-block.era-model {
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.harmonization-block.era-viirs {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.04);
+}
+
+.harm-era-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.harm-sensor-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.harm-body-text {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.sensor-raw-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sensor-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.sp-name {
+  color: var(--dim);
+}
+
+.sp-val {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .detail-verdict {
-  margin-top: 10px;
+  margin-top: 6px;
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 0.76rem;
@@ -972,12 +1909,12 @@ onMounted(async () => {
   }
   .calendar-grid {
     min-width: 0;
-    grid-template-columns: 2.4rem repeat(12, minmax(0, 1fr));
+    grid-template-columns: 2.8rem repeat(12, minmax(0, 1fr));
     gap: 2px;
   }
   .month-head,
   .year-head {
-    font-size: 0.52rem;
+    font-size: 0.7rem;
     letter-spacing: 0.02em;
   }
   .cell {

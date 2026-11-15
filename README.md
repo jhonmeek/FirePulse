@@ -20,11 +20,12 @@ Comparing raw NASA thermal hotspot detections across 25 years creates two severe
 
 ### Reading the Numbers
 - **Scope**: `285,013` detections inside `GA`; `175,500` type-0 detections outside candidate cells (`61.6%`); `109,513` excluded by the full filter (`38.4%`) = `57,934` type 2/3 (`20.3%`) + `51,579` type 0 inside `183` candidate cells (`18.1%`).
-- **Two validation protocols**: the live database `v2.0` (all-years mask, `183` cells, MAE `100.9`, raw `R² 0.919`) and the reinforced validation (mask frozen on `2000–2019`, `61` cells, 3-way split, MAE `460.3 → 120.8`, raw `R² 0.918`, anomaly `R² 0.788`, q80 coverage `63.9%`). They are not directly comparable without stating which applies.
-- **Vocabulary**: type 0 is a product classification, not field validation. The `183` cells are **candidate** persistent sources, not individually confirmed flares.
-- **Status**: SP archive `2000-11 → 2025-12`; no 2026 or NRT data in the demo. The NOAA-20 relay is calibrated, not yet validated on 2026.
-- **Interactive storytelling (`front-bis/`)**: Features a scroll-guided 3D Earth (`Three.js`), yearly and monthly filterable line charts with separate MODIS / S-NPP / NOAA-20 views, an inverted light-to-dark 25-year seasonal calendar (distinguishing routine dry-season burning from unusual spikes), an interactive 9-province map (`MapLibre GL` + PostgreSQL/PostGIS), automatic regional language adaptation (**EN / FR**), and a confidence note under the series and the map.
-- **Legacy dashboard (`frontend/`, M3 milestone H34–H42)**: Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts + MapLibre explorer (calendar, comparison chart, anomalies, map, drawn zone, CSV export), offline demo build with embedded Gabon FIRMS data, Playwright journey and axe-core WCAG 2.1 AA audit, TypeScript types aligned with [docs/api-contract.json](docs/api-contract.json) v2.2.0. See its quick start below.
+- **Two protocols & ongoing scientific review**: the live database `v2.0` (all-years mask, `183` cells, MAE `100.9`, raw `R² 0.919`) and the exploratory country-CSV artifact (mask frozen prior to test, `3`-way split, MAE `460.3 → 120.8`, raw `R² 0.918`, anomaly `R² 0.788`, nominal `80%` empirical coverage `63.9%`). Neither constitutes independent validation; see [docs/methodology.md](docs/methodology.md) and [front-bis/README.md](front-bis/README.md).
+- **Vocabulary**: type 0 is a product classification, not field validation. Display buckets (*routine burning*, *abnormal surges*, *excluded detections*) are **exploratory categories of thermal detections** derived from series differences and seasonal anomaly thresholds—not causal classifications. The `183` cells are **candidate** persistent sources, not individually confirmed flares.
+- **Status**: SP archive `2000-11 → 2025-12` (plus an optional exploratory NOAA-20 NRT maritime snapshot in `HotspotMap.vue`); no terrestrial 2026 detections are ingested, and the NOAA-20 relay is not yet validated on 2026 data.
+- **Two Frontend Surfaces**:
+  - **`front-bis/` (`:5174`, primary scrollytelling app)**: Scroll-guided 3D Earth (`Three.js`), yearly/monthly filterable charts (`MODIS`, `S-NPP`, `NOAA-20`), inverted light-to-dark 25-year seasonal calendar, interactive 9-province + exploratory maritime map (`MapLibre GL`), optional regional **EN / FR** auto-detection, confidence cards, and Vitest unit tests (`npm run test:unit -- --run`).
+  - **`frontend/` (`:5173`, M3 explorer & reproducible offline demo)**: Vue 3 + TypeScript + Pinia + ECharts + MapLibre GL explorer with reproducible offline demo build (`npm run build:demo`), Playwright E2E + axe-core WCAG 2.1 AA audit (`npm run test:e2e`), and full Vitest unit coverage (`npm run test:unit -- --run`).
 
 ---
 
@@ -51,7 +52,8 @@ FirePulse/
 │   ├── m1-data-audit.md         # Inventory & quality audit of the 48 FIRMS CSVs
 │   ├── m1-normalization.md      # Normalized dataset schema & monthly aggregation contract
 │   └── HANDOFF.md               # Module ownership & quick-test curl commands
-├── front-bis/                   # Main web application (Vue 3, TypeScript, Vite, Three.js, MapLibre GL)
+├── front-bis/                   # Primary storytelling app (Vue 3, TypeScript, Vite, Three.js, MapLibre GL)
+├── frontend/                    # M3 explorer & reproducible offline demo build (Vue 3, Pinia, ECharts, Playwright)
 ├── pipeline/                    # Standard-library Python ETL & audit modules (M1)
 ├── scripts/                     # Backup, restore & demo preflight scripts
 ├── tests/                       # Python pipeline unit/integration tests
@@ -82,6 +84,8 @@ docker compose exec backend python manage.py import_firms
 docker compose exec backend python manage.py build_baseline_series
 ```
 
+- Scheduled FIRMS NRT ingestion (opt-in Docker profile): see [docs/nrt-celery.md](docs/nrt-celery.md).
+
 Verify backend health and test suite:
 
 ```bash
@@ -91,55 +95,42 @@ curl http://localhost:8000/api/v1/health/
 
 Expected `/api/v1/health/` metrics: `"status": "ok"`, `"database": "connected"`, `regions: 10`, `hotspots: 292589`, `grid_cell_months: 42482`, `harmonized_months: 6011`.
 
-### 2. Frontend (`front-bis/`)
+### 2. Interactive Story (`front-bis/`) & Legacy Explorer (`frontend/`)
 
-Requires **Node.js `^22.18` or `>=24.12`**. From [front-bis/](front-bis/):
+Requires **Node.js `^22.18` or `>=24.12`**.
+
+From [front-bis/](front-bis/) (`http://localhost:5174`, primary scrollytelling application):
 
 ```bash
-npm install
-npm run dev      # Development server on http://localhost:5174 (/api proxied to :8000)
+npm ci
+npm run dev                  # Dev server on http://localhost:5174 (/api proxied to :8000)
+npm run type-check           # vue-tsc --noEmit
+npm run test:unit -- --run   # Vitest suite (i18n, derived series, M1 labels, M2 contract)
+npm run build                # Production bundle (vue-tsc + vite build)
+npm run preview              # Local preview on http://127.0.0.1:5174
 ```
 
-Production type-check, build, and local preview (`http://127.0.0.1:5176`):
+From [frontend/](frontend/) (`http://localhost:5173`, M3 explorer & reproducible offline demo):
 
 ```bash
-npm run build    # vue-tsc --noEmit -p tsconfig.json && vite build
-npm run preview
-```
-
-### 2b. Legacy dashboard (`frontend/`)
-
-Requires **Node.js `^22.18` or `>=24.12`**. From [frontend/](frontend/):
-
-```bash
-npm install
-npm run dev      # http://localhost:5173
-```
-
-| Mode | How to enable | Data source |
-| :--- | :--- | :--- |
-| **Mocks** (dev default) | nothing to do | `frontend/src/mocks/*.json` (region `GA`) |
-| **Django API** | create `frontend/.env.local` with `VITE_USE_MOCKS=false` | `/api/v1` proxied by Vite to `http://localhost:8000` |
-| **Standalone demo** | `npm run build:demo` then `npm run preview:demo` | static `dist-demo/` build with embedded mocks: works without Docker, API or Internet |
-
-Regenerate mocks after a change in `data/raw/gabon/` or the baseline chain (needs `pandas`, `numpy`, `matplotlib`): `py -3.12 scripts/generate_mocks.py` then `npm run format`. Checks:
-
-```bash
-npm run lint
-npm run test:unit -- --run
-npm run build
-npm run test:e2e
+npm ci
+npm run type-check
+npm run test:unit -- --run   # Vitest suite (mocks, API contract, components, stores, utils)
+npm run build-only           # Production bundle against Django API
+npm run build:demo           # Standalone offline dist-demo/ bundle
+npm run test:e2e             # Playwright desktop/mobile walkthrough + axe-core WCAG 2.1 AA audit
 ```
 
 ### 3. M1 Data Pipeline & Validation (Python `3.10+`)
 
-From repository root (uses Python standard library only):
+From repository root (`pip install -r pipeline/requirements-geo.txt` for geospatial maritime tests):
 
 ```bash
 python -m unittest discover -s tests -v
 python -m pipeline.inventory --input data/raw/gabon --output data/processed/audit
 python -m pipeline.normalize --input data/raw/gabon --output data/processed/normalized
 python -m pipeline.aggregate_monthly --input data/processed/normalized --output data/processed/monthly
+python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json
 python front-bis/scripts/validate_harmonization.py
 ```
 

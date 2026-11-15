@@ -62,8 +62,8 @@ const props = withDefaults(
 
 const uid = useId()
 const W = 1000
-const H = 410
-const PAD = { top: 28, right: 24, bottom: 44, left: 68 }
+const H = 430
+const PAD = { top: 32, right: 28, bottom: 54, left: 86 }
 const innerW = W - PAD.left - PAD.right
 const innerH = H - PAD.top - PAD.bottom
 
@@ -528,8 +528,8 @@ onBeforeUnmount(() => observer?.disconnect())
         <text
           v-for="tick in gridTicks"
           :key="`label-${tick.value}`"
-          :x="PAD.left - 12"
-          :y="tick.y + 4"
+          :x="PAD.left - 14"
+          :y="tick.y + 5.5"
           text-anchor="end"
         >
           {{ formatCount(tick.value) }}
@@ -548,7 +548,7 @@ onBeforeUnmount(() => observer?.disconnect())
         v-if="highlight2012 && index2012 >= 0"
         class="year-2012-label"
         :x="x(index2012) + 8"
-        :y="PAD.top + 14"
+        :y="PAD.top + 16"
       >
         {{ t('2012 · Arrivée du satellite VIIRS', '2012 · VIIRS satellite launch') }}
       </text>
@@ -558,7 +558,7 @@ onBeforeUnmount(() => observer?.disconnect())
           v-for="tick in yearTicks"
           :key="tick.year"
           :x="tick.x"
-          :y="H - 12"
+          :y="H - 14"
           text-anchor="middle"
           :class="{ strong: tick.year === 2012 }"
         >
@@ -822,9 +822,10 @@ onBeforeUnmount(() => observer?.disconnect())
 
 .grid text,
 .x-axis text {
-  fill: #b8c4d0;
+  fill: #dce5f0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 16.5px;
+  font-weight: 500;
   letter-spacing: 0.01em;
 }
 
@@ -842,7 +843,7 @@ onBeforeUnmount(() => observer?.disconnect())
 .year-2012-label {
   fill: #ffb37a;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 14.5px;
   font-weight: 600;
 }
 
@@ -896,7 +897,7 @@ onBeforeUnmount(() => observer?.disconnect())
 .mark-label {
   fill: var(--gold);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 14.5px;
   font-weight: 600;
 }
 

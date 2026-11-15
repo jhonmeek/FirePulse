@@ -63,7 +63,7 @@ const BILINGUAL_TIMEZONES = new Set([
 ])
 
 const LEGACY_LOCAL_KEY = 'fp_locale'
-const MANUAL_SESSION_KEY = 'fp_locale_manual'
+export const MANUAL_SESSION_KEY = 'fp_locale_manual'
 
 function readUrlLocale(): Locale | null {
   if (typeof window === 'undefined') return null
@@ -85,22 +85,28 @@ function readManualSessionLocale(): Locale | null {
   }
 }
 
-function prefersFrenchBrowser(): boolean {
-  if (typeof navigator === 'undefined') return true
-  const list =
-    Array.isArray(navigator.languages) && navigator.languages.length > 0
-      ? navigator.languages
-      : [navigator.language]
-  return list.some((tag) => typeof tag === 'string' && tag.toLowerCase().startsWith('fr'))
+function getNavigatorLanguages(): readonly string[] {
+  if (typeof navigator === 'undefined') return []
+  return Array.isArray(navigator.languages) && navigator.languages.length > 0
+    ? navigator.languages
+    : navigator.language
+      ? [navigator.language]
+      : []
 }
 
-function getBrowserRegionCode(): string | null {
-  if (typeof navigator === 'undefined') return null
-  const list =
-    Array.isArray(navigator.languages) && navigator.languages.length > 0
-      ? navigator.languages
-      : [navigator.language]
-  for (const tag of list) {
+export function prefersFrenchFromLanguages(languages: readonly string[]): boolean {
+  if (languages.length === 0) return false
+  return languages.some((tag) => typeof tag === 'string' && tag.toLowerCase().startsWith('fr'))
+}
+
+function prefersFrenchBrowser(): boolean {
+  const list = getNavigatorLanguages()
+  if (list.length === 0) return true
+  return prefersFrenchFromLanguages(list)
+}
+
+export function getRegionCodeFromLanguages(languages: readonly string[]): string | null {
+  for (const tag of languages) {
     if (typeof tag !== 'string') continue
     const match = tag.match(/[-_]([A-Za-z]{2})\b/)
     if (match?.[1]) return match[1].toUpperCase()
@@ -108,11 +114,47 @@ function getBrowserRegionCode(): string | null {
   return null
 }
 
-function localeForCountry(countryCode: string): Locale {
+export function localeForCountry(
+  countryCode: string,
+  languages: readonly string[] = getNavigatorLanguages(),
+): Locale {
   const code = countryCode.toUpperCase()
   if (FRANCOPHONE_COUNTRIES.has(code)) return 'fr'
-  if (BILINGUAL_COUNTRIES.has(code)) return prefersFrenchBrowser() ? 'fr' : 'en'
+  if (BILINGUAL_COUNTRIES.has(code)) {
+    return (languages.length ? prefersFrenchFromLanguages(languages) : prefersFrenchBrowser())
+      ? 'fr'
+      : 'en'
+  }
   return 'en'
+}
+
+export interface LocaleSignals {
+  urlLang?: string | null
+  manualSessionLocale?: string | null
+  timeZone?: string
+  languages?: readonly string[]
+}
+
+export function resolveLocaleFromSignals(signals: LocaleSignals): Locale {
+  if (signals.urlLang === 'fr' || signals.urlLang === 'en') return signals.urlLang
+  if (signals.manualSessionLocale === 'fr' || signals.manualSessionLocale === 'en') {
+    return signals.manualSessionLocale
+  }
+
+  const langs = signals.languages ?? []
+  const tz = signals.timeZone ?? ''
+
+  if (tz) {
+    if (FRANCOPHONE_TIMEZONES.has(tz)) return 'fr'
+    if (BILINGUAL_TIMEZONES.has(tz)) {
+      return langs.length ? (prefersFrenchFromLanguages(langs) ? 'fr' : 'en') : 'fr'
+    }
+    const region = getRegionCodeFromLanguages(langs)
+    if (region && FRANCOPHONE_COUNTRIES.has(region)) return 'fr'
+    return 'en'
+  }
+
+  return langs.length ? (prefersFrenchFromLanguages(langs) ? 'fr' : 'en') : 'fr'
 }
 
 function detectInitialLocale(): Locale {
@@ -124,12 +166,6 @@ function detectInitialLocale(): Locale {
     // Ignore storage errors in restricted environments.
   }
 
-  const fromUrl = readUrlLocale()
-  if (fromUrl) return fromUrl
-
-  const fromManual = readManualSessionLocale()
-  if (fromManual) return fromManual
-
   let tz = ''
   try {
     tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
@@ -137,15 +173,12 @@ function detectInitialLocale(): Locale {
     tz = ''
   }
 
-  if (tz) {
-    if (FRANCOPHONE_TIMEZONES.has(tz)) return 'fr'
-    if (BILINGUAL_TIMEZONES.has(tz)) return prefersFrenchBrowser() ? 'fr' : 'en'
-    const region = getBrowserRegionCode()
-    if (region && FRANCOPHONE_COUNTRIES.has(region)) return 'fr'
-    return 'en'
-  }
-
-  return prefersFrenchBrowser() ? 'fr' : 'en'
+  return resolveLocaleFromSignals({
+    urlLang: readUrlLocale(),
+    manualSessionLocale: readManualSessionLocale(),
+    timeZone: tz,
+    languages: getNavigatorLanguages(),
+  })
 }
 
 function updateDocumentMetadata(next: Locale): void {
@@ -180,14 +213,14 @@ export function t(fr: string, en: string): string {
   return locale.value === 'en' ? en : fr
 }
 
-async function detectRegionFromEdge(): Promise<void> {
-  if (typeof window === 'undefined' || typeof fetch === 'undefined') return
+export async function detectRegionFromEdge(fetchImpl: typeof fetch | undefined = typeof fetch === 'function' ? fetch : undefined): Promise<void> {
+  if (typeof window === 'undefined' || typeof fetchImpl !== 'function') return
   if (readUrlLocale() || readManualSessionLocale()) return
 
   const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), 2500)
+  const timer = globalThis.setTimeout(() => controller.abort(), 2500)
   try {
-    const res = await fetch('/cdn-cgi/trace', {
+    const res = await fetchImpl('/cdn-cgi/trace', {
       cache: 'no-store',
       signal: controller.signal,
     })
@@ -203,8 +236,10 @@ async function detectRegionFromEdge(): Promise<void> {
   } catch {
     // Ignore when running outside Cloudflare or offline; timezone detection remains active.
   } finally {
-    window.clearTimeout(timer)
+    globalThis.clearTimeout(timer)
   }
 }
 
-void detectRegionFromEdge()
+if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
+  void detectRegionFromEdge()
+}

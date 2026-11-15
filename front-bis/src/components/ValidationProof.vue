@@ -27,12 +27,16 @@ const errorReductionPct = computed(() => {
   return Math.max(0, Math.round(((naiveMae.value - modelMae.value) / naiveMae.value) * 100))
 })
 
-const noaaDiffPct = computed<number | null>(() => {
-  const ratio = validation.held_out.noaa20.ratio_noaa20_to_snpp_calibration
-  return ratio == null ? null : Math.abs(Math.round((ratio - 1) * 1000) / 10)
+const noaaRatio = computed(() => validation.held_out.noaa20.ratio_noaa20_to_snpp_calibration)
+const noaaDiffPct = computed(() => {
+  if (noaaRatio.value === null) return null
+  return Math.abs(Math.round((noaaRatio.value - 1) * 1000) / 10)
 })
-const frozenOn = validation.mask.frozen_on
-const frozenCells = validation.mask.cells_frozen
+const noaaAnomalyR2 = computed(() => validation.held_out.noaa20.anomaly?.r2 ?? null)
+const noaaLimitation = computed(() => validation.held_out.noaa20.limitation ?? null)
+const maskFrozenOn = computed(() => validation.mask.frozen_on)
+const cellsFrozen = computed(() => validation.mask.cells_frozen)
+const cellsAllYears = computed(() => validation.mask.cells_all_years)
 
 const testPoints = computed<ChartPoint[]>(() =>
   validation.test_series.map((d) => ({
@@ -48,37 +52,38 @@ const testPoints = computed<ChartPoint[]>(() =>
 
 <template>
   <div class="proof-root">
-    <p class="proof-review-note" role="note">
+    <p class="proof-review-banner" role="note">
       {{
         t(
-          "Résultats exploratoires en revue scientifique, non validés. Dans l'artefact affiché, le masque utilise la période de calibration, les mois sans détection ne prouvent pas une couverture complète et le quantile utilisé ne justifie pas une garantie conforme. Les années de test ont déjà été examinées. Les chiffres affichés proviennent de l'artefact initial, antérieur aux corrections de calcul en cours.",
-          'Exploratory results under scientific review, not validated. In the displayed artifact, the mask uses the calibration period, months without detections do not prove complete coverage, and the quantile used does not justify a conformal guarantee. The test years have already been examined. The figures shown come from the initial artifact, prior to ongoing calculation fixes.',
+          `Résultats exploratoires en revue scientifique, non validés. Dans l'artefact affiché, le masque utilise la période de calibration, les mois sans détection ne prouvent pas une couverture complète et l'intervalle expérimental (cible 80 %) ne constitue pas une garantie conforme. Les années de test ont déjà été examinées.`,
+          `Exploratory results under scientific review, not independently validated. In this initial artifact, the mask includes part of the calibration window, zero-detection months do not prove complete satellite coverage, and the experimental 80% target interval is not a conformal guarantee. Test years have already been examined.`,
         )
       }}
     </p>
+
     <!-- 3 clear steps replacing jargon-heavy metric tiles -->
-    <div class="proof-steps" :aria-label="t('Comment le modèle est testé', 'How the model is tested')">
+    <div class="proof-steps" :aria-label="t('Protocole exploratoire du modèle', 'Exploratory model protocol')">
       <article class="proof-step">
         <span class="proof-step-tag">{{ t('Étape 1 · Apprendre', 'Step 1 · Learn') }}</span>
         <strong class="proof-step-value">2012 – 2019</strong>
         <p class="proof-step-desc">
           {{
             t(
-              `Pendant ${trainMonths} mois (8 ans), les deux satellites observent le Gabon en même temps. On s'en sert pour régler la traduction.`,
-              `For ${trainMonths} months (8 years), both satellites observe Gabon together. We use this overlap to tune the translation.`,
+              `Pendant ${trainMonths} mois (8 ans), les deux satellites observent le Gabon en même temps (${validation.split.n_train} mois d'entraînement, ${validation.split.n_calibration} mois de calibration).`,
+              `For ${trainMonths} months (8 years), both satellites observe Gabon together (${validation.split.n_train} training months, ${validation.split.n_calibration} calibration months).`,
             )
           }}
         </p>
       </article>
 
       <article class="proof-step">
-        <span class="proof-step-tag">{{ t('Étape 2 · Évaluer', 'Step 2 · Evaluate') }}</span>
+        <span class="proof-step-tag">{{ t('Étape 2 · Évaluation exploratoire', 'Step 2 · Exploratory evaluation') }}</span>
         <strong class="proof-step-value">2020 – 2025</strong>
         <p class="proof-step-desc">
           {{
             t(
-              `On évalue le modèle sur les ${testMonths} mois suivants (6 ans) à partir du seul ancien capteur. Ces années ont déjà été examinées : c'est une évaluation exploratoire, pas un test à l'aveugle.`,
-              `We evaluate the model on the next ${testMonths} months (6 years) using only the older sensor. These years have already been examined: this is an exploratory evaluation, not a blind test.`,
+              `On cache les ${testMonths} mois suivants (6 ans) au modèle, puis on lui demande de deviner la courbe uniquement depuis l'ancien capteur.`,
+              `We hide the next ${testMonths} months (6 years) from the model, then ask it to predict the curve using only the older sensor.`,
             )
           }}
         </p>
@@ -98,12 +103,12 @@ const testPoints = computed<ChartPoint[]>(() =>
       </article>
     </div>
 
-    <!-- Observed vs predicted exploratory evaluation chart -->
+    <!-- Observed vs predicted test chart -->
     <div class="proof-chart-card">
       <div class="proof-chart-head">
         <div>
           <span class="chart-eyebrow">
-            {{ t('Évaluation exploratoire · Gabon · 2020–2025', 'Exploratory evaluation · Gabon · 2020–2025') }}
+            {{ t('Analyse exploratoire · Gabon · 2020–2025', 'Exploratory analysis · Gabon · 2020–2025') }}
           </span>
           <h3>
             {{
@@ -142,8 +147,8 @@ const testPoints = computed<ChartPoint[]>(() =>
     <p class="proof-protocol-note">
       {{
         t(
-          `Protocole exploratoire : masque gelé sur ${frozenOn} (${frozenCells} cellules, période de calibration incluse), apprentissage 2012–2017, calibration 2018–2019, test 2020–2025. L’intervalle expérimental (cible 80 %) couvre ${formatDecimal(coverageQ80 * 100, 1)} % des mois de test : c’est un indicateur, pas une garantie. La série live de la base suit un protocole distinct (masque toutes années, 183 cellules) ; les deux résultats ne sont pas interchangeables.`,
-          `Exploratory protocol: mask frozen on ${frozenOn} (${frozenCells} cells, calibration period included), training 2012–2017, calibration 2018–2019, test 2020–2025. The experimental interval (80% target) covers ${formatDecimal(coverageQ80 * 100, 1)}% of test months: an indicator, not a guarantee. The live database series follows a distinct protocol (all-years mask, 183 cells); the two results are not interchangeable.`,
+          `Protocole exploratoire : masque gelé ${maskFrozenOn} (${cellsFrozen} cellules, vs ${cellsAllYears} all-years), apprentissage 2012–2017, calibration 2018–2019, évaluation 2020–2025. L’intervalle expérimental (cible 80 %) couvre ${formatDecimal(coverageQ80 * 100, 1)} % des mois de test : c’est un indicateur exploratoire, pas une garantie conforme. La série live de la base suit un protocole distinct (masque toutes années, ${cellsAllYears} cellules).`,
+          `Exploratory protocol: frozen mask ${maskFrozenOn} (${cellsFrozen} cells vs ${cellsAllYears} all-years), training 2012–2017, calibration 2018–2019, evaluation 2020–2025. The experimental interval (80% target) covers ${formatDecimal(coverageQ80 * 100, 1)}% of test months: an exploratory indicator, not a conformal guarantee. The live database series uses a distinct protocol (all-years mask, ${cellsAllYears} cells).`,
         )
       }}
     </p>
@@ -152,8 +157,8 @@ const testPoints = computed<ChartPoint[]>(() =>
     <div class="proof-Takeaways">
       <article class="takeaway-card">
         <header class="takeaway-head">
-          <span class="takeaway-badge is-good">{{ t('Fiabilité', 'Reliability') }}</span>
-          <h4>{{ t('Résultats exploratoires', 'Exploratory results') }}</h4>
+          <span class="takeaway-badge is-good">{{ t('Résultats exploratoires · En revue', 'Exploratory results · Under review') }}</span>
+          <h4>{{ t('Ce que montrent les résultats exploratoires', 'What the exploratory results show') }}</h4>
         </header>
         <ul class="takeaway-list">
           <li>
@@ -167,52 +172,54 @@ const testPoints = computed<ChartPoint[]>(() =>
           <li>
             {{
               t(
-                `Sur les 6 années de test (déjà examinées), l'écart moyen est de ${formatCount(modelMae)} détections par mois.`,
-                `Over the 6 test years (already examined), average monthly error is ${formatCount(modelMae)} detections.`,
+                `Sur ces 6 années d'évaluation (déjà examinées), l'écart moyen reste limité à ${formatCount(modelMae)} détections thermiques par mois.`,
+                `Across these 6 evaluation years (already examined), average monthly error stays limited to ${formatCount(modelMae)} thermal detections.`,
               )
             }}
           </li>
-          <li v-if="noaaDiffPct !== null">
+          <li>
             {{
-              t(
-                `Un capteur plus récent (VIIRS NOAA-20) donne un niveau proche sur la calibration 2018–2019 (${formatDecimal(noaaDiffPct, 1)} % d'écart) ; son indépendance est limitée par la construction du masque et du ratio.`,
-                `A newer sensor (VIIRS NOAA-20) gives a close level over the 2018–2019 calibration (${formatDecimal(noaaDiffPct, 1)}% gap); its independence is limited by how the mask and ratio are built.`,
-              )
+              noaaRatio === null
+                ? t(
+                    `Évaluation exploratoire NOAA-20 indisponible : ratio de calibration absent (${noaaLimitation ?? 'calibration manquante'}).`,
+                    `Exploratory NOAA-20 evaluation unavailable: calibration ratio missing (${noaaLimitation ?? 'missing calibration'}).`,
+                  )
+                : t(
+                    `L'évaluation exploratoire VIIRS NOAA-20 donne ${formatDecimal(noaaDiffPct, 1)} % d'écart sur la calibration (R² anomalies ${noaaAnomalyR2 === null ? '—' : formatDecimal(noaaAnomalyR2, 2)}) ; son indépendance reste limitée par le masque et le ratio.`,
+                    `Exploratory VIIRS NOAA-20 evaluation shows a ${formatDecimal(noaaDiffPct, 1)}% calibration gap (anomaly R² ${noaaAnomalyR2 === null ? '—' : formatDecimal(noaaAnomalyR2, 2)}); its independence remains limited by mask and ratio reuse.`,
+                  )
             }}
-          </li>
-          <li v-else>
-            {{ t('Évaluation NOAA-20 indisponible : ratio de calibration absent.', 'NOAA-20 evaluation unavailable: calibration ratio missing.') }}
           </li>
         </ul>
       </article>
 
       <article class="takeaway-card">
         <header class="takeaway-head">
-          <span class="takeaway-badge is-warn">{{ t('Précautions', 'Limits') }}</span>
+          <span class="takeaway-badge is-warn">{{ t('Précautions scientifiques', 'Scientific limits') }}</span>
           <h4>{{ t('Ce qu’il faut garder en tête', 'What to keep in mind') }}</h4>
         </header>
         <ul class="takeaway-list">
           <li>
             {{
               t(
-                'Un point chaud est une alerte thermique vue depuis l’espace, pas une mesure directe de la surface brûlée en hectares.',
-                'A hotspot is a heat alert seen from space, not a direct measurement of burned area in hectares.',
+                'Un point chaud est une détection thermique vue depuis l’espace, pas une mesure directe de la surface brûlée en hectares.',
+                'A hotspot is a thermal detection seen from space, not a direct measurement of burned area in hectares.',
               )
             }}
           </li>
           <li>
             {{
               t(
-                'Quand le ciel gabonais reste très nuageux ou enfumé, le satellite peut manquer les petits feux sous la canopée.',
-                'When skies over Gabon are cloudy or thick with smoke, satellites can miss small fires beneath the canopy.',
+                'Quand le ciel gabonais reste très nuageux ou enfumé, le satellite peut manquer les petits feux sous la canopée ; l’absence de détection ne prouve pas l’absence de feu.',
+                'When skies over Gabon are cloudy or thick with smoke, satellites can miss small fires beneath the canopy; missing detections do not prove complete coverage.',
               )
             }}
           </li>
           <li>
             {{
               t(
-                'Quelques sources industrielles ouvertes après 2019 peuvent apparaître localement tant qu’elles ne sont pas ajoutées au masque. Le masque live utilise toutes les années ; la validation gelée s’arrête à 2019.',
-                'A few industrial sources opened after 2019 can show up locally until they are added to the mask. The live mask uses all years; the frozen validation stops in 2019.',
+                `Quelques sources industrielles ouvertes après ${maskFrozenOn} peuvent apparaître localement tant qu’elles ne sont pas ajoutées au masque. Le masque live utilise toutes les années (${cellsAllYears} cellules) ; l’artefact exploratoire utilise un masque gelé sur ${maskFrozenOn} (${cellsFrozen} cellules).`,
+                `A few industrial sources opened after ${maskFrozenOn} can appear locally until added to the mask. The live mask uses all years (${cellsAllYears} cells); the exploratory artifact uses a mask frozen on ${maskFrozenOn} (${cellsFrozen} cells).`,
               )
             }}
           </li>
@@ -228,15 +235,16 @@ const testPoints = computed<ChartPoint[]>(() =>
   gap: 20px;
 }
 
-.proof-review-note {
+.proof-review-banner {
   margin: 0;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 196, 107, 0.4);
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 196, 107, 0.42);
+  border-left: 3px solid var(--gold);
   border-radius: 12px;
-  background: rgba(255, 196, 107, 0.06);
-  font-size: 0.78rem;
+  background: rgba(255, 196, 107, 0.08);
+  color: #f4e6cf;
+  font-size: 0.84rem;
   line-height: 1.55;
-  color: var(--muted);
 }
 
 .proof-protocol-note {

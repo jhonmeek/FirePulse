@@ -28,6 +28,7 @@ import {
   provinceSummaries,
 } from '@/lib/data'
 import { t } from '@/lib/i18n'
+import { HEAT_STOPS, HEAT_GRADIENT } from '@/lib/heatScale'
 import { provenance } from '@/lib/provenance'
 import type { GridBundle } from '@/lib/types'
 
@@ -41,17 +42,19 @@ const yearStart = ref(2000)
 const yearEnd = ref(2025)
 const filterStatic = ref(true)
 const showStatic = ref(true)
-const showMaritime = ref(false)
-const maritimeStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
-const maritimeCount = ref(0)
-const maritimePeriod = ref<string | null>(null)
-const maritimeUrl = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}data/gabon-maritime-observations.geojson`
-const maritimeLayers = ['maritime-point']
-let maritimeAbort: AbortController | null = null
+const scrollZoomEnabled = ref(false)
+const showScrollHint = ref(false)
 const mapReady = ref(false)
 const loadingLive = ref(false)
 const gridSource = ref<'live' | 'snapshot'>('snapshot')
 const stats = ref({ cells: 0, total: 0, max: 1 })
+const showMaritime = ref(false)
+const maritimeStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
+const maritimeCount = ref(0)
+const maritimePeriod = ref('')
+const maritimeUrl = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}data/gabon-maritime-observations.geojson`
+const maritimeLayers = ['maritime-point']
+let maritimeAbort: AbortController | null = null
 
 let map: MlMap | null = null
 let popup: Popup | null = null
@@ -60,6 +63,9 @@ let bundle: GridBundle | null = null
 let markers: Marker[] = []
 let unmounted = false
 let loadSeq = 0
+let scrollHintTimer: ReturnType<typeof setTimeout> | null = null
+let wheelTarget: HTMLElement | null = null
+let onContainerWheel: ((e: WheelEvent) => void) | null = null
 
 const START_OPTIONS = YEARS.filter((y) => y <= 2024)
 const END_OPTIONS = YEARS.filter((y) => y >= 2001)
@@ -70,9 +76,7 @@ const GABON_BOUNDS: [[number, number], [number, number]] = [
 ]
 
 const periodLabel = computed(() =>
-  yearStart.value === 2000 && yearEnd.value === 2025
-    ? '2000 → 2025'
-    : `${yearStart.value} → ${yearEnd.value}`,
+  `${yearStart.value === 2000 ? '11' : '01'}/${yearStart.value} → 12/${yearEnd.value}`,
 )
 
 const STYLE: StyleSpecification = {
@@ -113,17 +117,10 @@ function buildGraticule(): FeatureCollection<LineString> {
 }
 
 function gridColorExpression(max: number) {
-  const stops: [number, string][] = [
-    [0, '#24110e'],
-    [Math.sqrt(max * 0.05), '#4d1f15'],
-    [Math.sqrt(max * 0.18), '#8a2f17'],
-    [Math.sqrt(max * 0.38), '#c7471c'],
-    [Math.sqrt(max * 0.62), '#ef6a2b'],
-    [Math.sqrt(max * 0.82), '#ff9e53'],
-    [Math.sqrt(max), '#ffe0a3'],
-  ]
   const expression: unknown[] = ['interpolate', ['linear'], ['sqrt', ['get', 'count']]]
-  for (const [stop, color] of stops) expression.push(stop, color)
+  for (const [position, rgb] of HEAT_STOPS) {
+    expression.push(position * Math.sqrt(Math.max(1, max)), `rgb(${rgb.join(', ')})`)
+  }
   return expression as never
 }
 
@@ -202,41 +199,13 @@ function renderProvinceMarkers() {
   }
 }
 
-const legendColors = computed(() => {
-  const max = stats.value.max || 1
-  return [0, 0.18, 0.38, 0.62, 0.82, 1].map((tVal) => {
-    const stops: [number, [number, number, number]][] = [
-      [0, [36, 17, 14]],
-      [0.18, [138, 47, 23]],
-      [0.38, [199, 71, 28]],
-      [0.62, [239, 106, 43]],
-      [0.82, [255, 158, 83]],
-      [1, [255, 224, 163]],
-    ]
-    const value = Math.sqrt(max * tVal * tVal)
-    const s = Math.sqrt(value / max)
-    let c0 = stops[0]!
-    let c1 = stops[stops.length - 1]!
-    for (let i = 1; i < stops.length; i++) {
-      if (s <= stops[i]![0]) {
-        c0 = stops[i - 1]!
-        c1 = stops[i]!
-        break
-      }
-    }
-    const local = Math.max(0, Math.min(1, (s - c0[0]) / Math.max(0.0001, c1[0] - c0[0])))
-    const rgb = c0[1].map((v, i) => Math.round(v + (c1[1][i]! - v) * local))
-    return `rgb(${rgb.join(', ')})`
-  })
-})
-
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[character]!)
 }
 
-function popupHtml(title: string, badge: string, rows: [string, string][], badgeTone: 'hot' | 'cool' | 'maritime' = 'hot'): string {
+function popupHtml(title: string, badge: string, rows: [string, string][], badgeTone: 'hot' | 'cool' = 'hot'): string {
   return `
     <div class="fp-popup">
       <div class="fp-popup-head">
@@ -269,7 +238,7 @@ function onGridHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) 
         `${t('Zone de feux', 'Fire zone')} · ${province}`,
         t('Carré ~28 km', '~28 km grid'),
         [
-          [`${t('Points chauds', 'Hotspots')} (${periodLabel.value})`, formatCount(p.count)],
+          [`${t('Détections non harmonisées', 'Unharmonized detections')} (${periodLabel.value})`, formatCount(p.count)],
           [
             t('Fréquence', 'Frequency'),
             t(`Actif sur ${formatCount(p.months)} mois`, `Active across ${formatCount(p.months)} months`),
@@ -322,9 +291,8 @@ function showMaritimePopup(event: MapMouseEvent & { features?: MapGeoJSONFeature
   if (!map || !event.features?.[0]) return
   map.getCanvas().style.cursor = 'pointer'
   const properties = event.features[0].properties ?? {}
-  const missing = t('Non renseigné', 'Not provided')
   const value = (key: string) => properties[key] == null || properties[key] === ''
-    ? missing
+    ? 'Non renseigné'
     : String(properties[key])
   const rawTime = value('acq_time_utc')
   const paddedTime = /^\d{1,4}$/.test(rawTime) ? rawTime.padStart(4, '0') : ''
@@ -332,14 +300,14 @@ function showMaritimePopup(event: MapMouseEvent & { features?: MapGeoJSONFeature
     ? `${paddedTime.slice(0, 2)}:${paddedTime.slice(2)} UTC`
     : rawTime
   popup?.setLngLat(event.lngLat).setHTML(popupHtml(
-    t('Point thermique maritime', 'Maritime thermal point'),
-    t('Non classifié', 'Unclassified'),
+    t('Point thermique maritime (exploratoire)', 'Maritime thermal point (exploratory)'),
+    'NOAA-20 NRT',
     [
       [t('Date', 'Date'), value('acq_date')],
       [t('Heure', 'Time'), time],
-      ['FRP', value('frp') === missing ? missing : `${value('frp')} MW`],
+      ['FRP', value('frp') === 'Non renseigné' ? t('Non renseigné', 'Unavailable') : `${value('frp')} MW`],
     ],
-    'maritime',
+    'cool',
   )).addTo(map)
 }
 
@@ -354,6 +322,14 @@ function toggleStatic() {
   if (!map || !mapReady.value) return
   map.setLayoutProperty('static-fill', 'visibility', showStatic.value ? 'visible' : 'none')
   map.setLayoutProperty('static-line', 'visibility', showStatic.value ? 'visible' : 'none')
+}
+
+function toggleScrollZoom() {
+  scrollZoomEnabled.value = !scrollZoomEnabled.value
+  showScrollHint.value = false
+  if (!map) return
+  if (scrollZoomEnabled.value) map.scrollZoom.enable()
+  else map.scrollZoom.disable()
 }
 
 async function toggleMaritime() {
@@ -417,9 +393,26 @@ onMounted(() => {
     fitBoundsOptions: { padding: 48 },
     pitch: 24,
     bearing: -6,
+    scrollZoom: false,
     attributionControl: false,
     maxPitch: 55,
   })
+  onContainerWheel = (event: WheelEvent) => {
+    if (!map) return
+    if (event.ctrlKey || event.metaKey || scrollZoomEnabled.value) {
+      map.scrollZoom.enable()
+      showScrollHint.value = false
+    } else {
+      map.scrollZoom.disable()
+      showScrollHint.value = true
+      if (scrollHintTimer) clearTimeout(scrollHintTimer)
+      scrollHintTimer = setTimeout(() => {
+        showScrollHint.value = false
+      }, 1800)
+    }
+  }
+  wheelTarget = el
+  el.addEventListener('wheel', onContainerWheel, { capture: true, passive: true })
   map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
   map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left')
   popup = new Popup({ closeButton: false, closeOnClick: false, offset: 14, className: 'fp-popup-wrap' })
@@ -437,11 +430,12 @@ onMounted(() => {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
-    map.addSource('maritime', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
     map.addSource('static', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
     })
+
+    map.addSource('maritime', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
 
     map.addLayer({
       id: 'graticule',
@@ -460,13 +454,13 @@ onMounted(() => {
       id: 'grid-fill',
       type: 'fill',
       source: 'grid',
-      paint: { 'fill-color': gridColorExpression(1), 'fill-opacity': 0.84 },
+      paint: { 'fill-color': gridColorExpression(1), 'fill-opacity': 0.9 },
     })
     map.addLayer({
       id: 'grid-line',
       type: 'line',
       source: 'grid',
-      paint: { 'line-color': '#ffe0a3', 'line-width': 0.35, 'line-opacity': 0.24 },
+      paint: { 'line-color': '#3b2016', 'line-width': 0.55, 'line-opacity': 0.42 },
     })
     map.addLayer({
       id: 'province-line',
@@ -542,6 +536,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unmounted = true
   maritimeAbort?.abort()
+  if (wheelTarget && onContainerWheel) {
+    wheelTarget.removeEventListener('wheel', onContainerWheel, { capture: true })
+  }
+  if (scrollHintTimer) clearTimeout(scrollHintTimer)
   resizeObserver?.disconnect()
   popup?.remove()
   for (const m of markers) m.remove()
@@ -605,7 +603,11 @@ watch([countryFeature, provinceFeatures], () => {
         @click="filterStatic = !filterStatic"
       >
         <span class="toggle-dot"></span>
-        {{ filterStatic ? t('Type 0 hors sources persistantes', 'Type 0 outside persistent sources') : t('Toutes détections', 'All detections') }}
+        {{
+          filterStatic
+            ? t('Détections thermiques · Type 0 hors sources persistantes (exploratoire)', 'Thermal detections · Type 0 outside persistent sources (exploratory)')
+            : t('Toutes détections thermiques (catégories exploratoires mélangées)', 'All thermal detections (mixed exploratory categories)')
+        }}
       </button>
 
       <button
@@ -628,7 +630,18 @@ watch([countryFeature, provinceFeatures], () => {
         @click="toggleMaritime"
       >
         <span class="toggle-dot maritime-dot"></span>
-        {{ t('Observations maritimes', 'Maritime observations') }}
+        {{ t('Observations maritimes (exploratoire)', 'Maritime observations (exploratory)') }}
+      </button>
+
+      <button
+        type="button"
+        class="map-toggle"
+        :class="{ active: scrollZoomEnabled }"
+        :aria-pressed="scrollZoomEnabled"
+        @click="toggleScrollZoom"
+      >
+        <span class="toggle-dot"></span>
+        {{ scrollZoomEnabled ? t('Zoom molette : activé', 'Scroll zoom: on') : t('Zoom molette : verrouillé', 'Scroll zoom: locked') }}
       </button>
 
       <button v-if="selectedRegion !== 'GA'" type="button" class="map-reset-inline" @click="resetView">
@@ -640,44 +653,62 @@ watch([countryFeature, provinceFeatures], () => {
       <p>
         {{
           t(
-            `Instantané NASA FIRMS (produit NOAA-20 NRT demandé), ${maritimePeriod ?? 'période non renseignée'} ; indépendant de la période terrestre. Couverture inconnue. Points thermiques non classifiés : ils ne confirment ni un feu ni une torchère. Le polygone EEZ Marine Regions utilisé exclut la mer territoriale ; son périmètre est indicatif, non juridique.`,
-            `NASA FIRMS snapshot (NOAA-20 NRT product requested), ${maritimePeriod ?? 'period not provided'}; independent from the land period. Coverage unknown. Unclassified thermal points: they confirm neither a fire nor a flare. The Marine Regions EEZ polygon used excludes the territorial sea; its extent is indicative, not legal.`,
+            `Instantané NASA FIRMS (NOAA-20 NRT demandé), ${maritimePeriod || 'période non renseignée'} — indépendant de la période terrestre. Couverture inconnue. Détections thermiques non classifiées (catégorie exploratoire) : elles ne confirment ni un feu ni une torchère. Le polygone EEZ Marine Regions utilisé exclut la mer territoriale ; son périmètre est indicatif, non juridique.`,
+            `NASA FIRMS snapshot (NOAA-20 NRT requested), ${maritimePeriod || 'period unavailable'} — independent of the terrestrial period. Coverage unknown. Unclassified thermal detections (exploratory category): they confirm neither a fire nor a flare. The Marine Regions EEZ polygon excludes territorial waters and is indicative rather than legal.`,
           )
         }}
       </p>
       <div role="status" aria-live="polite">
-        <template v-if="maritimeStatus === 'loading'">{{ t('Chargement des observations…', 'Loading observations…') }}</template>
-        <template v-else-if="maritimeStatus === 'missing'">{{ t('Fichier absent', 'Missing file') }} : {{ maritimeUrl }}.</template>
-        <template v-else-if="maritimeStatus === 'error'">{{ t('Fichier inaccessible ou GeoJSON invalide', 'Unreachable file or invalid GeoJSON') }} : {{ maritimeUrl }}. {{ t('Désactivez puis réactivez pour réessayer.', 'Toggle off and on to retry.') }}</template>
-        <template v-else-if="maritimeStatus === 'ready'">{{ t(`${maritimeCount} point(s) thermique(s) non classifié(s).`, `${maritimeCount} unclassified thermal point(s).`) }}</template>
+        <template v-if="maritimeStatus === 'loading'">
+          {{ t('Chargement des observations…', 'Loading observations…') }}
+        </template>
+        <template v-else-if="maritimeStatus === 'missing'">
+          {{ t(`Fichier absent : ${maritimeUrl}.`, `Missing file: ${maritimeUrl}.`) }}
+        </template>
+        <template v-else-if="maritimeStatus === 'error'">
+          {{
+            t(
+              `Fichier inaccessible ou GeoJSON invalide : ${maritimeUrl}. Désactivez puis réactivez pour réessayer.`,
+              `Unavailable file or invalid GeoJSON: ${maritimeUrl}. Toggle off and on to retry.`,
+            )
+          }}
+        </template>
+        <template v-else-if="maritimeStatus === 'ready'">
+          {{ t(`${maritimeCount} point(s) thermique(s) non classifié(s).`, `${maritimeCount} unclassified thermal point(s).`) }}
+        </template>
       </div>
     </div>
+
+    <p class="map-data-note" role="status">
+      <strong>{{ t('Cumul observé non harmonisé', 'Observed, unharmonized total') }} · {{ periodLabel }}</strong>
+      {{ t(
+        'MODIS + S-NPP + NOAA-20, avec le filtre sélectionné. Comme dans le calendrier : clair = peu, sombre = beaucoup. Ici, les couleurs comparent les cumuls par cellule sur la période choisie ; elles ne représentent pas les valeurs mensuelles harmonisées du calendrier. Une cellule absente ne prouve pas l’absence de feu.',
+        'MODIS + S-NPP + NOAA-20, with the selected filter. As in the calendar: light = low, dark = high. Here, colors compare cell totals over the selected period; they do not represent the calendar’s harmonized monthly values. An absent cell does not prove the absence of fire.',
+      ) }}
+    </p>
 
     <div class="map-wrap">
       <div
         ref="container"
         class="map-canvas"
         role="img"
-        :aria-label="t('Carte interactive des détections et sources persistantes candidates au Gabon', 'Interactive map of detections and candidate persistent sources in Gabon')"
+        :aria-label="t('Carte interactive des détections thermiques et sources persistantes candidates au Gabon', 'Interactive map of thermal detections and candidate persistent sources in Gabon')"
       ></div>
       <div class="map-glow" aria-hidden="true"></div>
 
+      <div class="map-scroll-hint" :class="{ visible: showScrollHint && !scrollZoomEnabled }" aria-live="polite">
+        {{ t('Utilisez Ctrl + molette (ou activez « Zoom molette ») pour zoomer sur la carte', 'Use Ctrl + scroll (or enable "Scroll zoom") to zoom the map') }}
+      </div>
+
       <div class="map-legend">
         <div class="map-legend-head">
-          <span class="tiny-label">{{ t('Intensité des feux', 'Fire intensity') }}</span>
+          <span class="tiny-label">{{ t('Détections cumulées / cellule', 'Cumulative detections / cell') }}</span>
           <span class="mono">{{ periodLabel }}</span>
         </div>
-        <div class="map-legend-scale">
-          <span
-            v-for="(color, index) in legendColors"
-            :key="index"
-            class="legend-swatch"
-            :style="{ background: color }"
-          ></span>
-        </div>
+        <div class="map-legend-scale" :style="{ background: HEAT_GRADIENT }" aria-hidden="true"></div>
         <div class="map-legend-values">
-          <span>{{ t('Calme', 'Low') }}</span>
-          <span>{{ formatCount(stats.max) }}</span>
+          <span>{{ t('0 (clair)', '0 (light)') }}</span>
+          <span>{{ formatCount(stats.max) }} {{ t('(sombre)', '(dark)') }}</span>
         </div>
       </div>
 
@@ -701,7 +732,7 @@ watch([countryFeature, provinceFeatures], () => {
       <div class="guide-item">
         <span class="guide-box hot"></span>
         <p>
-          <strong>{{ t('Carrés orangés / rouges (~28 km)', 'Orange / red squares (~28 km)') }}</strong> —
+          <strong>{{ t('Carrés clairs à bordeaux sombre (~28 km)', 'Light to dark crimson squares (~28 km)') }}</strong> —
           {{
             t(
               'Zones de détections type 0 (forêt, savane, brûlis présumés). Survolez ou cliquez un carré pour connaître sa province et son activité.',
@@ -727,8 +758,8 @@ watch([countryFeature, provinceFeatures], () => {
           loadingLive
             ? t('Mise à jour en direct…', 'Syncing live data…')
             : gridSource === 'live' && dataSourceMode === 'live'
-              ? t('Données reçues de l’API, provenance à vérifier', 'Data received from the API, provenance to be checked')
-              : t('Instantané local de l’archive SP', 'Local snapshot of the SP archive')
+              ? t('Données reçues de l’API (provenance à vérifier)', 'API data received (verify provenance)')
+              : t('Instantané local SP', 'Local SP snapshot')
         }}
       </span>
     </div>
@@ -736,6 +767,18 @@ watch([countryFeature, provinceFeatures], () => {
 </template>
 
 <style scoped>
+.map-data-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.map-data-note strong {
+  display: block;
+  color: var(--ink);
+}
+
 .map-frame {
   display: grid;
   gap: 12px;
@@ -837,27 +880,6 @@ watch([countryFeature, provinceFeatures], () => {
   box-shadow: 0 0 8px var(--ember);
 }
 
-.maritime-dot {
-  background: #c084fc;
-  box-shadow: 0 0 8px #c084fc;
-}
-
-.maritime-status {
-  max-width: 640px;
-  padding: 8px 10px;
-  border: 1px solid rgba(192, 132, 252, 0.55);
-  border-radius: 8px;
-  background: rgba(5, 7, 11, 0.94);
-  color: #f4eaff;
-  font-size: 0.7rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.maritime-status p {
-  margin: 0 0 4px;
-}
-
 .toggle-dot.cool {
   background: var(--cyan);
 }
@@ -902,12 +924,57 @@ watch([countryFeature, provinceFeatures], () => {
   mix-blend-mode: screen;
 }
 
+.map-scroll-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 196, 107, 0.45);
+  border-radius: 999px;
+  background: rgba(5, 8, 13, 0.9);
+  color: #f4f1e8;
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  backdrop-filter: blur(10px);
+}
+
+.map-scroll-hint.visible {
+  opacity: 1;
+}
+
+.toggle-dot.maritime-dot {
+  background: #c084fc;
+}
+
+.map-toggle.active .toggle-dot.maritime-dot {
+  box-shadow: 0 0 8px #c084fc;
+}
+
+.maritime-status {
+  padding: 10px 14px;
+  border: 1px solid rgba(192, 132, 252, 0.45);
+  border-radius: 12px;
+  background: rgba(16, 12, 24, 0.92);
+  color: #f4eaff;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.maritime-status p {
+  margin: 0 0 4px;
+}
 .map-legend {
   position: absolute;
   right: 14px;
   bottom: 14px;
   z-index: 4;
-  width: 210px;
+  width: 235px;
   padding: 10px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -924,11 +991,13 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .map-legend-head .mono {
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   color: var(--gold);
 }
 
 .map-legend-scale {
+  height: 12px;
+  border-radius: 4px;
   display: flex;
   height: 8px;
   border-radius: 4px;
@@ -942,10 +1011,10 @@ watch([countryFeature, provinceFeatures], () => {
 .map-legend-values {
   display: flex;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: 6px;
   font-family: var(--font-mono);
-  font-size: 0.58rem;
-  color: var(--muted);
+  font-size: 0.74rem;
+  color: #dce5f0;
 }
 
 .map-stats {
@@ -1034,8 +1103,8 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .guide-box.hot {
-  background: linear-gradient(135deg, #ff9e53, #c7471c);
-  border: 1px solid rgba(255, 224, 163, 0.45);
+  background: linear-gradient(135deg, #f7efe2, #db7a3b 52%, #2a0606);
+  border: 1px solid rgba(247, 239, 226, 0.55);
 }
 
 .guide-box.cool {
@@ -1053,8 +1122,14 @@ watch([countryFeature, provinceFeatures], () => {
   .map-wrap {
     min-height: 500px;
   }
+  .map-scroll-hint {
+    max-width: calc(100% - 24px);
+    white-space: normal;
+    text-align: center;
+    font-size: 0.7rem;
+  }
   .map-legend {
-    width: 165px;
+    width: 185px;
   }
   .map-stats {
     gap: 12px;
@@ -1125,11 +1200,6 @@ watch([countryFeature, provinceFeatures], () => {
 .fp-popup-badge.hot {
   background: rgba(255, 122, 61, 0.18);
   color: #ffb37a;
-}
-
-.fp-popup-badge.maritime {
-  color: #f4eaff;
-  background: rgba(192, 132, 252, 0.18);
 }
 
 .fp-popup-badge.cool {

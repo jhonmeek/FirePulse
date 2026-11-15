@@ -49,7 +49,7 @@ const chapters = computed(() => [
   { id: 'translate', label: t('L’accord des données', 'Aligning data') },
   { id: 'calendar', label: t('Le calendrier', 'Calendar') },
   { id: 'map', label: t('La carte', 'Map') },
-  { id: 'proof', label: t('Analyse & suite', 'Analysis & next') },
+  { id: 'proof', label: t('Analyse exploratoire & suite', 'Exploratory analysis & future') },
 ])
 
 const scrollProgress = ref(0)
@@ -58,7 +58,6 @@ const activeChapter = ref('top')
 const cursor = ref({ x: 0, y: 0 })
 const globePoints = computed(() => buildGlobePoints())
 const pctSuffix = computed(() => (locale.value === 'en' ? '%' : ' %'))
-
 const ambientGlobeStyle = computed(() => {
   const p = scrollProgress.value
   let opacity = 1
@@ -164,14 +163,16 @@ const rawChartPoints = computed(() =>
 )
 
 const flareChartPoints = computed(() =>
-  flareSeries.value.map((p) => ({
-    month: p.month,
-    raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
-    harm: null,
-    lo: null,
-    hi: null,
-    anomaly: null,
-  })),
+  flareSeries.value
+    .filter((p) => p.modis_count !== null || p.viirs_snpp_count !== null)
+    .map((p) => ({
+      month: p.month,
+      raw: (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0),
+      harm: null,
+      lo: null,
+      hi: null,
+      anomaly: null,
+    })),
 )
 
 const rawAllDatasets = computed(() => [
@@ -242,8 +243,8 @@ const seasonCards = computed(() => {
       months: t('Juillet – Août', 'July – August'),
       values: t(`Juil. : ${jul}${unit} · Août : ${aug}${unit}`, `Jul: ${jul}${unit} · Aug: ${aug}${unit}`),
       note: t(
-        'Le cœur de la saison des feux : sols secs, brûlis agricoles et feux de lisière.',
-        'Peak fire season across Gabon: dry ground, farm clearing, and forest-edge fires.',
+        'Pic annuel des détections thermiques type 0 hors sources persistantes (catégorie exploratoire sans validation causale terrain).',
+        'Annual peak in type-0 thermal detections outside persistent sources (exploratory category without causal ground validation).',
       ),
       tone: 'hot',
     },
@@ -252,8 +253,8 @@ const seasonCards = computed(() => {
       months: t('Février – Mars', 'February – March'),
       values: t(`Fév. : ${feb}${unit} · Mar. : ${mar}${unit}`, `Feb: ${feb}${unit} · Mar: ${mar}${unit}`),
       note: t(
-        'Une reprise courte mais régulière des feux au nord et au centre du pays.',
-        'A brief but consistent rebound in northern and central Gabon.',
+        'Rebond secondaire mais régulier des détections thermiques au nord et au centre du pays.',
+        'A brief but recurring secondary rebound in thermal detections across northern and central Gabon.',
       ),
       tone: 'warm',
     },
@@ -262,8 +263,8 @@ const seasonCards = computed(() => {
       months: t('Novembre – Décembre', 'November – December'),
       values: t(`Nov. : ${nov}${unit} · Déc. : ${dec}${unit}`, `Nov: ${nov}${unit} · Dec: ${dec}${unit}`),
       note: t(
-        'Les fortes pluies étouffent les feux presque partout ; il ne reste guère que les sources de chaleur persistantes de la côte.',
-        'Heavy rainfall halts vegetation burning almost everywhere; coastal persistent heat sources remain.',
+        'Les fortes pluies réduisent fortement les détections de type 0 ; il subsiste surtout les sources de chaleur persistantes de la côte.',
+        'Heavy rainfall sharply curtails type-0 detections; coastal persistent heat sources remain.',
       ),
       tone: 'cool',
     },
@@ -391,9 +392,9 @@ onBeforeUnmount(() => {
               {{ t('Gabon · 2000 – 2025', 'Gabon · 2000 – 2025') }}
             </p>
             <h1 class="display display-xl hero-title">
-              <span class="line"><span>{{ t('Au Gabon, lire', 'In Gabon, read') }}</span></span>
+              <span class="line"><span>{{ t('Au Gabon, lire', 'In Gabon, reading') }}</span></span>
               <span class="line">
-                <span>{{ t('la vraie saison ', 'the true fire ') }}<em>{{ t('des feux.', 'season.') }}</em></span>
+                <span>{{ t('25 ans de détections ', '25 years of thermal ') }}<em>{{ t('thermiques.', 'detections.') }}</em></span>
               </span>
             </h1>
             <p class="hero-sub">
@@ -416,6 +417,9 @@ onBeforeUnmount(() => {
               <button type="button" class="btn btn-heat" @click="navigate('calendar')">
                 {{ t('Explorer le calendrier des feux', 'Explore the fire calendar') }}
                 <span aria-hidden="true">→</span>
+              </button>
+              <button type="button" class="btn btn-ghost" @click="navigate('proof')">
+                {{ t('Voir l’analyse exploratoire', 'See exploratory analysis') }}
               </button>
             </div>
 
@@ -540,8 +544,8 @@ onBeforeUnmount(() => {
               ({{ formatCount(composition.gaExcluded) }})
               {{
                 t(
-                  ` sont écartées par le filtre complet : ${formatCount(composition.gaType23Count)} détections type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %, sources fixes ou offshore) et ${formatCount(composition.gaType0InMaskCount)} détections type 0 tombées dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %, ~5 km), surtout autour de Port-Gentil et de la côte de l’Ogooué-Maritime. Toutes ne sont pas des torchères confirmées.`,
-                  ` are excluded by the full filter: ${formatCount(composition.gaType23Count)} type 2/3 detections (${formatDecimal(composition.gaType23Share, 1)}%, fixed or offshore sources) and ${formatCount(composition.gaType0InMaskCount)} type-0 detections inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%, ~5 km), mostly around Port-Gentil and coastal Ogooué-Maritime. Not all of them are confirmed flares.`,
+                  ` sont écartées par le filtre complet (partition exclusive par capteur : ${composition.excludedBySensorPartition.map((s) => `${s.label.split(' (')[0]} ${formatCount(s.excluded)}`).join(', ')}). Sur l’audit indépendant de l’archive source SP (${formatCount(composition.provenanceAudit.scopeTotal)} lignes), on observe ${formatCount(composition.provenanceAudit.type23Count)} détections type 2/3 (${formatDecimal(composition.provenanceAudit.type23ShareOfScope, 1)} %) et ${formatCount(composition.provenanceAudit.type0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.provenanceAudit.type0InMaskShareOfScope, 1)} %, ~5 km) — pas toutes des torchères confirmées.`,
+                  ` are excluded by the full filter (exclusive partition by sensor: ${composition.excludedBySensorPartition.map((s) => `${s.label.split(' (')[0]} ${formatCount(s.excluded)}`).join(', ')}). In the independent SP source archive audit (${formatCount(composition.provenanceAudit.scopeTotal)} rows), ${formatCount(composition.provenanceAudit.type23Count)} are type 2/3 (${formatDecimal(composition.provenanceAudit.type23ShareOfScope, 1)}%) and ${formatCount(composition.provenanceAudit.type0InMaskCount)} are type-0 detections inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.provenanceAudit.type0InMaskShareOfScope, 1)}%, ~5 km) — not all confirmed flares.`,
                 )
               }}
             </p>
@@ -550,7 +554,7 @@ onBeforeUnmount(() => {
               <div>
                 <div class="stat stat-small">{{ formatCount(composition.gaClean) }}</div>
                 <div class="stat-label">
-                  {{ t('détections type 0 hors sources persistantes (61,6 % du total)', 'type-0 detections outside persistent sources (61.6% of total)') }}
+                  {{ t(`détections type 0 hors sources persistantes (${formatDecimal(composition.gaCleanShare, 1)} % du total)`, `type-0 detections outside persistent sources (${formatDecimal(composition.gaCleanShare, 1)}% of total)`) }}
                 </div>
               </div>
               <div>
@@ -600,8 +604,8 @@ onBeforeUnmount(() => {
               <li>
                 <span class="step-index">03</span>
                 <div>
-                  <strong>{{ t('Afficher la marge d’incertitude', 'Show the uncertainty margin') }}</strong>
-                  <span>{{ t('La bande vient de la baseline DB v2.0 ; sa couverture n’est pas établie. L’analyse exploratoire rapporte 63,9 % pour son propre intervalle (cible 80 %) : un indicateur, pas une garantie.', 'The band comes from the DB v2.0 baseline; its coverage is not established. The exploratory analysis reports 63.9% for its own interval (80% target): an indicator, not a guarantee.') }}</span>
+                  <strong>{{ t('Intervalle expérimental (cible 80 %)', 'Experimental interval (80% target)') }}</strong>
+                  <span>{{ t('Bande d’incertitude sur la période reconstruite : couverture empirique 63,9 % sur 2020–2025 dans l’artefact exploratoire, pas une garantie conforme.', 'Uncertainty band over the reconstructed period: 63.9% empirical coverage over 2020–2025 in the exploratory artifact, not a conformal guarantee.') }}</span>
                 </div>
               </li>
             </ol>
@@ -609,7 +613,7 @@ onBeforeUnmount(() => {
             <div class="stat-row reveal reveal-delay-4">
               <div>
                 <div class="stat">−{{ maeReduction }}{{ pctSuffix }}</div>
-                <div class="stat-label">{{ t('d’erreur moyenne (validation renforcée, 2020–2025)', 'less average error (reinforced validation, 2020–2025)') }}</div>
+                <div class="stat-label">{{ t('d’erreur moyenne (artefact exploratoire, 2020–2025)', 'less average error (exploratory artifact, 2020–2025)') }}</div>
               </div>
               <div>
                 <div class="stat stat-small">
@@ -644,8 +648,8 @@ onBeforeUnmount(() => {
               <p class="panel-caption">
                 {{
                   t(
-                    'MODIS est l’entrée du modèle ; VIIRS S-NPP est la référence cible. Changez de capteur pour voir ce que chaque instrument observe vraiment : la rupture de 2012 est un changement de caméra, pas un pic de feux. Après 2012, MODIS continue de voler mais reste moins sensible ; la série orangée suit S-NPP.',
-                    'MODIS is the model input; VIIRS S-NPP is the target reference. Switch sensors to see what each instrument actually observes: the 2012 break is a camera change, not a fire spike. After 2012, MODIS keeps flying but is less sensitive; the orange series follows S-NPP.',
+                    'MODIS est l’entrée du modèle ; VIIRS S-NPP est la référence cible. La rupture de 2012 est un changement d’instrument, pas un pic de feux. La bande d’incertitude provient de la baseline DB v2.0 ; sa couverture indépendante n’est pas établie par l’artefact exploratoire ci-dessous.',
+                    'MODIS is the model input; VIIRS S-NPP is the target reference. The 2012 break is an instrument change, not a fire spike. The uncertainty band comes from the DB v2.0 baseline; its independent coverage is not established by the exploratory artifact below.',
                   )
                 }}
               </p>
@@ -662,14 +666,14 @@ onBeforeUnmount(() => {
             <div>
               <p class="kicker reveal">03 — {{ t('Le calendrier', 'The fire calendar') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                {{ t('La vraie saison des feux au Gabon.', 'Gabon’s true fire season.') }}
+                {{ t('25 ans de détections thermiques au Gabon.', '25 years of thermal detections in Gabon.') }}
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  'Chaque case représente un mois au Gabon de 2000 à 2025 : plus la couleur est sombre, plus il y a eu de détections. Utilisez les 4 filtres ci-dessous pour comparer les type 0 hors sources persistantes, les brûlis habituels vs flambées anormales, ou les détections écartées par le filtre.',
-                  'Each cell is one month in Gabon from 2000 to 2025: darker cells mean more detections. Use the 4 filters below to switch between type 0 outside persistent sources, routine vs unusual surges, or detections excluded by the filter.',
+                  'Chaque case représente un mois au Gabon de 2000 à 2025 : plus la couleur est sombre, plus il y a eu de détections. Utilisez les 4 filtres ci-dessous pour explorer les détections thermiques type 0 hors sources persistantes, les écarts statistiques à la médiane (catégories exploratoires) ou la série des détections écartées.',
+                  'Each cell is one month in Gabon from 2000 to 2025: darker cells mean more detections. Use the 4 filters below to explore type-0 thermal detections outside persistent sources, statistical deviations from the median (exploratory categories), or the excluded detections series.',
                 )
               }}
             </p>
@@ -689,12 +693,12 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="season-cards-head reveal">
-            <h3>{{ t('Les 3 temps du feu au Gabon', 'Gabon’s 3 fire seasons') }}</h3>
+            <h3>{{ t('Les 3 régimes de détections thermiques au Gabon (catégories exploratoires)', 'Gabon’s 3 thermal detection regimes (exploratory categories)') }}</h3>
             <p>
               {{
                 t(
-                  'Médiane mensuelle calculée sur 25 années complètes (2001–2025, type 0 hors sources persistantes).',
-                  'Median monthly counts measured across 25 full years (2001–2025, type 0 outside persistent sources).',
+                  'Médiane mensuelle sur 25 années complètes (2001–2025, détections thermiques type 0 hors sources persistantes). La bande d’incertitude reste celle de la baseline DB v2.0 et n’est pas validée par l’artefact exploratoire ci-dessous.',
+                  'Monthly median across 25 full years (2001–2025, type-0 thermal detections outside persistent sources). The uncertainty band follows the DB v2.0 baseline and is not independently validated by the exploratory artifact below.',
                 )
               }}
             </p>
@@ -729,8 +733,8 @@ onBeforeUnmount(() => {
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  `En orange : les zones de détections type 0 (~28 km). En bleu : les ${composition.maskedCells} cellules candidates (~5 km) de sources persistantes, surtout sur la côte et en mer. Sélectionnez une province pour une lecture descriptive ; la calibration harmonisée reste nationale et n’est pas revalidée par polygone.`,
-                  `Orange squares (~28 km) map type-0 detections. Blue cells (~5 km) mark ${composition.maskedCells} candidate persistent sources, mostly coastal and offshore. Choose a province for a descriptive read; the harmonized calibration stays national and is not revalidated per polygon.`,
+                  `Du clair au bordeaux sombre, comme dans le calendrier : les cumuls de détections type 0 non harmonisées (~28 km). En bleu : les ${composition.maskedCells} cellules candidates (~5 km) de sources persistantes, surtout sur la côte et en mer. Sélectionnez une province pour une lecture descriptive ; la calibration harmonisée reste nationale et n’est pas revalidée par polygone.`,
+                  `Light to dark crimson squares, as in the calendar, map cumulative unharmonized type-0 detections (~28 km). Blue cells (~5 km) mark ${composition.maskedCells} candidate persistent sources, mostly coastal and offshore. Choose a province for a descriptive read; the harmonized calibration stays national and is not revalidated per polygon.`,
                 )
               }}
             </p>
@@ -750,8 +754,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Zones pétrolières et industrielles (Port-Gentil, Gamba, plateformes) où des sources de chaleur persistent toute l’année, sans lien avec les saisons agricoles. Ce sont des cellules candidates, pas des torchères confirmées une par une.',
-                    'Oil and industrial zones (Port-Gentil, Gamba, offshore rigs) where heat sources persist year-round, unrelated to seasonal field clearing. These are candidate cells, not individually confirmed flares.',
+                    'Zones pétrolières et industrielles (Port-Gentil, Gamba, plateformes) où des sources de chaleur persistent toute l’année, sans lien avec la saisonnalité des détections type 0. Ce sont des cellules candidates, pas des torchères confirmées une par une.',
+                    'Oil and industrial zones (Port-Gentil, Gamba, offshore rigs) where heat sources persist year-round, unrelated to seasonal type-0 detection patterns. These are candidate cells, not individually confirmed flares.',
                   )
                 }}
               </p>
@@ -764,8 +768,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Grandes savanes et plateaux où se concentre l’essentiel des feux de saison sèche entre juin et septembre.',
-                    'Open savannas and plateaus where the bulk of Gabon’s dry-season burning concentrates between June and September.',
+                    'Grandes savanes et plateaux où se concentre l’essentiel des détections thermiques type 0 entre juin et septembre (sans attribution causale directe).',
+                    'Open savannas and plateaus where most dry-season type-0 thermal detections concentrate between June and September (without direct causal attribution).',
                   )
                 }}
               </p>
@@ -778,8 +782,8 @@ onBeforeUnmount(() => {
               <p class="geo-card-desc">
                 {{
                   t(
-                    'Forêts denses plus humides : les alertes y restent plus rares et suivent surtout les petits brûlis agricoles autour des villages et routes.',
-                    'Wetter rainforest interior: detections remain lighter and mostly track small farm clearings near roads and settlements.',
+                    'Forêts denses plus humides : les détections thermiques type 0 y restent plus rares et dispersées (catégorie exploratoire, sans validation causale locale).',
+                    'Wetter rainforest interior: type-0 thermal detections remain sparser and more dispersed (exploratory category, without causal ground validation).',
                   )
                 }}
               </p>
@@ -812,17 +816,17 @@ onBeforeUnmount(() => {
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">05 — {{ t('Analyse & suite', 'Analysis & next') }}</p>
+              <p class="kicker reveal">05 — {{ t('Analyse exploratoire & suite', 'Exploratory analysis & future') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                {{ t('Évalué sur 2020–2025.', 'Evaluated on 2020–2025.') }}<br />
-                <em>{{ t('Les limites sont publiées.', 'The limits are published.') }}</em>
+                {{ t('Ce que nous explorons.', 'What we explore.') }}<br />
+                <em>{{ t('Et les limites publiées.', 'And the published limits.') }}</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  'Nous avons évalué la méthode sur 6 années complètes (2020–2025), déjà examinées pendant sa mise au point. Ces résultats exploratoires sont en revue scientifique : voici ce qu’ils montrent et ce qu’ils ne mesurent pas.',
-                  'We evaluated the method over 6 full years (2020–2025), already examined during its development. These exploratory results are under scientific review: here is what they show and what they do not measure.',
+                  'Cette analyse compare plusieurs modèles sur 2020–2025 (72 mois) et documente leurs limites : la couverture des observations et l’indépendance de certaines étapes restent en revue scientifique.',
+                  'This exploratory check compares models over 2020–2025 (72 months) and publishes all limits: observation coverage and step independence remain under scientific review.',
                 )
               }}
             </p>
@@ -854,7 +858,7 @@ onBeforeUnmount(() => {
             <div class="reveal reveal-delay-2">
               <SeasonTimeline
                 :archive-end="provenance.archiveEnd"
-                :noaa-bridge-ratio="noaaBridgeRatio"
+                :noaa-bridge-ratio="noaaBridgeRatio ?? undefined"
                 :reduced-motion="reducedMotion"
               />
             </div>
@@ -879,8 +883,8 @@ onBeforeUnmount(() => {
                 <p>
                   {{
                     t(
-                      'Appliquer la même séparation sources persistantes / type 0 aux pays forestiers voisins du Gabon.',
-                      'Apply the same persistent-source / type-0 separation across neighboring Congo Basin forest nations.',
+                      'Étudier et valider la séparation sources persistantes / type 0 sur les pays forestiers voisins du Gabon.',
+                      'Study and validate the persistent-source / type-0 separation across Gabon’s Congo Basin neighbors.',
                     )
                   }}
                 </p>
@@ -888,12 +892,12 @@ onBeforeUnmount(() => {
               </article>
               <article class="roadmap-card reveal reveal-delay-2">
                 <span class="roadmap-horizon">{{ t('Terrain', 'Impact') }}</span>
-                <h3>{{ t('Mesurer l’intensité des feux', 'Measure fire intensity') }}</h3>
+                <h3>{{ t('Mesurer l’énergie des feux', 'Measure fire energy') }}</h3>
                 <p>
                   {{
                     t(
-                      'En plus du nombre d’alertes, suivre la chaleur dégagée par les feux pour repérer les épisodes vraiment destructeurs.',
-                      'Track heat energy released per detection alongside counts to spot unusually intense burns.',
+                      'En plus du nombre de détections thermiques, suivre la puissance radiative (FRP) pour repérer les épisodes vraiment destructeurs.',
+                      'Track fire radiative power (FRP) alongside thermal detection counts to spot unusually intense burns.',
                     )
                   }}
                 </p>
@@ -924,14 +928,14 @@ onBeforeUnmount(() => {
               {{ t('Archive vérifiée (SHA-256) :', 'Verified archive (SHA-256):') }}
               <strong>{{
                 dataSourceMode === 'live'
-                  ? t('API Django et instantanés locaux, provenance variable', 'Django API and local snapshots, provenance varies')
-                  : t('API partielle ou instantanés locaux, provenance variable', 'Partial API or local snapshots, provenance varies')
+                  ? t('API Django et instantanés locaux possibles ; provenance à vérifier', 'Django API & local snapshots possible; provenance to verify')
+                  : t('API partielle ou instantanés locaux vérifiés', 'Partial API or verified local snapshots')
               }}</strong>
               — {{ formatCount(composition.gaTotal) }}
               {{
                 t(
-                  `détections au Gabon (2000–2025) : ${formatCount(composition.gaClean)} type 0 hors sources persistantes, ${formatCount(composition.gaExcluded)} écartées par le filtre complet (type 2/3 + ${composition.maskedCells} cellules candidates).`,
-                  `detections inside Gabon (2000–2025): ${formatCount(composition.gaClean)} type 0 outside persistent sources, ${formatCount(composition.gaExcluded)} excluded by the full filter (type 2/3 + ${composition.maskedCells} candidate cells).`,
+                  `détections thermiques au Gabon (2000–2025) : ${formatCount(composition.gaClean)} type 0 hors sources persistantes, ${formatCount(composition.gaExcluded)} détections écartées par le filtre complet (type 2/3 + type 0 dans ${composition.maskedCells} cellules candidates).`,
+                  `thermal detections inside Gabon (2000–2025): ${formatCount(composition.gaClean)} type 0 outside persistent sources, ${formatCount(composition.gaExcluded)} excluded thermal detections (type 2/3 + type 0 inside ${composition.maskedCells} candidate cells).`,
                 )
               }}
             </p>
@@ -954,7 +958,7 @@ onBeforeUnmount(() => {
                 </a>
               </li>
               <li>{{ t('Limites provinciales du Gabon (9 provinces)', 'Gabon provincial boundaries (9 provinces)') }}</li>
-              <li>{{ t('Évaluation exploratoire sur 72 mois (2020–2025)', 'Exploratory evaluation over 72 months (2020–2025)') }}</li>
+              <li>{{ t('Baseline harmonisée v2.0 & analyse exploratoire en revue M1', 'Harmonized baseline v2.0 & exploratory analysis under M1 review') }}</li>
             </ul>
           </div>
           <div>

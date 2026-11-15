@@ -11,11 +11,11 @@ import {
   monthlySeasonComparison,
 } from '@/lib/data'
 import { locale, t } from '@/lib/i18n'
-import { provenance } from '@/lib/provenance'
 
 const showMixed = ref(true)
 const hoveredMonth = ref<number | null>(null)
-const gaTagCount = provenance.ga.totalType23Count
+const sensorPartition = computed(() => composition.value.excludedBySensorPartition)
+const provenanceAudit = computed(() => composition.value.provenanceAudit)
 
 const monthShort = computed(() => (locale.value === 'en' ? MONTH_SHORT_EN : MONTH_SHORT))
 const monthNames = computed(() => (locale.value === 'en' ? MONTH_NAMES_EN : MONTH_NAMES))
@@ -95,22 +95,22 @@ const activeBar = computed(() => {
     <!-- Barre proportionnelle unique des 285 013 détections au Gabon -->
     <div class="split-block">
       <div class="split-bar" role="img" :aria-label="t('Répartition entre type 0 hors sources persistantes et détections écartées par le filtre', 'Type-0 outside persistent sources vs detections excluded by the filter')">
-        <div class="split-veg" :style="{ width: `${vegShare}%` }"></div>
-        <div class="split-flare" :style="{ width: `${flareShare}%` }"></div>
+        <div class="split-veg" :style="{ width: `${vegShare ?? 0}%` }"></div>
+        <div class="split-flare" :style="{ width: `${flareShare ?? 0}%` }"></div>
       </div>
 
       <div class="split-stats">
         <div class="split-card veg">
-          <span class="swatch-label"><i class="swatch hot"></i>{{ t('Type 0 hors sources persistantes (forêt, savane, brûlis)', 'Type 0 outside persistent sources (forest, savanna, clearing)') }}</span>
+          <span class="swatch-label"><i class="swatch hot"></i>{{ t('Détections thermiques · Type 0 hors sources persistantes (catégorie exploratoire)', 'Thermal detections · Type 0 outside persistent sources (exploratory category)') }}</span>
           <div class="split-numbers">
             <strong>{{ formatCount(vegCount) }}</strong>
             <span>{{ formatDecimal(vegShare, 1) }}{{ pctSuffix }}</span>
           </div>
-          <p>{{ t('Suivent les saisons sèches. Ce sont des candidats feux de végétation, pas une validation terrain.', 'Follow Gabon’s dry seasons. These are candidate vegetation fires, not field-validated.') }}</p>
+          <p>{{ t('Série filtrée suivant les saisons sèches. Il s’agit de détections thermiques type 0 hors masque (candidats végétation), pas d’une validation causale terrain.', 'Filtered series tracking dry seasons. These are type-0 thermal detections outside the mask (vegetation candidates), not causal field validation.') }}</p>
         </div>
 
         <div class="split-card flare-card">
-          <span class="swatch-label"><i class="swatch cool"></i>{{ t('Détections écartées par le filtre complet', 'Detections excluded by the full filter') }}</span>
+          <span class="swatch-label"><i class="swatch cool"></i>{{ t('Détections thermiques écartées (catégorie exploratoire : différence de séries)', 'Excluded thermal detections (exploratory category: series difference)') }}</span>
           <div class="split-numbers">
             <strong>{{ formatCount(flareCount) }}</strong>
             <span>{{ formatDecimal(flareShare, 1) }}{{ pctSuffix }}</span>
@@ -118,8 +118,8 @@ const activeBar = computed(() => {
           <p>
             {{
               t(
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %) + ${formatCount(composition.gaType0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %), côte et offshore.`,
-                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)}%) + ${formatCount(composition.gaType0InMaskCount)} type 0 inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%), coastal and offshore.`,
+                `Partition exclusive par capteur/période : ${sensorPartition.map((s) => `${s.label.split(' (')[0]} (${s.period[0] ?? '—'} → ${s.period[1] ?? '—'}) : ${formatCount(s.excluded)}`).join(' · ')}. Toutes ne sont pas des torchères confirmées.`,
+                `Exclusive partition by sensor/period: ${sensorPartition.map((s) => `${s.label.split(' (')[0]} (${s.period[0] ?? '—'} → ${s.period[1] ?? '—'}): ${formatCount(s.excluded)}`).join(' · ')}. Not all are confirmed flares.`,
               )
             }}
           </p>
@@ -151,34 +151,41 @@ const activeBar = computed(() => {
         </div>
       </div>
 
-      <div class="bars-grid">
-        <button
-          v-for="bar in bars"
-          :key="bar.index"
-          type="button"
-          class="bar-col"
-          :class="{ active: activeBar.index === bar.index }"
-          :aria-label="`${bar.name} : ${formatCount(bar.veg)} ${t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources')}${showMixed ? `, ${formatCount(bar.flare)} ${t('détections écartées par le filtre', 'detections excluded by the filter')}` : ''}`"
-          @mouseenter="hoveredMonth = bar.index"
-          @focus="hoveredMonth = bar.index"
-          @mouseleave="hoveredMonth = null"
-        >
-          <span class="bar-track">
-            <span class="bar-stack">
-              <i class="seg-flare" :style="{ height: `${bar.flarePct}%` }"></i>
-              <i class="seg-veg" :style="{ height: `${bar.vegPct}%` }"></i>
+      <div class="bars-chart-layout">
+        <div class="bars-y-axis" aria-hidden="true">
+          <span>{{ formatCount(maxBarValue) }}</span>
+          <span>{{ formatCount(Math.round(maxBarValue / 2)) }}</span>
+          <span>0</span>
+        </div>
+        <div class="bars-grid">
+          <button
+            v-for="bar in bars"
+            :key="bar.index"
+            type="button"
+            class="bar-col"
+            :class="{ active: activeBar.index === bar.index }"
+            :aria-label="`${bar.name} : ${formatCount(bar.veg)} ${t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources')}${showMixed ? `, ${formatCount(bar.flare)} ${t('détections écartées par le filtre', 'detections excluded by the filter')}` : ''}`"
+            @mouseenter="hoveredMonth = bar.index"
+            @focus="hoveredMonth = bar.index"
+            @mouseleave="hoveredMonth = null"
+          >
+            <span class="bar-track">
+              <span class="bar-stack">
+                <i class="seg-flare" :style="{ height: `${bar.flarePct}%` }"></i>
+                <i class="seg-veg" :style="{ height: `${bar.vegPct}%` }"></i>
+              </span>
             </span>
-          </span>
-          <span class="bar-label">{{ bar.short }}</span>
-        </button>
+            <span class="bar-label">{{ bar.short }}</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <p class="flare-note">
       {{
         t(
-          `La NASA classe ${formatCount(gaTagCount)} détections en type 2/3 (sources fixes ou offshore). Les ${formatCount(composition.gaType0InMaskCount)} autres sont des type 0 tombées dans ${composition.maskedCells} cellules candidates. Le filtre complet écarte ${formatCount(flareCount)} détections, mais toutes ne sont pas des torchères confirmées : c’est une exposition au critère, pas un taux de faux positifs.`,
-          `NASA tags ${formatCount(gaTagCount)} detections as type 2/3 (fixed or offshore sources). The other ${formatCount(composition.gaType0InMaskCount)} are type-0 detections inside ${composition.maskedCells} candidate cells. The full filter excludes ${formatCount(flareCount)} detections, but not all are confirmed flares: this is exposure to the criterion, not a false-positive rate.`,
+          `Audit indépendant de l’archive source SP (${provenanceAudit.period[0]}–${provenanceAudit.period[1]}, ${formatCount(provenanceAudit.scopeTotal)} lignes GA) : la NASA classe ${formatCount(provenanceAudit.type23Count)} détections en type 2/3 (${formatDecimal(provenanceAudit.type23ShareOfScope, 1)} %) et ${formatCount(provenanceAudit.type0InMaskCount)} en type 0 dans ${composition.maskedCells} cellules candidates 0,05° (${formatDecimal(provenanceAudit.type0InMaskShareOfScope, 1)} %). Ces sous-compteurs sont indépendants de la différence dynamique des séries : c’est une exposition au critère, pas un taux de faux positifs.`,
+          `Independent SP source archive audit (${provenanceAudit.period[0]}–${provenanceAudit.period[1]}, ${formatCount(provenanceAudit.scopeTotal)} GA rows): NASA tags ${formatCount(provenanceAudit.type23Count)} detections as type 2/3 (${formatDecimal(provenanceAudit.type23ShareOfScope, 1)}%) and ${formatCount(provenanceAudit.type0InMaskCount)} type-0 detections inside ${composition.maskedCells} candidate 0.05° cells (${formatDecimal(provenanceAudit.type0InMaskShareOfScope, 1)}%). Reported independently of the dynamic series difference: this reflects criterion exposure, not a false-positive rate.`,
         )
       }}
     </p>
@@ -403,11 +410,31 @@ const activeBar = computed(() => {
   color: #67e8f9;
 }
 
+.bars-chart-layout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.bars-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 2px 0 24px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #dce5f0;
+  font-variant-numeric: tabular-nums;
+}
+
 .bars-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 6px;
-  height: 150px;
+  height: 162px;
   align-items: end;
 }
 
@@ -464,8 +491,9 @@ const activeBar = computed(() => {
 
 .bar-label {
   font-family: var(--font-mono);
-  font-size: 0.64rem;
-  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: #dce5f0;
 }
 
 .bar-col.active .bar-label {
@@ -483,11 +511,14 @@ const activeBar = computed(() => {
   .split-stats {
     grid-template-columns: 1fr;
   }
+  .bars-y-axis {
+    font-size: 0.72rem;
+  }
   .bars-grid {
     gap: 3px;
   }
   .bar-label {
-    font-size: 0.54rem;
+    font-size: 0.72rem;
   }
 }
 </style>
