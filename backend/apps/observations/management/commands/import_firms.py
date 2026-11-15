@@ -120,26 +120,30 @@ def _row_to_observation(row: dict[str, str], batch: ImportBatch, source: str) ->
 
 
 def reconcile_nrt_duplicates() -> int:
-    """Keep the first exact NRT detection for counting, retaining every source row."""
+    """Count one exact detection, preferring SP; retain every source row."""
     with connection.cursor() as cursor:
         cursor.execute(
             """
             WITH ranked AS (
                 SELECT id,
                     ROW_NUMBER() OVER (
-                        PARTITION BY source, satellite, acquired_at,
+                        PARTITION BY source, satellite, DATE_TRUNC('minute', acquired_at),
                             ROUND(ST_Y(position)::numeric, 5),
                             ROUND(ST_X(position)::numeric, 5)
-                        ORDER BY id
-                    ) AS rank
+                        ORDER BY is_nrt ASC, id ASC
+                    ) AS rank,
+                    BOOL_OR(is_nrt) OVER (
+                        PARTITION BY source, satellite, DATE_TRUNC('minute', acquired_at),
+                            ROUND(ST_Y(position)::numeric, 5),
+                            ROUND(ST_X(position)::numeric, 5)
+                    ) AS has_nrt
                 FROM observations_hotspotobservation
-                WHERE is_nrt
             )
             UPDATE observations_hotspotobservation AS o
-            SET counts_in_aggregates = (ranked.rank = 1)
+            SET counts_in_aggregates = (NOT ranked.has_nrt OR ranked.rank = 1)
             FROM ranked
             WHERE o.id = ranked.id
-              AND o.counts_in_aggregates IS DISTINCT FROM (ranked.rank = 1);
+              AND o.counts_in_aggregates IS DISTINCT FROM (NOT ranked.has_nrt OR ranked.rank = 1);
             """
         )
         return cursor.rowcount

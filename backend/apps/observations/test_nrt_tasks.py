@@ -92,22 +92,41 @@ class NrtCountingTests(TestCase):
             self.assertEqual(HotspotObservation.objects.count(), 4)
             self.assertEqual(
                 list(HotspotObservation.objects.filter(is_nrt=True).order_by("id").values_list("counts_in_aggregates", flat=True)),
-                [True, False, True],
+                [False, False, True],
             )
             self.assertTrue(HotspotObservation.objects.get(is_nrt=False).counts_in_aggregates)
             cell = GridCellMonth.objects.get(filter_static=True)
-            self.assertEqual(cell.viirs_noaa20_count, 3)
-            self.assertAlmostEqual(cell.frp_sum_noaa20, 14.5)
+            self.assertEqual(cell.viirs_noaa20_count, 2)
+            self.assertAlmostEqual(cell.frp_sum_noaa20, 11.0)
 
             # A rebuild also repairs legacy rows that predate the counting rule.
             HotspotObservation.objects.filter(is_nrt=True).update(counts_in_aggregates=True)
             call_command("import_firms", rebuild_only=True, verbosity=0)
             self.assertEqual(
-                HotspotObservation.objects.filter(is_nrt=True, counts_in_aggregates=False).count(), 1
+                HotspotObservation.objects.filter(is_nrt=True, counts_in_aggregates=False).count(), 2
             )
-            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 3)
+            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 2)
 
             call_command("import_firms", data_dir=str(root / "window2"), force=True, verbosity=0)
             self.assertEqual(ImportBatch.objects.count(), 3)
             self.assertEqual(HotspotObservation.objects.count(), 4)
-            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 3)
+            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 2)
+
+            # A later rebuild restores the NRT canonical row when SP is removed.
+            HotspotObservation.objects.filter(is_nrt=False).delete()
+            call_command("import_firms", rebuild_only=True, verbosity=0)
+            self.assertEqual(
+                list(HotspotObservation.objects.filter(is_nrt=True).order_by("id").values_list("counts_in_aggregates", flat=True)),
+                [True, False, True],
+            )
+            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 2)
+
+    def test_sp_only_historical_group_is_not_recounted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._import(root, "standard", "viirs-noaa20_sp.csv", [
+                "0.5,10.5,2024-08-01,1200,N20,VIIRS,2.0SP,3.5,0",
+                "0.5,10.5,2024-08-01,1200,N20,VIIRS,3.0SP,4.5,0",
+            ])
+            self.assertEqual(HotspotObservation.objects.filter(counts_in_aggregates=True).count(), 2)
+            self.assertEqual(GridCellMonth.objects.get(filter_static=True).viirs_noaa20_count, 2)
