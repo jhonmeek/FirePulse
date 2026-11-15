@@ -53,7 +53,8 @@ const maritimeStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('
 const maritimeCount = ref(0)
 const maritimePeriod = ref('')
 const maritimeUrl = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}data/gabon-maritime-observations.geojson`
-const maritimeLayers = ['maritime-point']
+const maritimeLayers = ['maritime-zone', 'maritime-point']
+const maritimeZoneWms = 'https://geo.vliz.be/geoserver/MarineRegions/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&LAYERS=eez&STYLES=&CQL_FILTER=mrgid%3D8476&TRANSPARENT=TRUE&SRS=EPSG:3857&BBOX={bbox-epsg-3857}&WIDTH=256&HEIGHT=256&FORMAT=image/png'
 let maritimeAbort: AbortController | null = null
 
 let map: MlMap | null = null
@@ -71,7 +72,7 @@ const START_OPTIONS = YEARS.filter((y) => y <= 2024)
 const END_OPTIONS = YEARS.filter((y) => y >= 2001)
 
 const GABON_BOUNDS: [[number, number], [number, number]] = [
-  [8.6, -4.1],
+  [6.7, -6.7],
   [14.7, 2.45],
 ]
 
@@ -436,6 +437,13 @@ onMounted(() => {
     })
 
     map.addSource('maritime', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+    map.addSource('maritime-zone-wms', {
+      type: 'raster',
+      tiles: [maritimeZoneWms],
+      tileSize: 256,
+      bounds: [6.9, -6.5, 11.2, 1.1],
+      attribution: 'Marine Regions / VLIZ - World EEZ v12 (2023)',
+    })
 
     map.addLayer({
       id: 'graticule',
@@ -509,9 +517,14 @@ onMounted(() => {
     })
 
     map.addLayer({
+      id: 'maritime-zone', type: 'raster', source: 'maritime-zone-wms',
+      layout: { visibility: 'none' },
+      paint: { 'raster-opacity': 0.35 },
+    })
+    map.addLayer({
       id: 'maritime-point', type: 'circle', source: 'maritime',
       layout: { visibility: 'none' },
-      paint: { 'circle-radius': 5, 'circle-color': '#c084fc', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 },
+      paint: { 'circle-radius': 7, 'circle-color': '#c084fc', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 },
     })
 
     map.on('mousemove', 'maritime-point', showMaritimePopup)
@@ -527,6 +540,9 @@ onMounted(() => {
     mapReady.value = true
     renderProvinceMarkers()
     updateData()
+    // The published maritime snapshot is a separate exploratory layer. Load it
+    // when the map becomes ready so its points are visible without a hidden toggle.
+    void toggleMaritime()
   })
 
   resizeObserver = new ResizeObserver(() => map?.resize())
@@ -630,7 +646,7 @@ watch([countryFeature, provinceFeatures], () => {
         @click="toggleMaritime"
       >
         <span class="toggle-dot maritime-dot"></span>
-        {{ t('Observations maritimes (exploratoire)', 'Maritime observations (exploratory)') }}
+        {{ t('ZEE et points maritimes (exploratoire)', 'EEZ and maritime points (exploratory)') }}
       </button>
 
       <button
@@ -657,6 +673,10 @@ watch([countryFeature, provinceFeatures], () => {
             `NASA FIRMS snapshot (NOAA-20 NRT requested), ${maritimePeriod || 'period unavailable'} — independent of the terrestrial period. Coverage unknown. Unclassified thermal detections (exploratory category): they confirm neither a fire nor a flare. The Marine Regions EEZ polygon excludes territorial waters and is indicative rather than legal.`,
           )
         }}
+      </p>
+      <p>
+        {{ t('ZEE indicative : tuiles Marine Regions accessibles avec une connexion réseau. Ce périmètre exclut la mer territoriale. Source :', 'Indicative EEZ: Marine Regions tiles require a network connection. This area excludes territorial waters. Source:') }}
+        <a href="https://www.marineregions.org/gazetteer.php?p=details&amp;id=8476" target="_blank" rel="noopener noreferrer">Marine Regions - Gabon EEZ</a>.
       </p>
       <div role="status" aria-live="polite">
         <template v-if="maritimeStatus === 'loading'">
