@@ -61,13 +61,21 @@ class TerraAuditTests(unittest.TestCase):
         self.write_raw()
         self.raw_rows[2000].append(self.raw_rows[2000][0][:])
         self.write_raw()
-        with self.assertRaisesRegex(ValueError, "duplicate raw"):
-            audit(self.raw, self.monthly)
+        self.monthly_rows[0][5:7] = ["2", "2"]
+        self.write_monthly()
+        result = audit(self.raw, self.monthly)
+        self.assertEqual(result["status"], "match")
+        self.assertEqual(result["duplicate_exact_rows"], 1)
         self.raw_rows[2000].pop()
         self.raw_rows[2000][0][0] = "2001-01-01"
         self.write_raw()
         with self.assertRaisesRegex(ValueError, "outside expected"):
             audit(self.raw, self.monthly)
+
+    def test_normalized_satellite_instrument_and_whitespace(self):
+        self.raw_rows[2000][0] = [" 2000-11-01 ", " terra ", " modis ", " 0 "]
+        self.write_raw()
+        self.assertEqual(audit(self.raw, self.monthly)["status"], "match")
 
     def test_monthly_missing_duplicate_invalid_and_scope(self):
         first = self.monthly_rows.pop(0)

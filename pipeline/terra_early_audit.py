@@ -39,6 +39,7 @@ def _read_csv(path: Path, required: set[str]):
 def audit(raw_dir: Path, monthly_path: Path) -> dict:
     counts, type0 = Counter(), Counter()
     hashes, seen = {}, set()
+    duplicate_rows = 0
     for year in (2000, 2001, 2002):
         path = raw_dir / f"modis_{year}_Gabon.csv"
         rows, digest = _read_csv(path, RAW_FIELDS)
@@ -46,22 +47,24 @@ def audit(raw_dir: Path, monthly_path: Path) -> dict:
         for row in rows:
             identity = tuple(sorted(row.items()))
             if identity in seen:
-                raise ValueError(f"duplicate raw row: {path}")
+                duplicate_rows += 1
             seen.add(identity)
             try:
-                acquired = date.fromisoformat(row["acq_date"])
+                acquired = date.fromisoformat(row["acq_date"].strip())
             except ValueError as exc:
                 raise ValueError(f"invalid acquisition date in {path}: {row['acq_date']}") from exc
             month = acquired.isoformat()[:7]
             if acquired.year != year or month not in MONTHS:
                 raise ValueError(f"date outside expected file/year or audit period: {path}: {acquired}")
-            if row["satellite"] not in ("Terra", "Aqua") or row["instrument"] != "MODIS":
+            satellite = row["satellite"].strip().lower()
+            hotspot_type = row["type"].strip()
+            if satellite not in ("terra", "aqua") or row["instrument"].strip().lower() != "modis":
                 raise ValueError(f"unexpected satellite or instrument in {path}")
-            if row["type"] not in ("0", "1", "2", "3"):
+            if hotspot_type not in ("0", "1", "2", "3"):
                 raise ValueError(f"invalid hotspot type in {path}: {row['type']!r}")
-            if row["satellite"] == "Terra":
+            if satellite == "terra":
                 counts[month] += 1
-                type0[month] += row["type"] == "0"
+                type0[month] += hotspot_type == "0"
 
     monthly_rows, digest = _read_csv(monthly_path, MONTHLY_FIELDS)
     hashes[str(monthly_path)] = digest
@@ -100,7 +103,7 @@ def audit(raw_dir: Path, monthly_path: Path) -> dict:
                         "match": list(actual) == expected})
     return {"artifact_kind": "firepulse-terra-early-audit", "schema_version": 1,
             "period": {"start": MONTHS[0], "end": MONTHS[-1]},
-            "input_sha256": hashes, "months": records,
+            "input_sha256": hashes, "months": records, "duplicate_exact_rows": duplicate_rows,
             "totals": {"raw_terra": sum(counts.values()), "raw_type0": sum(type0.values()),
                        "months": len(records), "mismatched_months": sum(not r["match"] for r in records)},
             "status": "match" if all(r["match"] for r in records) else "mismatch",
