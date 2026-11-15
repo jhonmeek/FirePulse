@@ -77,12 +77,57 @@ class MaritimeSnapshotTests(unittest.TestCase):
             self.build()
         self.assertFalse(self.output.exists())
 
+    def test_missing_or_invalid_time_and_frp_are_rejected(self):
+        original = self.source.read_text(encoding="utf-8")
+        for replacement in (",,N20,VIIRS,4.2,", ",2460,N20,VIIRS,4.2,", ",1200,N20,VIIRS,nan,", ",1200,N20,VIIRS,abc,"):
+            with self.subTest(replacement=replacement):
+                self.source.write_text(original.replace(",1200,N20,VIIRS,4.2,", replacement), encoding="utf-8")
+                self.data["csv_sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+                self.write_manifest()
+                with self.assertRaises(ValueError):
+                    self.build()
+                self.assertFalse(self.output.exists())
+
+    def test_short_time_and_numeric_frp_are_normalized(self):
+        original = self.source.read_text(encoding="utf-8").replace(",1200,N20,", ",43,N20,")
+        self.source.write_text(original, encoding="utf-8")
+        self.data["csv_sha256"] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.write_manifest()
+        self.build()
+        result = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(result["features"][0]["properties"]["acq_time_utc"], "0043")
+        self.assertEqual(result["features"][0]["properties"]["frp"], 4.2)
+        self.assertEqual(result["metadata"]["source_rows"], 4)
+
     def test_bbox_must_cover_entire_boundary(self):
         self.data["requested_bbox"] = [0, 0, 1.99, 2]
         self.write_manifest()
         with self.assertRaisesRegex(ValueError, "bbox"):
             self.build()
         self.assertFalse(self.output.exists())
+
+    def test_manifest_rows_and_boundary_id_are_checked(self):
+        self.data["rows"] = 999
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, "Row count"):
+            self.build()
+        self.data["rows"] = 4
+        self.write_manifest()
+        obj = json.loads(self.boundary.read_text(encoding="utf-8"))
+        obj["features"][0]["properties"]["mrgid"] = 1
+        self.boundary.write_text(json.dumps(obj), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "MRGID"):
+            self.build()
+
+    def test_published_snapshot_matches_public_source_manifest(self):
+        root = Path(__file__).resolve().parents[1]
+        source = root / "data/fixtures/maritime/viirs_noaa20_nrt_2026-11-10_2026-11-14.csv"
+        manifest = json.loads(source.with_suffix(".manifest.json").read_text(encoding="utf-8"))
+        snapshot = json.loads((root / "front-bis/public/data/gabon-maritime-observations.geojson").read_text(encoding="utf-8"))
+        self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), manifest["csv_sha256"])
+        self.assertEqual(snapshot["metadata"]["source_csv_sha256"], manifest["csv_sha256"])
+        self.assertEqual(snapshot["metadata"]["count"], len(snapshot["features"]))
+        self.assertTrue(all(len(f["properties"]["acq_time_utc"]) == 4 for f in snapshot["features"]))
 
     def test_existing_output_is_never_overwritten(self):
         original = b"existing output\x00"

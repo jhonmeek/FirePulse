@@ -43,7 +43,7 @@ const showMaritime = ref(false)
 const maritimeStatus = ref<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
 const maritimeCount = ref(0)
 const maritimePeriod = ref('période non renseignée')
-const maritimeUrl = '/data/gabon-maritime-observations.geojson'
+const maritimeUrl = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}data/gabon-maritime-observations.geojson`
 const maritimeLayers = ['maritime-point']
 let maritimeAbort: AbortController | null = null
 
@@ -179,12 +179,18 @@ function updateLegend() {
   // La légende est réactive via `stats`; ce hook est conservé pour MapLibre.
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!)
+}
+
 function popupHtml(title: string, rows: [string, string][]): string {
   return `
     <div class="fp-popup">
-      <p class="fp-popup-title">${title}</p>
+      <p class="fp-popup-title">${escapeHtml(title)}</p>
       <dl>
-        ${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
+        ${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}
       </dl>
     </div>
   `
@@ -239,6 +245,25 @@ function onStaticHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }
       ]),
     )
     .addTo(map)
+}
+
+function onMaritimeHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) {
+  if (!map || !event.features?.[0]) return
+  map.getCanvas().style.cursor = 'pointer'
+  const properties = event.features[0].properties ?? {}
+  const value = (key: string) => properties[key] == null || properties[key] === ''
+    ? 'Non renseigné'
+    : String(properties[key])
+  const rawTime = value('acq_time_utc')
+  const paddedTime = /^\d{1,4}$/.test(rawTime) ? rawTime.padStart(4, '0') : ''
+  const time = paddedTime && Number(paddedTime.slice(0, 2)) < 24 && Number(paddedTime.slice(2)) < 60
+    ? `${paddedTime.slice(0, 2)}:${paddedTime.slice(2)} UTC`
+    : rawTime
+  popup?.setLngLat(event.lngLat).setHTML(popupHtml('Point thermique maritime', [
+    ['Date', value('acq_date')],
+    ['Heure', time],
+    ['FRP', value('frp') === 'Non renseigné' ? 'Non renseigné' : `${value('frp')} MW`],
+  ])).addTo(map)
 }
 
 function onLeave() {
@@ -445,6 +470,8 @@ onMounted(() => {
       paint: { 'circle-radius': 5, 'circle-color': '#c084fc', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 },
     })
 
+    map.on('mousemove', 'maritime-point', onMaritimeHover)
+    map.on('mouseleave', 'maritime-point', onLeave)
     map.on('mousemove', 'grid-fill', onGridHover)
     map.on('mouseleave', 'grid-fill', onLeave)
     map.on('mousemove', 'static-fill', onStaticHover)
@@ -496,57 +523,67 @@ watch([countryFeature, provinceFeatures], () => {
     <div ref="container" class="map-canvas" role="img" aria-label="Carte des points chauds du Gabon"></div>
     <div class="map-glow" aria-hidden="true"></div>
 
-    <div class="map-controls">
-      <div class="map-control-group">
-        <label class="map-label" for="year-start">Période</label>
-        <div class="year-selects">
-          <select id="year-start" v-model.number="yearStart">
-            <option v-for="year in START_OPTIONS" :key="year" :value="year">{{ year }}</option>
-          </select>
-          <span>→</span>
-          <select v-model.number="yearEnd">
-            <option v-for="year in END_OPTIONS" :key="year" :value="year">{{ year }}</option>
-          </select>
+    <div class="map-overlay">
+      <div class="map-controls">
+        <div class="map-control-group">
+          <label class="map-label" for="year-start">Période</label>
+          <div class="year-selects">
+            <select id="year-start" v-model.number="yearStart">
+              <option v-for="year in START_OPTIONS" :key="year" :value="year">{{ year }}</option>
+            </select>
+            <span>→</span>
+            <select v-model.number="yearEnd">
+              <option v-for="year in END_OPTIONS" :key="year" :value="year">{{ year }}</option>
+            </select>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          class="map-toggle"
+          :class="{ active: filterStatic }"
+          :aria-pressed="filterStatic"
+          @click="filterStatic = !filterStatic"
+        >
+          <span class="toggle-dot"></span>
+          {{ filterStatic ? 'Feux de végétation' : 'Toutes anomalies' }}
+        </button>
+
+        <button
+          type="button"
+          class="map-toggle"
+          :class="{ active: showStatic }"
+          :aria-pressed="showStatic"
+          @click="toggleStatic"
+        >
+          <span class="toggle-dot cool"></span>
+          Sites statiques
+        </button>
+      </div>
+
+      <div class="maritime-control">
+        <button type="button" class="map-toggle" :class="{ active: showMaritime }"
+          :aria-pressed="showMaritime" :disabled="!mapReady" @click="toggleMaritime">
+          <span class="toggle-dot maritime-dot"></span> Observations maritimes
+        </button>
+        <div v-show="showMaritime" class="maritime-status">
+          <p>Instantané NASA FIRMS (produit NOAA-20 NRT demandé), {{ maritimePeriod }} ; indépendant de la période terrestre. Couverture inconnue. Points thermiques non classifiés : ils ne confirment ni un feu ni une torchère. Périmètre Marine Regions indicatif, non juridique.</p>
+          <div role="status" aria-live="polite">
+          <template v-if="maritimeStatus === 'loading'">Chargement des observations…</template>
+          <template v-else-if="maritimeStatus === 'missing'">Fichier absent : {{ maritimeUrl }}.</template>
+          <template v-else-if="maritimeStatus === 'error'">Fichier inaccessible ou GeoJSON invalide : {{ maritimeUrl }}. Désactivez puis réactivez pour réessayer.</template>
+          <template v-else-if="maritimeStatus === 'ready'">{{ maritimeCount }} point(s) thermique(s) non classifié(s).</template>
+          </div>
         </div>
       </div>
 
-      <button
-        type="button"
-        class="map-toggle"
-        :class="{ active: filterStatic }"
-        :aria-pressed="filterStatic"
-        @click="filterStatic = !filterStatic"
-      >
-        <span class="toggle-dot"></span>
-        {{ filterStatic ? 'Feux de végétation' : 'Toutes anomalies' }}
-      </button>
-
-      <button
-        type="button"
-        class="map-toggle"
-        :class="{ active: showStatic }"
-        :aria-pressed="showStatic"
-        @click="toggleStatic"
-      >
-        <span class="toggle-dot cool"></span>
-        Sites statiques
-      </button>
+      <p class="map-caption">
+        Agrégat {{ String(provenance.gridDeg).replace('.', ',') }}° sur le polygone GA
+        ({{ loadingLive ? 'synchronisation API…' : gridSource === 'live' ? 'données reçues de l’API, provenance à vérifier' : 'instantané local' }}).
+        Une cellule colorée n'est pas un incendie unique. Les sites statiques (bleu) sont des
+        torchères ou sources persistantes.
+      </p>
     </div>
-
-    <div class="maritime-control">
-      <button type="button" class="map-toggle" :class="{ active: showMaritime }"
-        :aria-pressed="showMaritime" :disabled="!mapReady" @click="toggleMaritime">
-        <span class="toggle-dot maritime-dot"></span> Observations maritimes
-      </button>
-      <div v-if="showMaritime" class="maritime-status" role="status" aria-live="polite">
-        <p>Instantané NASA FIRMS (produit NOAA-20 NRT demandé), {{ maritimePeriod }} ; indépendant de la période terrestre. Couverture inconnue. Points thermiques non classifiés : ils ne confirment ni un feu ni une torchère. Périmètre Marine Regions indicatif, non juridique.</p>
-        <template v-if="maritimeStatus === 'loading'">Chargement des observations…</template>
-        <template v-else-if="maritimeStatus === 'missing'">Fichier absent : {{ maritimeUrl }}.</template>
-        <template v-else-if="maritimeStatus === 'error'">Fichier inaccessible ou GeoJSON invalide : {{ maritimeUrl }}. Désactivez puis réactivez pour réessayer.</template>
-        <template v-else-if="maritimeStatus === 'ready'">{{ maritimeCount }} point(s) thermique(s) non classifié(s).</template>
-      </div>
-    </div>
-
     <div class="map-legend">
       <div class="map-legend-head">
         <span class="tiny-label">Détections / cellule</span>
@@ -577,13 +614,6 @@ watch([countryFeature, provinceFeatures], () => {
       </div>
       <button type="button" class="map-reset" @click="resetView">Recentrer</button>
     </div>
-
-    <p class="map-caption">
-      Agrégat {{ String(provenance.gridDeg).replace('.', ',') }}° sur le polygone GA
-      ({{ loadingLive ? 'synchronisation API…' : gridSource === 'live' ? 'données reçues de l’API, provenance à vérifier' : 'instantané local' }}).
-      Une cellule colorée n'est pas un incendie unique. Les sites statiques (bleu) sont des
-      torchères ou sources persistantes.
-    </p>
   </div>
 </template>
 
@@ -615,16 +645,23 @@ watch([countryFeature, provinceFeatures], () => {
   mix-blend-mode: screen;
 }
 
-.map-controls {
+.map-overlay {
   position: absolute;
   top: 14px;
   left: 14px;
-  z-index: 4;
+  z-index: 5;
+  max-width: calc(100% - 90px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.map-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  max-width: calc(100% - 90px);
 }
 
 .map-control-group {
@@ -720,11 +757,7 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .maritime-control {
-  position: absolute;
-  z-index: 5;
-  top: 112px;
-  left: 14px;
-  max-width: min(340px, calc(100% - 28px));
+  max-width: min(340px, 100%);
 }
 .maritime-dot { background: #c084fc; box-shadow: 0 0 8px #c084fc; }
 .maritime-status {
@@ -844,11 +877,8 @@ watch([countryFeature, provinceFeatures], () => {
 }
 
 .map-caption {
-  position: absolute;
-  top: 160px;
-  left: 16px;
-  z-index: 3;
   max-width: 340px;
+  margin: 0;
   padding: 8px 10px;
   border-left: 2px solid rgba(255, 196, 107, 0.45);
   background: linear-gradient(90deg, rgba(5, 7, 11, 0.82), transparent);
@@ -861,12 +891,6 @@ watch([countryFeature, provinceFeatures], () => {
 @media (max-width: 760px) {
   .map-wrap {
     min-height: 480px;
-  }
-  .map-controls {
-    max-width: calc(100% - 24px);
-  }
-  .maritime-control {
-    top: 120px;
   }
   .map-caption {
     display: none;

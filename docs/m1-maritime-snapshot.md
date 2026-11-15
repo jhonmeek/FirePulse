@@ -6,10 +6,10 @@ Le périmètre utilisé est le polygone Gabon MRGID 8476 de [Marine Regions Worl
 
 L'instantané `front-bis/public/data/gabon-maritime-observations.geojson` contient quatre points. Il conserve les empreintes SHA-256 du CSV original et du polygone, la date d'acquisition du fichier et les métadonnées de la requête. Ne pas redistribuer le polygone Marine Regions dans le dépôt : le fournisseur demande de renvoyer les utilisateurs vers ses services. La [NASA décrit le type VIIRS 3](https://firms.modaps.eosdis.nasa.gov/content/descriptions/FIRMS_VIIRS_Firehotspots.html) comme détection sur l'eau ; ce champ est toutefois indisponible dans notre CSV NRT et n'a pas été inventé.
 
-Pour reconstruire avec Python et Shapely installés, à partir d'un CSV brut, de son manifeste d'acquisition et du polygone téléchargé auprès du fournisseur :
+Le CSV brut NASA de 47 lignes et son manifeste sont versionnés dans `data/fixtures/maritime/` : les 43 points hors polygone ou sur sa frontière ne sont pas attribués à la ZEE. Le polygone reste à télécharger auprès du fournisseur. Installer les dépendances géographiques avec `python -m pip install -r pipeline/requirements-geo.txt`. Pour reconstruire :
 
 ```sh
 python -m pipeline.maritime_snapshot --source <source.csv> --manifest <source.manifest.json> --boundary <gabon-eez.geojson> --output <nouveau-fichier.geojson>
 ```
 
-La commande vérifie notamment empreinte, période, emprise, géométrie, identifiant et nombre de lignes ; elle refuse d'écraser une sortie existante. Les fichiers sources locaux ne sont pas dans Git et la clé FIRMS ne figure pas dans l'instantané. L'affichage de la carte ne constitue pas une validation opérationnelle ou une importation PostGIS. L'intégration API et les données historiques maritimes nécessitent un travail complémentaire M2/M3.
+La commande vérifie notamment empreinte, période, emprise, géométrie, identifiant et nombre de lignes ; elle refuse d'écraser une sortie existante. La clé FIRMS ne figure ni dans les sources versionnées ni dans l'instantané. L'affichage de la carte ne constitue pas une validation opérationnelle ou une importation PostGIS. L'intégration API et les données historiques maritimes nécessitent un travail complémentaire M2/M3.

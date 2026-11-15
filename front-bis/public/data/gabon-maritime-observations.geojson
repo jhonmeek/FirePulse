@@ -12,10 +12,10 @@
       },
       "properties": {
         "acq_date": "2026-11-13",
-        "acq_time_utc": "102",
+        "acq_time_utc": "0102",
         "satellite": "N20",
         "instrument": "VIIRS",
-        "frp": "3.82",
+        "frp": 3.82,
         "nasa_type": null
       }
     },
@@ -30,10 +30,10 @@
       },
       "properties": {
         "acq_date": "2026-11-13",
-        "acq_time_utc": "102",
+        "acq_time_utc": "0102",
         "satellite": "N20",
         "instrument": "VIIRS",
-        "frp": "2.77",
+        "frp": 2.77,
         "nasa_type": null
       }
     },
@@ -48,10 +48,10 @@
       },
       "properties": {
         "acq_date": "2026-11-14",
-        "acq_time_utc": "43",
+        "acq_time_utc": "0043",
         "satellite": "N20",
         "instrument": "VIIRS",
-        "frp": "2.05",
+        "frp": 2.05,
         "nasa_type": null
       }
     },
@@ -66,10 +66,10 @@
       },
       "properties": {
         "acq_date": "2026-11-14",
-        "acq_time_utc": "43",
+        "acq_time_utc": "0043",
         "satellite": "N20",
         "instrument": "VIIRS",
-        "frp": "2.74",
+        "frp": 2.74,
         "nasa_type": null
       }
     }
@@ -86,7 +86,10 @@
     "boundary_source": "Marine Regions World EEZ v12, 2023",
     "boundary_predicate": "strictly within",
     "count": 4,
+    "source_rows": 47,
+    "outside_or_boundary_rows": 43,
     "observation_coverage": "unknown",
+    "nasa_type_column_present": false,
     "nasa_type_available": false,
     "limitations": [
       "Partial five-day NRT snapshot, not real-time monitoring.",
