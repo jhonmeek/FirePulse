@@ -1,5 +1,7 @@
 # FirePulse — front-bis
 
+> **État scientifique : en revue.** Les chiffres et descriptions de la section « validation renforcée » ci-dessous décrivent l'artefact historique, antérieur aux corrections du script. Ils ne constituent pas une validation indépendante ni une garantie de couverture. Le masque de cet ancien artefact utilise les données de calibration, la couverture mensuelle des observations est inconnue, et la période de test a déjà été examinée. Ne pas utiliser ces chiffres comme résultats de la méthode corrigée ; une régénération versionnée et une revue M1/M2/M3 restent nécessaires.
+
 Une expérience narrative immersive (3D + motion design) autour du calendrier
 harmonisé des points chauds du Gabon, pour le défi NASA Space Apps 2026
 « Harmonization of MODIS and VIIRS Hot Spots ».

@@ -624,14 +624,13 @@ onBeforeUnmount(() => {
             <div>
               <p class="kicker reveal">06 — La preuve</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                Ce que nous pouvons prouver.<br /><em>Et ce que nous ne pouvons pas.</em>
+                Ce que nous explorons.<br /><em>Et les limites à vérifier.</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Trois temps. Un masque gelé avant le test. Une baseline saisonnière. Un capteur tenu
-              à l’écart. C’est le protocole qui nous différencie d’un simple dashboard : nous
-              mesurons la couverture, nous publions les résultats négatifs, et nous savons ce que
-              le R² brut ne prouve pas.
+              Cette analyse compare plusieurs modèles et documente leurs limites. L'artefact affiché
+              reste exploratoire : la couverture des observations et l'indépendance de certaines étapes
+              ne sont pas établies.
             </p>
           </div>
 
@@ -648,13 +647,13 @@ onBeforeUnmount(() => {
           <ValidationProof :reduced-motion="reducedMotion" />
 
           <p class="proof-disclaimer reveal">
-            La validation renforcée est calculée sur les 48 CSV FIRMS pays (géométrie non rejointe,
+            L'artefact exploratoire initial a été calculé sur 48 CSV FIRMS pays (géométrie non rejointe,
             comme M1) avec
             {{ validation.split.n_train }} mois de train, {{ validation.split.n_calibration }} mois
             de calibration et {{ validation.split.n_test }} mois de test. Le calendrier et la carte
             utilisent PostGIS (polygone GA) : les comptages peuvent différer marginalement. Le
-            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) reste la
-            référence du produit live ; la validation ci-dessus est le protocole de preuve.
+            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) utilise une autre
+            méthode ; les deux résultats restent à examiner et ne sont pas interchangeables.
           </p>
         </div>
       </section>
@@ -670,27 +669,26 @@ onBeforeUnmount(() => {
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Ce n’est pas seulement un calendrier. C’est un protocole de preuve reproductible,
-              des résultats négatifs assumés, et un produit déjà utilisable.
+              Notre travail réunit une exploration historique et une documentation transparente
+              de ses limites ; sa validation scientifique reste à compléter.
             </p>
           </div>
 
           <div class="contribution-grid">
             <article class="contribution-card reveal">
               <span class="roadmap-horizon">01 — Preuve</span>
-              <h3>Une preuve, pas une promesse</h3>
+              <h3>Un protocole en revue</h3>
               <p>
-                Split 3 temps, masque gelé sur 2000–2019, calibration séparée, couverture mesurée
-                sur 2020–2025. Nous savons ce que le modèle prouve — et ce qu’il ne prouve pas.
+                L'artefact initial sépare les périodes d'ajustement et de test, mais son masque
+                utilise la période de calibration. Une nouvelle évaluation est nécessaire.
               </p>
             </article>
             <article class="contribution-card reveal reveal-delay-1">
               <span class="roadmap-horizon">02 — Honnêteté</span>
               <h3>Nous publions les résultats négatifs</h3>
               <p>
-                Le transfert Terra → Aqua échoue, la couverture 80 % n’est que de 63,9 % hors
-                échantillon, et le masque all-years flatte la MAE de 24 points. C’est rare, et c’est
-                ce qui rend la preuve crédible.
+                L'artefact initial rapporte une couverture inférieure à la cible et des limites
+                de transfert entre plateformes ; ces chiffres sont exploratoires et à recalculer.
               </p>
             </article>
             <article class="contribution-card reveal reveal-delay-2">
