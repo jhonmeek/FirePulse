@@ -4,7 +4,7 @@ import csv
 import hashlib
 import json
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -143,6 +143,43 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertTrue(
             HotspotObservation.objects.filter(position__within=self.region.geom).exists()
         )
+
+    def test_recent_unknown_nrt_detections_are_separate_from_filtered_points(self) -> None:
+        now = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)
+        def add(suffix, *, days=0, hotspot_type=None, inside=True, canonical=True, nrt=True):
+            return HotspotObservation.objects.create(
+                batch=self.batch, source="viirs-noaa20", satellite="N20", instrument="VIIRS",
+                acquired_at=now - timedelta(days=days),
+                position=Point(11.5 if inside else 30, -1.5, srid=4326),
+                confidence_raw="n", confidence_tier="nominal", daynight="D",
+                hotspot_type=hotspot_type, product_version="2.0NRT", is_nrt=nrt,
+                counts_in_aggregates=canonical, original_hash=suffix * 64,
+            )
+        wanted = add("1")
+        add("2", days=3)
+        add("3", hotspot_type=0)
+        add("4", inside=False)
+        add("5", canonical=False)
+        add("6", nrt=False)
+        with patch("apps.api.views.timezone.now", return_value=now):
+            res = self.client.get("/api/v1/recent-unknown-detections/?region=GA&days=2&limit=10")
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["type"], "FeatureCollection")
+        self.assertEqual([f["properties"]["id"] for f in body["features"]], [wanted.id])
+        self.assertEqual(body["features"][0]["properties"]["hotspot_type"], None)
+        self.assertEqual(body["features"][0]["properties"]["processing_level"], "NRT")
+        self.assertIn("not confirmed wildfires", body["caution"])
+        self.assertIn("filtered", body["provenance"])
+        self.assertEqual(res["Cache-Control"], "no-store")
+        filtered = self.client.get("/api/v1/hotspots/?mode=points&month=2026-11&region=GA&filter_static=true")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(len(filtered.json()["features"]), 1)
+        self.assertEqual(filtered.json()["features"][0]["properties"]["hotspot_type"], 0)
+
+    def test_recent_unknown_detections_reject_unbounded_requests(self) -> None:
+        for query in ("days=0", "days=6", "days=x", "limit=0", "limit=1001", "region=ZZ"):
+            self.assertEqual(self.client.get(f"/api/v1/recent-unknown-detections/?{query}").status_code, 400)
 
     def test_unique_observation_hash_enforced(self) -> None:
         with self.assertRaises(IntegrityError):
@@ -546,6 +583,69 @@ class FirePulseModelsAndApiTests(TestCase):
         with_geom = self.client.get("/api/v1/regions/?include_geom=true")
         self.assertEqual(with_geom.status_code, 200)
         self.assertEqual(with_geom.json()["regions"][0]["geometry"]["type"], "MultiPolygon")
+
+    def test_missing_firms_type_is_visible_only_in_raw_point_api(self) -> None:
+        unknown = HotspotObservation.objects.create(
+            batch=self.batch,
+            source="viirs-noaa20",
+            satellite="N20",
+            instrument="VIIRS",
+            acquired_at=datetime(2024, 8, 16, 13, 0, tzinfo=timezone.utc),
+            position=Point(11.6, -1.6, srid=4326),
+            confidence_raw="n",
+            confidence_tier="nominal",
+            daynight="D",
+            hotspot_type=None,
+            is_static_masked=False,
+            product_version="2.0NRT",
+            is_nrt=True,
+            original_hash="c" * 64,
+        )
+        self.assertIsNone(unknown.hotspot_type)
+        for hotspot_type, is_static_masked, observation_hash in (
+            (0, True, "d" * 64),
+            (2, False, "e" * 64),
+        ):
+            HotspotObservation.objects.create(
+                batch=self.batch,
+                source="viirs-noaa20",
+                satellite="N20",
+                instrument="VIIRS",
+                acquired_at=datetime(2024, 8, 17, 13, hotspot_type, tzinfo=timezone.utc),
+                position=Point(11.7 + hotspot_type / 100, -1.7, srid=4326),
+                confidence_raw="n",
+                confidence_tier="nominal",
+                daynight="D",
+                hotspot_type=hotspot_type,
+                is_static_masked=is_static_masked,
+                product_version="2.0NRT",
+                is_nrt=True,
+                original_hash=observation_hash,
+            )
+
+        url = "/api/v1/hotspots/?mode=points&region=GA&month=2024-08&limit=10"
+        raw = self.client.get(f"{url}&filter_static=false")
+        self.assertEqual(raw.status_code, 200)
+        raw_types = [feature["properties"]["hotspot_type"] for feature in raw.json()["features"]]
+        self.assertCountEqual(raw_types, [None, 0, 0, 2])
+
+        filtered = self.client.get(f"{url}&filter_static=true")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(
+            [feature["properties"]["hotspot_type"] for feature in filtered.json()["features"]],
+            [0],
+        )
+
+        export_url = "/api/v1/export/?dataset=points&region=GA&month=2024-08"
+        raw_export = self.client.get(f"{export_url}&filter_static=false")
+        self.assertEqual(raw_export.status_code, 200)
+        raw_rows = list(csv.DictReader(StringIO(raw_export.content.decode("utf-8"))))
+        self.assertCountEqual([row["hotspot_type"] for row in raw_rows], ["", "0", "0", "2"])
+
+        filtered_export = self.client.get(f"{export_url}&filter_static=true")
+        self.assertEqual(filtered_export.status_code, 200)
+        filtered_rows = list(csv.DictReader(StringIO(filtered_export.content.decode("utf-8"))))
+        self.assertEqual([row["hotspot_type"] for row in filtered_rows], ["0"])
 
     def test_health_returns_503_json_on_database_error(self) -> None:
         with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")):

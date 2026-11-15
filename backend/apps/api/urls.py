@@ -11,6 +11,7 @@ urlpatterns = [
     path("calendar/", views.calendar_view, name="api-calendar"),
     path("anomalies/", views.anomalies_view, name="api-anomalies"),
     path("hotspots/", views.hotspots_view, name="api-hotspots"),
+    path("recent-unknown-detections/", views.recent_unknown_detections_view, name="api-recent-unknown-detections"),
     path("methodology/", views.methodology_view, name="api-methodology"),
     path("export/", views.export_view, name="api-export"),
 ]
