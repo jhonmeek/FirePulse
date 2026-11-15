@@ -1,25 +1,28 @@
-# Lot M1 n°1 — Inventaire et qualité
+# M1 Lot 1 — Inventory and Data Quality Audit
 
-Commande reproductible depuis la racine :
+Reproducible CLI command from repository root:
 
 ```powershell
 python -m pipeline.inventory --input data/raw/gabon --output data/processed/audit
 ```
 
-Le pipeline standard-library produit `data_manifest.json`, `quality_report.json` et un résumé Markdown. Le manifeste inventorie les chemins relatifs, tailles, SHA256, schémas, effectifs, dates, mois observés, satellites, versions et types. Le rapport signale notamment les colonnes requises absentes/vides selon le produit, lignes CSV irrégulières/erreurs de lecture, dates et heures invalides ou non paddées, coordonnées hors bornes/non finies, valeurs numériques/domaines inhabituels, doublons et divergences année fichier/date. Les valeurs source sont conservées.
+Using Python's standard library only, `pipeline.inventory` generates `data_manifest.json`, `quality_report.json`, and a Markdown summary. The manifest logs relative paths, byte sizes, SHA-256 hashes, column schemas, row counts, date spans, observed months, sensors, processing versions, and thermal types. The quality report checks missing required columns, malformed CSV rows, invalid/unpadded dates or times, out-of-bounds WGS84 coordinates, non-finite numbers, confidence/type domain compliance, exact duplicates, and filename-vs-date mismatches without ever mutating raw inputs.
 
-Les noms de colonnes sont comparés aux colonnes effectivement présentes et aux attributs FIRMS documentés par le `AttributesReadme.txt` livré localement. Les champs numériques requis sont `brightness`, `bright_t31`, `scan`, `track`, `frp` pour MODIS, et `bright_ti4`, `bright_ti5`, `scan`, `track`, `frp` pour VIIRS. Les domaines de confiance sont évalués par capteur : MODIS numérique 0–100; VIIRS `l`, `n` ou `h`. Une valeur hors liste est rapportée comme anomalie sans réécriture. La distinction version/collection standard (SP) et near-real-time (NRT) doit être interprétée à partir des métadonnées FIRMS et des versions présentes, sans les déduire des seuls noms de fichiers.
+Schema checks follow NASA FIRMS `AttributesReadme.txt` inside `data/raw/gabon/`: required numeric columns are `brightness`, `bright_t31`, `scan`, `track`, and `frp` for MODIS, and `bright_ti4`, `bright_ti5`, `scan`, `track`, and `frp` for VIIRS. Confidence checks enforce MODIS numeric `0–100` and VIIRS categorical `l` / `n` / `h`. Standard (`SP`) vs near-real-time (`NRT`) distinction comes from FIRMS metadata and `version` attributes rather than filenames alone.
 
-Le README NASA indique la projection géographique WGS84. L’absence de polygone empêche toute validation d’appartenance au Gabon ou des frontières; seules les bornes générales latitude/longitude sont contrôlées. Un mois non observé est `unknown`, jamais une preuve de couverture complète ni un zéro de détection.
+Source coordinates use WGS84 geographic projection. Without external polygon clipping, M1 checks strictly verify valid latitude/longitude bounds, keeping unobserved months flagged as `unknown` rather than asserting complete observation coverage or zero fire activity.
 
-NASA FIRMS a documenté le 15 juin 2025 un problème de traitement de certains produits VIIRS Vxx14IMGML Collection 2 : types 0/2 affectés par les versions de traitement 1/2 et corrigés par reprocessing en version 3. Cette note est une limite à vérifier dans les métadonnées; l’audit n’établit pas les lignes concernées et ne reclassifie aucune valeur. Cela ne constitue pas une affirmation sur MODIS. Source primaire : [NASA FIRMS outage notice](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).
+Note that NASA FIRMS issued a June 15, 2025 notice regarding type `0`/`2` classification on specific VIIRS `Vxx14IMGML` Collection 2 processing versions (1/2 vs reprocessed version 3); `pipeline.inventory` retains original values transparently without speculative re-classification. Source: [NASA FIRMS Outage Notice](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).
 
-Les sorties JSON sont triées et sans date d’exécution ni chemin absolu. Les métriques sont des contrôles exploratoires reproductibles, pas des benchmarks validés ni une validation scientifique des observations.
+JSON outputs are deterministically sorted with no machine-specific execution timestamps or absolute paths.
 
-## Résultats du lot initial
+## Initial Archive Audit Results
 
-Exécution du 14 novembre 2026 : 48 CSV et 292 589 lignes, dont 59 282 MODIS, 147 745 S-NPP et 85 562 NOAA-20. Les totaux sont confirmés par une lecture indépendante des CSV. Aucune colonne requise absente, valeur requise vide, ligne irrégulière, date/heure invalide, valeur numérique invalide/non finie, coordonnée hors bornes, valeur de confiance/type/jour-nuit hors domaine, divergence d'année ni doublon exact détecté par ces contrôles. Ces résultats ne constituent pas une validation de couverture, de classification des feux ou de calibration.
+Executed across **48 CSV files (`292,589` total rows)**:
+- **MODIS**: `59,282` detections (`26` annual CSVs, `2000–2025`)
+- **VIIRS S-NPP**: `147,745` detections (`14` annual CSVs, `2012–2025`)
+- **VIIRS NOAA-20**: `85,562` detections (`8` annual CSVs, `2018–2025`)
 
-Les empreintes SHA256 des 48 fichiers sont identiques avant et après l'exécution. Les sorties incluent les champs de traçabilité sans modifier les sources.
+All totals matched independent CSV verification: zero missing required columns, zero empty required values, zero malformed CSV lines, zero invalid coordinates or non-finite numerics, zero out-of-domain confidence/type/daynight flags, zero year mismatches, and zero exact intra/inter-file duplicates detected. SHA-256 checksums across all 48 source files remained unchanged before and after processing.
 
-Vérification : `python -m unittest discover -s tests -v` — quatre tests réussis. Ils couvrent entrées absentes/vides, schémas par produit, confiance, doublons intra/inter-fichiers, valeurs non finies, heures non paddées, année incohérente, lecture irrégulière/erreur de décodage, protection du dossier brut et stabilité des sorties sur des jeux synthétiques. Le CLI a aussi été relancé sur les fichiers réels et les résultats ont été rapprochés des comptages indépendants. Ce lot utilise uniquement la bibliothèque standard Python.
+Unit tests (`python -m unittest discover -s tests -v`) pass and verify empty/missing inputs, product schemas, confidence ranges, duplicates, non-finite floats, unpadded `HHMM` times, raw folder write-protection, and deterministic outputs.

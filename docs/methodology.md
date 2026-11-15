@@ -1,68 +1,70 @@
-# Méthodologie M1 — préparation des observations
+# M1 Methodology — Observation Preparation
 
-Statut : pipeline de préparation et comptages bruts. L'harmonisation et ses intervalles ne sont pas encore validés par M1. La baseline Django de démonstration est un traitement distinct.
+Status: data preparation pipeline and raw monthly counts. Full cross-sensor harmonization and predictive intervals remain distinct from the M1 preparation modules. The Django demonstration baseline runs as a separate workflow.
 
-## Sources et périmètre
+The `front-bis` product also publishes a **separate strengthened validation** ([`front-bis/scripts/validate_harmonization.py`](../front-bis/scripts/validate_harmonization.py)), computed across all 48 country CSV files: candidate-source mask frozen on `2000–2019`, three-way train/calibration/test split, and empirical conformal coverage measurement. It serves as methodological proof and does not replace M1 pipeline preparation or the live Django baseline. Its out-of-sample figures (MAE `460.3 → 120.8`, anomaly R² `0.788`, `q80` test coverage `63.9%`) must not be conflated with the live product baseline (`v2.0`, all-years mask, MAE `100.9`).
 
-Les entrées sont les fichiers pays Gabon fournis dans `data/raw/gabon`, accompagnés de `AttributesReadme.txt`. Le lot initial recense 48 CSV : 26 MODIS, 14 VIIRS S-NPP et 8 VIIRS NOAA-20 (préfixe archive `viirs-jpss1`). Les sommes de lignes sont respectivement 59 282, 147 745 et 85 562. Elles désignent des détections thermiques, pas des incendies distincts.
+## Sources and Scope
 
-Ce lot utilise le périmètre des fichiers pays, sans effectuer de jointure avec un polygone. L'identifiant national GA est une étiquette de jeu de données, pas une preuve que le même ensemble de points est sélectionné par les frontières PostGIS de M2. Les résultats doivent être réconciliés avant comparaison des agrégats des deux systèmes.
+Inputs are the Gabon country files located in `data/raw/gabon`, accompanied by `AttributesReadme.txt`. The initial archive contains 48 CSV files: 26 MODIS, 14 VIIRS S-NPP, and 8 VIIRS NOAA-20 (`viirs-jpss1` file prefix). Row counts are 59,282, 147,745, and 85,562 respectively (`292,589` total rows). These counts represent thermal hotspot detections, not distinct landscape fires.
 
-## Audit des entrées
+This preparation batch uses the country-level CSV boundaries without running a polygon spatial join. The national identifier `GA` is a dataset label, not proof that identical point sets match M2 PostGIS polygon intersections. Counts should be reconciled before comparing aggregates across systems.
 
-`pipeline.inventory` produit un manifeste des fichiers et de leurs SHA256, ainsi que des contrôles de schéma, dates/heures, coordonnées WGS84, domaines de confiance, nombres et doublons exacts. Le rapport ne modifie pas les entrées et ne constitue pas une validation complète de couverture d'observation.
+## Input Quality Audit
 
-## Principes de normalisation
+`pipeline.inventory` generates a file and SHA-256 manifest along with checks for CSV schemas, dates/times, WGS84 coordinates, confidence domains, numeric validity, and exact duplicates. The audit report never alters raw input files and does not constitute a full proof of satellite observation coverage.
 
-- Conserver les dates d'acquisition en UTC et accepter les heures HHMM sans zéro initial en les normalisant explicitement.
-- Préserver la plateforme : Terra et Aqua restent distincts ; S-NPP et NOAA-20 ne sont pas additionnés pour former une nouvelle série physique.
-- Harmoniser les noms de colonnes d'export sans déclarer les températures de brillance de bandes différentes physiquement équivalentes.
-- Conserver la confiance originale. Les catégories nominales des capteurs n'établissent pas une probabilité comparable entre instruments.
-- Conserver les types thermiques, versions et indicateurs NRT ; aucune valeur absente ne devient implicitement type 0, confiance nominale ou jour.
-- Relier chaque ligne au fichier, à sa ligne CSV et à son empreinte. Documenter la clé déterministe d'observation et la politique de doublons dans `m1-normalization.md`.
-- Les valeurs invalides doivent provoquer un rejet explicite ou l'échec du traitement. Un résultat partiel ne doit pas être présenté comme complet.
+## Normalization Principles
 
-## Agrégation mensuelle
+- Preserve acquisition timestamps in UTC and explicitly zero-pad `HHMM` hours lacking a leading zero.
+- Preserve platform provenance: Terra and Aqua remain separate; S-NPP and NOAA-20 are never merged into a single synthetic instrument.
+- Standardize export column names without claiming physical equivalence across different instrument thermal bands.
+- Retain original confidence levels; nominal classes (`low`, `nominal`, `high`) do not represent identical calibrated probabilities across sensors.
+- Preserve thermal hotspot types, product versions, and near-real-time (`NRT`) flags; missing values are never coerced into `type 0`, `nominal`, or daytime defaults.
+- Trace every output row back to its source filename, line index, and deterministic `observation_hash` as documented in [`m1-normalization.md`](m1-normalization.md).
+- Invalid values must trigger explicit rejection or pipeline failure rather than silent partial outputs.
 
-Compter séparément source, satellite, mois UTC et politique de sélection. La vue « toutes détections » conserve les types d'entrée. Une sélection `type = 0`, lorsqu'elle est livrée, correspond à des candidats feux de végétation selon le produit ; elle n'est pas équivalente au masque statique Django et ne certifie pas la nature de chaque source.
+## Monthly Aggregation
 
-La disponibilité des fichiers, le nombre de détections et la couverture d'observation sont trois informations différentes. Un mois sans ligne dans un fichier disponible peut avoir un comptage recensé nul, avec couverture d'observation inconnue. Un fichier attendu absent doit produire un statut d'entrée manquante et une valeur indisponible, pas un zéro.
+Aggregate counts separately by source, satellite platform, UTC month, and selection policy. The "all detections" view preserves all input thermal types. When delivered, a `type = 0` subset reflects candidate vegetation hotspots tagged by the FIRMS product—it is not equivalent to Django's candidate persistent-cell mask and does not certify fire vs flare ground truth on every pixel.
 
-Les premiers mois et premières années doivent être distingués : MODIS débute dans ce jeu le 1er novembre 2000, S-NPP le 20 janvier 2012 et NOAA-20 le 1er avril 2018. Une première année tronquée ne rend pas tous ses mois partiels. Les frontières de début sont explicites dans le protocole ; elles ne sont pas déduites de chaque première détection régionale. Aqua n'est pas attendu avant juillet 2002.
+File availability, detection counts, and observation coverage are three distinct dimensions. A zero count within a present annual CSV implies zero recorded rows, while observation continuity/cloud obstruction remains `unknown`. A missing expected annual CSV produces a `missing_input` status and unavailable (`null`) count rather than zero.
 
-Les tableaux de préparation ne fabriquent aucune valeur harmonisée ni intervalle. Leur contrat d'export et leurs statuts sont décrits dans `m1-normalization.md`.
+Instrument start boundaries must be explicitly represented: in this archive, MODIS starts on November 1, 2000, S-NPP on January 20, 2012, and NOAA-20 on April 1, 2018 (with Aqua beginning July 2002). Truncated initial years must not label unrelated future months as partial.
 
-## Validation attendue avant harmonisation
+Preparation outputs never fabricate harmonized values or confidence bands. See [`m1-normalization.md`](m1-normalization.md) for the exact export contract.
 
-1. Réconcilier les effectifs source → normalisation → agrégation et contrôler les empreintes d'entrée.
-2. Définir la zone d'application et le filtre de chaque modèle ; ne pas généraliser une calibration nationale à un polygone libre sans évaluation.
-3. Figer les traitements appris (notamment un masque de persistance) avant la période d'évaluation indépendante.
-4. Séparer les rôles d'apprentissage, de sélection, de calibration des intervalles et de test final. Publier MAE, biais et comportement par saison et régime.
-5. Vérifier la continuité entre plateformes et la disponibilité réelle des produits avant tout raccordement, notamment pour 2026.
+## Validation Criteria Required Prior to Operational Harmonization
 
-Aucun coefficient ni gain du guide n'est automatiquement retenu dans le pipeline M1. Une méthode non concluante reste expérimentale et les séries brutes restent accessibles.
+1. Reconcile counts end-to-end (`source CSV → normalized → monthly aggregate`) and verify input/output checksums.
+2. Specify geographic applicability and filter settings per model; never generalize a national calibration blindly to small polygons without dedicated evaluation.
+3. Freeze learned transformations (especially persistence/flare masks) prior to the independent evaluation period.
+4. Separate training, model selection, conformal interval calibration, and blind testing windows; report MAE, bias, and seasonal/regime breakdowns.
+5. Verify inter-platform continuity and real product availability before bridging sensor streams, particularly for post-2026 operations.
 
-## Sources de référence
+No heuristic gain or guide ratio is assumed without validation. Experimental runs remain strictly reproducible and raw series remain accessible.
 
-- `data/raw/gabon/AttributesReadme.txt`, documentation accompagnant les fichiers fournis.
-- [NASA FIRMS — produits, versions et disponibilité](https://firms.modaps.eosdis.nasa.gov/content/academy/data_api/firms_api_use.html).
-- [NASA FIRMS — interruptions et problèmes connus](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).
-- [NASA MODIS — historique des plateformes](https://modis-images.gsfc.nasa.gov/).
+## Primary References
 
-## Interface avec M2
+- `data/raw/gabon/AttributesReadme.txt` (FIRMS schema accompanying raw CSV inputs).
+- [NASA FIRMS — Products, Versions & Data Availability](https://firms.modaps.eosdis.nasa.gov/content/academy/data_api/firms_api_use.html).
+- [NASA FIRMS — Outages & Known Notifications](https://firms.modaps.eosdis.nasa.gov/content/notifications/firms/outages.html).
+- [NASA MODIS — Mission & Platform History](https://modis-images.gsfc.nasa.gov/).
 
-Les sorties M1 résident dans `data/processed/`. Elles sont consommées par un futur import versionné côté M2 ; la présence d'un fichier ne signifie pas qu'il est déjà chargé en base. L'import devra conserver les statuts, la provenance, la politique de filtrage et la version du traitement, puis vérifier la concordance fichier → DB → API → export. Voir `HANDOFF.md` pour la responsabilité des composants.
+## Interface with Backend (M2)
 
-## Masque statique et grille 0,25° (lot H3–H12)
+M1 outputs reside under `data/processed/`. They can be ingested via a versioned M2 import command; a generated file on disk does not imply database ingestion. Any import must preserve statuses, SHA-256 provenance, filter policies, and processing versions, then reconcile `CSV → DB → API → export`. See [`HANDOFF.md`](HANDOFF.md) for ownership boundaries.
 
-`python -m pipeline.static_mask_audit` reproduit le masque de cellules M2 à 0,05° : origine de cellule par `FLOOR(coordonnée × 20)`, seuil de 20 points de type 2/3 ou détections S-NPP dans au moins 48 mois distincts. Le masque est rétrospectif, calculé sur tout l'archive disponible ; toutes les détections d'une cellule signalée sont identifiées, sans supprimer de ligne source. Les fichiers `static_mask_audit.json` et `static_mask_cells.csv` listent les cellules et leur exposition.
+## 0.05° Static Mask and 0.25° Grid Audit
 
-`python -m pipeline.grid_025` agrège par mois, source, satellite et cellule 0,25° et conserve quatre vues : détections brutes, type 0, type 0 hors des cellules candidates et toutes détections situées dans une cellule candidate. Les sorties `grid_025_monthly.csv`, `grid_025_monthly.json` et `manifest.json` contiennent les empreintes des entrées et sorties. Elles ne représentent pas encore une série d'harmonisation ni un filtre scientifiquement validé.
+`python -m pipeline.static_mask_audit` reproduces the M2 `0.05°` cell persistence rule (`FLOOR(coordinate × 20)`, threshold `>= 20` type-2/3 detections or S-NPP activity across at least `48` distinct months). When run retrospectively across all `2000–2025` inputs, it flags candidate cells in `static_mask_audit.json` and `static_mask_cells.csv` without modifying source rows.
 
-Sur l'archive M1 (2000–2025, 292 589 lignes), le masque signale 183 cellules sur 3 227 occupées ; 109 876 détections s'y trouvent, dont 52 023 de type 0 (22,20 % des 234 366 type 0). La grille 0,25° contient 41 957 lignes mois-source-satellite-cellule. Ces mesures portent sur les fichiers pays du Gabon sans vérification de géométrie administrative.
+`python -m pipeline.grid_025` aggregates detections by month, source, satellite, and `0.25°` cell across four views: raw detections, `type 0`, `type 0` outside candidate cells, and all detections inside candidate cells (`grid_025_monthly.csv`, `grid_025_monthly.json`, and `manifest.json`). Across the full 2000–2025 archive (`292,589` rows), the retrospective mask flags `183` cells out of `3,227` active cells (`109,876` total detections inside flagged cells, including `52,023` type-0 detections, or `22.20%` of `234,366` type-0 rows).
 
-## Reproduction indépendante du benchmark M2 (H12–H24)
+The `0.25°` grid contains `41,957` month-source-satellite-cell rows. These measurements use the Gabon country files without administrative geometry checks.
 
-`python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json` vérifie le SHA-256 de l'export M2, réajuste la loi de puissance sur les lignes `train` et recalcule MAE, RMSE, biais et R² sur `test`, pour le Gabon avec et sans masque.
+## Independent Reproduction of the M2 Benchmark (H12–H24)
 
-Reproduction de l'export M2 du 14 novembre 2026 (SHA-256 CSV `56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd`) : sans masque, p=0,7916, q=2,6733, MAE=129,71, RMSE=205,47, biais=19,69, R²=0,9165 ; avec masque, p=0,9438, q=1,6529, MAE=100,87, RMSE=169,12, biais=41,77, R²=0,9189. Les 95 mois d'apprentissage et 72 mois de test concordent avec le manifeste M2. Les bornes reconstruites à partir de MODIS, des paramètres exportés et du quantile couvrent 59/72 mois sans masque et 58/72 avec masque. Cette couverture est descriptive et non indépendante, car le quantile a été estimé à partir des résidus de cette même période test. La reproduction ne valide pas indépendamment la sélection du modèle ni la couverture des intervalles.
+`python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json` checks the SHA-256 of the M2 export, refits the power law on `train` rows and recomputes MAE, RMSE, bias and R² on `test`, for Gabon with and without the mask.
+
+Reproduction of the 14 November 2026 M2 export (CSV SHA-256 `56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd`): without mask, p=0.7916, q=2.6733, MAE=129.71, RMSE=205.47, bias=19.69, R²=0.9165; with mask, p=0.9438, q=1.6529, MAE=100.87, RMSE=169.12, bias=41.77, R²=0.9189. The 95 training months and 72 test months match the M2 manifest. Bounds rebuilt from MODIS, the exported parameters and the quantile cover 59/72 months without mask and 58/72 with mask. This coverage is descriptive and not independent, because the quantile was estimated from residuals of that same test period. The reproduction does not independently validate model selection or interval coverage.

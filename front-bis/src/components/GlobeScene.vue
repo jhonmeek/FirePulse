@@ -288,8 +288,8 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onScroll() {
-  const max = window.innerHeight * 1.25
-  targetScroll = Math.min(1, Math.max(0, window.scrollY / max))
+  const doc = Math.max(1, document.documentElement.scrollHeight - window.innerHeight)
+  targetScroll = Math.min(1, Math.max(0, window.scrollY / doc))
 }
 
 function updateSatellites(time: number) {
@@ -314,9 +314,9 @@ function render() {
   if (!props.reducedMotion) {
     // Le Gabon doit faire face à la caméra : rotation de base -90° autour de Y.
     globe.rotation.y =
-      -Math.PI / 2 + Math.sin(elapsed * 0.08) * 0.045 + pointer.x * 0.09 + scrollProgress * 0.35
-    globe.rotation.x = -0.16 + pointer.y * 0.05 + scrollProgress * 0.03
-    camera.position.z = 3.25 - scrollProgress * 0.55
+      -Math.PI / 2 + Math.sin(elapsed * 0.08) * 0.04 + pointer.x * 0.08 + scrollProgress * 0.55
+    globe.rotation.x = -0.16 + pointer.y * 0.05 + scrollProgress * 0.06
+    camera.position.z = 3.2 - scrollProgress * 0.35
     camera.position.y = 0.12 + pointer.y * 0.06
     camera.lookAt(0, 0, 0)
     if (fireMaterial) fireMaterial.opacity = 0.82 + Math.sin(elapsed * 1.6) * 0.1

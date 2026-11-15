@@ -1,57 +1,105 @@
-# Principe de l'harmonisation MODIS → VIIRS (FirePulse)
+# MODIS → VIIRS Harmonization Principle (FirePulse)
 
-En deux mots : **on traduit 25 ans d'observations prises par des caméras satellitaires différentes dans une seule « unité commune »**, afin de savoir si l'activité des feux augmente ou diminue réellement — au lieu de mesurer un changement de capteur.
-
----
-
-## 1. Le problème de départ
-
-La NASA a utilisé plusieurs générations de capteurs qui n'ont pas la même finesse spatiale :
-
-- **MODIS (`1 km/pixel`)** : Terra seul à partir de `2000-11`, puis Terra + Aqua à partir de `2002-07`. Sa résolution plus grossière laisse passer une grande partie des petits feux.
-- **VIIRS S-NPP (`375 m/pixel`, depuis `2012-02`)** : beaucoup plus sensible — au Gabon (avec filtre des sources fixes), il détecte en moyenne **~3,93 fois** plus de points chauds que MODIS (`global_ratio_alpha = 3.9328`).
-- **VIIRS NOAA-20 (depuis `2018-04`)** : assure la continuité après la coupure S-NPP annoncée le **`2026-11-02`**.
-
-Sans harmonisation, un graphique brut fait apparaître une explosion artificielle en 2012 alors qu'il s'agit d'un changement d'instrument — sans compter les torchères et sites industriels fixes qui génèrent des détections thermiques toute l'année.
+> **Release**: Live Baseline `v2.0` + **Strengthened Out-of-Sample Validation** (November 2026).  
+> **Summary**: FirePulse translates 25 years of multi-sensor satellite thermal detections over Gabon onto a single comparable scale, so decision-makers see documented detection trends rather than camera upgrades or candidate persistent heat sources.
 
 ---
 
-## 2. Comment fonctionne l'harmonisation dans FirePulse
+## 0. Two Protocols, Distinct Roles
 
-Dans l'implémentation baseline actuelle ([`build_baseline_series.py`](../backend/apps/harmonization/management/commands/build_baseline_series.py)), on choisit **VIIRS S-NPP `375 m` comme échelle de référence unique** (`VIIRS_375m_SNPP_equiv`), et on exploite la période de recouvrement où **MODIS et VIIRS observent ensemble** (`2012–2025`) pour apprendre la fonction de conversion.
+FirePulse deliberately separates its live exploratory product from its independent validation benchmark:
 
-### Étape 1 — Filtrer les sources fixes (`filter_static=true`)
-On conserve les feux probables (`hotspot_type = 0`) et on exclut **`183`** cellules persistantes de `0.05°` (torchères/sites industriels, identifiés par `type23_count >= 20` ou `active_months_snpp >= 48`).
+| Dimension | **Live Baseline `v2.0`** | **Strengthened Validation** |
+|---|---|---|
+| **Purpose** | Live calendar, API, map, CSV export | Blind scientific proof & audit |
+| **Static Flare Mask** | `183` cells built on `2000–2025` | `61` cells **frozen on `2000–2019`** |
+| **Training Window** | `2012-02 → 2019-12` (`95` months) | `2012-02 → 2017-12` (`71` months) |
+| **Calibration Window** | — | `2018-01 → 2019-12` (`24` months) |
+| **Blind Test Window** | `2020-01 → 2025-12` (`72` months) | `2020-01 → 2025-12` (`72` months) |
+| **Conformal Interval** | `q80` residual spread | `q80` learned on `2018–2019`, evaluated blind on `2020–2025` |
+| **Artifact** | API `/api/v1/methodology/` | [`front-bis/src/data/validation.json`](../front-bis/src/data/validation.json) |
 
-> Sans ce filtre au Gabon, même le modèle par ratio global décroche sur `2020–2025` (`R² = 0.726` sans filtre contre `0.8781` avec filtre).
+---
 
-### Étape 2 — Apprendre sur le recouvrement et évaluer après
-On ajuste les modèles sur **`2012-02` → `2019-12`** (`95` mois d'apprentissage) et on calcule des métriques sur **`2020-01` → `2025-12`** (`72` mois de test). Ces résultats historiques sont exploratoires : la période de test a servi à d'autres choix et ne constitue pas une validation indépendante.
+## 1. The Core Problem
 
-Au lieu de simplement multiplier MODIS par un facteur constant (`3,93`), ce qui surestime ou sous-estime selon les saisons (basse saison vs pic sec), FirePulse ajuste une **loi de puissance en échelle logarithmique** (`power_law_log1p`) :
+Successive NASA instruments observe Earth at different spatial resolutions:
+
+- **MODIS (`1 km/pixel`)**: Terra from `2000-11`, joined by Aqua from `2002-07`. Coarser spatial pixels miss smaller savanna/understory burns.
+- **VIIRS S-NPP (`375 m/pixel`, since `2012-02`)**: Much sharper resolution—over Gabon (with static sites excluded), S-NPP records **~3.93×** more hotspots per month than MODIS (`global_ratio_alpha = 3.9328`).
+- **VIIRS NOAA-20 (since `2018-04`)**: Twin 375 m sensor. **Suomi-NPP's** operational delivery ended on **`2026-11-02`**; the NOAA-20 relay is calibrated but **not yet validated on 2026 data**, and the demo archive stops in `2025-12`.
+
+Without separating candidate persistent sources and rescaling MODIS onto VIIRS sensitivity, raw historical graphs misrepresent 2012 as an ecological fire explosion and let coastal heat sources mask seasonal cycles.
+
+---
+
+## 2. Live Baseline `v2.0` Pipeline
+
+Implemented in [`build_baseline_series.py`](../backend/apps/harmonization/management/commands/build_baseline_series.py) using **VIIRS S-NPP 375 m** (`VIIRS_375m_SNPP_equiv`) as the unified scale:
+
+### Step 1 — Isolate Candidate Persistent Sources (`filter_static=true`)
+Keep presumed vegetation detections (`hotspot_type = 0`) outside `183` candidate `0.05°` cells (`type23_count >= 20` or `active_months_snpp >= 48`). On national `GA` boundaries (`285,013` detections), the full filter removes `109,513` detections (`38.4%`) and retains `175,500` type-0 detections outside candidate cells (`61.6%`). The excluded share is `57,934` type 2/3 (`20.3%`) plus `51,579` type 0 inside candidate cells (`18.1%`); these cells are candidates, not individually confirmed flares.
+
+### Step 2 — Log-Scale Power-Law Calibration (`2012–2019` Overlap)
+Instead of multiplying counts by a flat ratio (`×3.93`), which mis-scales rainy low seasons vs dry peaks, FirePulse fits a power law in `log1p` space:
 
 $$
 \hat{y} = \exp\big(p \cdot \ln(1 + x) + q\big) - 1
 $$
 
-Chiffres historiques exploratoires au Gabon (`GA`, `filter_static=true`, `v2.0`) :
-- **MODIS Terra + Aqua (`power_law_log1p`) :** `p = 0.9438`, `q = 1.6529`
-- **MODIS Terra seul (`terra_only_power_law`, avant `2002-07`) :** `p = 0.691`, `q = 3.6809`
-- **Évaluation `2020–2025` (`GA`, `filter_static=true`) :** l'erreur moyenne (`MAE`) passe de **`355.72`** (`naive`, `R² = 0.1426`) à **`100.87`** (`power_law_log1p`, **`R² = 0.9189`**).
+Exploratory historical `v2.0` Gabon baseline figures (`GA`, `filter_static=true`):
+- **MODIS Terra + Aqua (`power_law_log1p`)**: `p ≈ 0.944`, `q ≈ 1.653`
+- **MODIS Terra-only (`terra_only_power_law`, `< 2002-07`)**: `p ≈ 0.691`, `q ≈ 3.681`
+- **2020–2025 evaluation (`v2.0` live export)**: Naive MAE `≈ 355.6` (`R² ≈ 0.143`) → `power_law_log1p` MAE `≈ 100.8` (`R² ≈ 0.919`, bias `≈ +41.8`).
 
-### Étape 3 — Tracer une bande d'incertitude nominale à 80 %
-Pour le passé reconstruit depuis MODIS (`2000–2012`), on quantifie l'écart résiduel en log (`conformal_q80_log = 0.5309`, `conformal_q80_terra_log = 0.6445`) afin de tracer une bande d'incertitude `[ci_low, ci_high]` autour de la courbe estimée. Dans la baseline historique, le quantile utilise les résidus de la période de test : la couverture indépendante n'est pas démontrée. Une cible nominale de 80 % ne garantit pas une couverture de 80 %, notamment pour des séries temporelles.
+These historical results are exploratory: the test period was also used for other choices and is not an independent validation.
 
-### Étape 4 — Recoller la chronologie (`2000` → `2026+`) et calculer les anomalies
-1. `2000-11` → `2002-06` : MODIS Terra seul → converti en équivalent S-NPP (`terra_only_power_law` + bande 80 %).
-2. `2002-07` → `2012-01` : MODIS Terra + Aqua → converti en équivalent S-NPP (`power_law_log1p` + bande 80 %).
-3. `2012-02` → `2026-10` : VIIRS S-NPP direct (aucune conversion, c'est l'échelle de référence).
-4. `2026-11+` : VIIRS NOAA-20 divisé par le ratio inter-capteurs mesuré sur `2019–2025` (`noaa20_to_snpp_ratio = 1.0381`, avec bande d'incertitude `±10 %`).
+### Step 3 — Nominal 80% Uncertainty Band & Timeline Assembly
+Reconstructed MODIS months (`2000-11`–`2012-01`) carry an asymmetric nominal 80% band `[ci_low, ci_high]` (`conformal_q80_log ≈ 0.524`, `conformal_q80_terra_log = 0.6445`), followed by direct S-NPP observations (`2012-02`–`2025-12` in the archive) and the post-2026 NOAA-20 bridge projection (`2026-11+`). Calendar months are normalized against their `2001–2025` calendar-month medians to measure seasonal anomalies (`%` and absolute deltas).
+In the historical baseline, the quantile uses test-period residuals: independent coverage is not demonstrated. A nominal 80% target does not guarantee 80% coverage, especially for time series.
 
-Une fois les 25+ années exprimées dans la même unité, chaque mois est comparé à sa **médiane historique `2001–2025` du même mois calendaire** (par exemple août comparé aux 25 mois d'août de référence) pour calculer les **anomalies** (`%` et absolues).
+> The `2012-02`–`2026-10` S-NPP and `2026-11+` NOAA-20 regimes describe the **reconstruction**, not observed demo data: no 2026 observations are ingested. The NOAA-20 ratio used by the live reconstruction (`1.0381`, `2019–2025`) differs from the held-out validation ratio (`0.940`, `2018–2019`).
 
 ---
 
-## 3. Statut scientifique (`v2.0` vs validation M1)
+## 3. Strengthened Blind Validation Proof
 
-La version `v2.0` présente dans Django constitue le socle baseline de démonstration. L'équipe M1 audite ces éléments (voir [`methodology.md`](methodology.md), [`limitations.md`](limitations.md) et [`HANDOFF.md`](HANDOFF.md)) : calibration du quantile conforme sur la fenêtre de test, seuils du masque statique, et comportement sur les provinces à faible signal. L'export consolidé produit par [`export_calibration_series.py`](../backend/apps/harmonization/management/commands/export_calibration_series.py) (et déposé localement dans `data/backups/m1-benchmark-validation/`) fournit les séries mensuelles exactes pour cet audit.
+Produced deterministically by [`front-bis/scripts/validate_harmonization.py`](../front-bis/scripts/validate_harmonization.py) and stored in [`validation.json`](../front-bis/src/data/validation.json):
+
+### 3.1 Frozen Pre-Test Flare Mask (`2000–2019`)
+Rebuilding the `0.05°` mask strictly on pre-test years (`2000–2019`, `61` cells) vs the full archive (`183` cells) quantifies look-ahead optimism explicitly:
+- Frozen mask (`61` cells) test MAE (`2020–2025`): **`120.8`**
+- All-years mask (`183` cells) test MAE (`2020–2025`): **`96.7`** (a `+24.1` MAE look-ahead gap, motivating regular operational mask refreshes in production).
+
+### 3.2 Strict Three-Way Split & Blind Model Comparison (`2020–2025`)
+Split: Train `2012-02`→`2017-12` (`71` months) | Calibration `2018-01`→`2019-12` (`24` months) | Blind Test `2020-01`→`2025-12` (`72` months).
+
+| Model | MAE | Raw R² | Anomaly R² |
+|---|---:|---:|---:|
+| Naive (`VIIRS = MODIS`) | 460.3 | 0.08 | −1.37 |
+| Global ratio | 147.4 | 0.87 | 0.67 |
+| Seasonal ratio | 147.1 | 0.86 | 0.64 |
+| Linear OLS | 133.1 | 0.90 | 0.73 |
+| **Power-law `log1p`** | **120.8** | **0.92** | **0.79** |
+| Seasonal median baseline | 238.8 | 0.61 | 0.00 |
+
+Raw `R²` is naturally buoyed by Gabon's strong annual dry/wet cycle; **Anomaly `R²` (`0.79`)** verifies that `power-law log1p` captures true year-to-year surges (outperforming OLS `0.73`, global ratio `0.67`, and seasonal ratio `0.64`).
+
+### 3.3 Out-of-Sample Conformal Coverage
+Calibrated strictly on `2018–2019` (`q80 = 0.310`, `q90 = 0.360`) and tested blind on `2020–2025`, empirical coverage reaches **`63.9%`** (and `66.7%` at `q90`), honestly reporting wider `2020–2025` variance compared to a leaky in-test fit (`79.2%`).
+
+### 3.4 Held-Out Sensor Generalization (`NOAA-20`) & Negative Control (`Terra → Aqua`)
+- **Held-out NOAA-20 (`2020–2025`, calibration ratio `0.940` learned on `2018–2019`)**: MAE `100.1`, Raw `R² = 0.956`, **Anomaly `R² = 0.867`**.
+- **Negative control (`Terra → Aqua`)**: Fails (`MAE = 428.7`, Anomaly `R² = −0.241`), proving MODIS platforms are not zero-cost interchangeable and justifying separate pre-2002 vs post-2002 calibration regimes.
+
+---
+
+## 4. Reproducibility
+
+From repository root (Python `3.10+`, standard library only, zero mutation of inputs):
+
+```bash
+python front-bis/scripts/validate_harmonization.py
+```
+
+Outputs: [`front-bis/src/data/validation.json`](../front-bis/src/data/validation.json) and [`front-bis/src/data/validation_series.csv`](../front-bis/src/data/validation_series.csv).
