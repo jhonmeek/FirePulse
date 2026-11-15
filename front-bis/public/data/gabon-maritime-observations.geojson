@@ -1,0 +1,97 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          8.67414,
+          -1.44229
+        ]
+      },
+      "properties": {
+        "acq_date": "2026-11-13",
+        "acq_time_utc": "102",
+        "satellite": "N20",
+        "instrument": "VIIRS",
+        "frp": "3.82",
+        "nasa_type": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          8.69626,
+          -1.17839
+        ]
+      },
+      "properties": {
+        "acq_date": "2026-11-13",
+        "acq_time_utc": "102",
+        "satellite": "N20",
+        "instrument": "VIIRS",
+        "frp": "2.77",
+        "nasa_type": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.81614,
+          -4.24429
+        ]
+      },
+      "properties": {
+        "acq_date": "2026-11-14",
+        "acq_time_utc": "43",
+        "satellite": "N20",
+        "instrument": "VIIRS",
+        "frp": "2.05",
+        "nasa_type": null
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          8.67252,
+          -1.4389
+        ]
+      },
+      "properties": {
+        "acq_date": "2026-11-14",
+        "acq_time_utc": "43",
+        "satellite": "N20",
+        "instrument": "VIIRS",
+        "frp": "2.74",
+        "nasa_type": null
+      }
+    }
+  ],
+  "metadata": {
+    "dataset": "NASA FIRMS VIIRS NOAA-20 NRT",
+    "product_verification": "requested_not_independently_verified",
+    "period_start": "2026-11-10",
+    "period_end": "2026-11-14",
+    "retrieved_at_utc": "2026-11-15T05:52:09.683019+00:00",
+    "source_csv_sha256": "1c626b89f9849f640ebdf3caf0767a73873d06e4137ae5b8a6e1c42794bf1cf4",
+    "boundary_sha256": "b980944a6feb1c58b7d5f4004a64ba3ab776778ea57e1a96188e4e6730f513e6",
+    "boundary_mrgid": 8476,
+    "boundary_source": "Marine Regions World EEZ v12, 2023",
+    "boundary_predicate": "strictly within",
+    "count": 4,
+    "observation_coverage": "unknown",
+    "nasa_type_available": false,
+    "limitations": [
+      "Partial five-day NRT snapshot, not real-time monitoring.",
+      "Heat detections, not confirmed fires or flares.",
+      "EEZ is a scientific reference, not an authoritative legal determination."
+    ]
+  }
+}

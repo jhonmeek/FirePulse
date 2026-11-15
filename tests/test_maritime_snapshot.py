@@ -1,0 +1,88 @@
+"""Contract tests for the maritime snapshot using a synthetic EEZ."""
+import csv
+import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from pipeline import maritime_snapshot
+
+try:
+    import shapely  # noqa: F401
+except ImportError:
+    shapely = None
+
+
+@unittest.skipIf(shapely is None, "Shapely is an optional dependency")
+class MaritimeSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.source = root / "source.csv"
+        self.manifest = root / "manifest.json"
+        self.boundary = root / "boundary.geojson"
+        self.output = root / "output.geojson"
+        rows = [
+            (1, 1, "2026-01-01"),  # interior
+            (0, 1, "2026-01-02"),  # edge
+            (0, 0, "2026-01-02"),  # vertex
+            (3, 1, "2026-01-02"),  # exterior
+        ]
+        with self.source.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["longitude", "latitude", "acq_date", "acq_time", "satellite", "instrument", "frp", "type"])
+            writer.writerows([(*row, "1200", "N20", "VIIRS", "4.2", "0") for row in rows])
+        boundary = {"type": "FeatureCollection", "features": [{
+            "type": "Feature", "properties": {"mrgid": 8476},
+            "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]},
+        }]}
+        self.boundary.write_text(json.dumps(boundary), encoding="utf-8")
+        self.data = {
+            "csv_sha256": hashlib.sha256(self.source.read_bytes()).hexdigest(),
+            "product": "VIIRS_NOAA20_NRT", "requested_start": "2026-01-01",
+            "requested_end": "2026-01-02", "requested_bbox": [-1, -1, 3, 3], "rows": 4,
+            "retrieved_at_utc": "2026-01-03T00:00:00Z", "type_column_present": True,
+        }
+        self.write_manifest()
+
+    def write_manifest(self):
+        self.manifest.write_text(json.dumps(self.data), encoding="utf-8")
+
+    def build(self):
+        return maritime_snapshot.build(self.source, self.manifest, self.boundary, self.output)
+
+    def test_valid_checksum_and_strict_boundary_exclusion(self):
+        self.assertEqual(self.build(), 1)
+        result = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual([feature["geometry"]["coordinates"] for feature in result["features"]], [[1.0, 1.0]])
+        self.assertEqual(result["metadata"]["count"], 1)
+        self.assertEqual(result["metadata"]["source_csv_sha256"], hashlib.sha256(self.source.read_bytes()).hexdigest())
+        self.assertEqual(result["metadata"]["boundary_sha256"], hashlib.sha256(self.boundary.read_bytes()).hexdigest())
+        self.assertEqual(result["metadata"]["boundary_predicate"], "strictly within")
+
+    def test_modified_csv_rejects_manifest_checksum(self):
+        with self.source.open("a", encoding="utf-8") as stream:
+            stream.write("\n")
+        with self.assertRaisesRegex(ValueError, "manifest"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_bbox_must_cover_entire_boundary(self):
+        self.data["requested_bbox"] = [0, 0, 1.99, 2]
+        self.write_manifest()
+        with self.assertRaisesRegex(ValueError, "bbox"):
+            self.build()
+        self.assertFalse(self.output.exists())
+
+    def test_existing_output_is_never_overwritten(self):
+        original = b"existing output\x00"
+        self.output.write_bytes(original)
+        with self.assertRaises(FileExistsError):
+            self.build()
+        self.assertEqual(self.output.read_bytes(), original)
+
+
+if __name__ == "__main__":
+    unittest.main()
