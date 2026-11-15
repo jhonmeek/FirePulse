@@ -12,6 +12,18 @@ SPEC.loader.exec_module(module)
 
 
 class InputValidationTests(unittest.TestCase):
+    def test_calibration_order_statistic(self):
+        self.assertEqual(module.split_conformal_quantile(list(range(1, 25)), .8), 20)
+        self.assertEqual(module.split_conformal_quantile(list(range(1, 25)), .9), 23)
+        self.assertEqual(module.split_conformal_quantile([1, 1, 2, 2], .6), 2)
+        for scores, level in (([], .8), ([1], .99), ([1], 1), ([float('nan')], .5)):
+            with self.subTest(scores=scores, level=level), self.assertRaises(ValueError):
+                module.split_conformal_quantile(scores, level)
+
+    def test_power_law_does_not_predict_negative_counts(self):
+        self.assertEqual(module.predict_power_law(0, 1, -1), 0)
+        self.assertAlmostEqual(module.predict_power_law(2, 1, 0), 2)
+
     def test_missing_files_stop_before_results(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(module, "RAW", Path(directory)):
             with self.assertRaisesRegex(ValueError, "missing=.*modis_2000"):

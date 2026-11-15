@@ -110,6 +110,16 @@ def quantile(values: list[float], q: float) -> float:
     return ordered[lower] * (1 - weight) + ordered[upper] * weight
 
 
+def split_conformal_quantile(values: list[float], coverage: float) -> float:
+    """Finite-sample order statistic; no time-series coverage guarantee is implied."""
+    if not values or not 0 < coverage < 1 or any(not math.isfinite(v) or v < 0 for v in values):
+        raise ValueError("Expected nonempty finite nonnegative scores and coverage between 0 and 1")
+    rank = math.ceil((len(values) + 1) * coverage)
+    if rank > len(values):
+        raise ValueError("Not enough calibration scores for requested nominal coverage")
+    return sorted(values)[rank - 1]
+
+
 def metrics(observed: list[float], predicted: list[float]) -> dict:
     if not observed:
         return {"n": 0, "mae": None, "rmse": None, "bias": None, "r2": None}
@@ -268,7 +278,7 @@ def fit_power_law(xs: list[float], ys: list[float]) -> tuple[float, float]:
 
 
 def predict_power_law(x: float, p: float, q: float) -> float:
-    return math.expm1(p * math.log1p(max(0.0, x)) + q)
+    return max(0.0, math.expm1(p * math.log1p(max(0.0, x)) + q))
 
 
 def fit_ols(xs: list[float], ys: list[float]) -> tuple[float, float]:
@@ -368,8 +378,8 @@ def validate() -> dict:
             "calibration": predict_seasonal_ratio(x_cal, calibration_months, seasonal_ratio),
         },
         "ols_linear": {
-            "test": [slope * x + intercept for x in x_test],
-            "calibration": [slope * x + intercept for x in x_cal],
+            "test": [max(0.0, slope * x + intercept) for x in x_test],
+            "calibration": [max(0.0, slope * x + intercept) for x in x_cal],
         },
         "power_law_log1p": {
             "test": [predict_power_law(x, p, q) for x in x_test],
@@ -397,14 +407,14 @@ def validate() -> dict:
     log_residuals_test = [
         math.log1p(y) - math.log1p(pred) for y, pred in zip(y_test, power_test)
     ]
-    q80 = quantile([abs(value) for value in log_residuals_cal], 0.80)
-    q90 = quantile([abs(value) for value in log_residuals_cal], 0.90)
+    q80 = split_conformal_quantile([abs(value) for value in log_residuals_cal], 0.80)
+    q90 = split_conformal_quantile([abs(value) for value in log_residuals_cal], 0.90)
     q80_test = quantile([abs(value) for value in log_residuals_test], 0.80)
 
     def coverage(ys: list[float], predictions_: list[float], quantile_value: float) -> float:
         covered = 0
         for y, pred in zip(ys, predictions_):
-            low = math.expm1(math.log1p(max(0.0, pred)) - quantile_value)
+            low = max(0.0, math.expm1(math.log1p(max(0.0, pred)) - quantile_value))
             high = math.expm1(math.log1p(max(0.0, pred)) + quantile_value)
             if low <= y <= high:
                 covered += 1
@@ -421,7 +431,9 @@ def validate() -> dict:
         "note": (
             "Le quantile q80 est appris sur 2018–2019 puis appliqué à 2020–2025. "
             "La couverture q80_test_leaky est donnée uniquement pour comparaison : "
-            "elle est tautologique et ne doit pas être présentée comme une validation."
+            "elle est tautologique et ne doit pas être présentée comme une validation. "
+            "Le rang fini-échantillon ne garantit pas la couverture en séries temporelles ; "
+            "le masque utilise les données de calibration et la couverture des observations est inconnue."
         ),
     }
 
@@ -545,6 +557,7 @@ def validate() -> dict:
             [row["modis"] for row in train_], [row["snpp"] for row in train_]
         )
         preds = [predict_power_law(row["modis"], px, pq) for row in test_]
+        local_baseline = fit_seasonal_baseline([row["snpp"] for row in train_], train_months)
         sensitivity[label] = {
             "type23_min": type23_min,
             "snpp_months_min": snpp_min,
@@ -554,7 +567,7 @@ def validate() -> dict:
                 [row["snpp"] for row in test_],
                 preds,
                 [row["month"] for row in test_],
-                seasonal_baseline,
+                local_baseline,
             ),
         }
 

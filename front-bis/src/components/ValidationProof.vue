@@ -94,6 +94,7 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
       Résultats exploratoires en revue scientifique, non validés. Le masque utilise la période
       de calibration, les mois sans détection ne prouvent pas une couverture complète et le
       quantile utilisé ne justifie pas une garantie conforme. Les années de test ont déjà été examinées.
+      Les chiffres affichés proviennent de l'artefact initial, antérieur aux corrections de calcul en cours.
     </p>
     <!-- ---------------------------------------------------------- stats -->
     <div class="v-stats">
