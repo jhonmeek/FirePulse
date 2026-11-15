@@ -247,7 +247,7 @@ function onStaticHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }
     .addTo(map)
 }
 
-function onMaritimeHover(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) {
+function showMaritimePopup(event: MapMouseEvent & { features?: MapGeoJSONFeature[] }) {
   if (!map || !event.features?.[0]) return
   map.getCanvas().style.cursor = 'pointer'
   const properties = event.features[0].properties ?? {}
@@ -470,8 +470,8 @@ onMounted(() => {
       paint: { 'circle-radius': 5, 'circle-color': '#c084fc', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 },
     })
 
-    map.on('mousemove', 'maritime-point', onMaritimeHover)
-    map.on('click', 'maritime-point', onMaritimeHover)
+    map.on('mousemove', 'maritime-point', showMaritimePopup)
+    map.on('click', 'maritime-point', showMaritimePopup)
     map.on('mouseleave', 'maritime-point', onLeave)
     map.on('mousemove', 'grid-fill', onGridHover)
     map.on('mouseleave', 'grid-fill', onLeave)
