@@ -651,7 +651,7 @@ onBeforeUnmount(() => {
             comme M1) avec
             {{ validation.split.n_train }} mois de train, {{ validation.split.n_calibration }} mois
             de calibration et {{ validation.split.n_test }} mois de test. Le calendrier et la carte
-            utilisent PostGIS (polygone GA) : les comptages peuvent différer marginalement. Le
+            peuvent utiliser l'API ou des instantanés ; leur périmètre GA diffère des fichiers pays. Le
             benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) utilise une autre
             méthode ; les deux résultats restent à examiner et ne sont pas interchangeables.
           </p>
@@ -821,8 +821,8 @@ onBeforeUnmount(() => {
             <div>
               <span class="recap-number">03</span>
               <p>
-                Trois temps, masque gelé, couverture {{ validationCoverageLabel }} : R²
-                {{ validationAnomalyR2Label }} sur les anomalies.
+                Artefact historique exploratoire : couverture observée {{ validationCoverageLabel }}
+                et R² {{ validationAnomalyR2Label }} sur les anomalies, résultats en revue.
               </p>
             </div>
             <div>

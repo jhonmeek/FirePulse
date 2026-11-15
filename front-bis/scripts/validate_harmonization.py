@@ -360,6 +360,12 @@ def validate() -> dict:
         "test_type0_in_later_mask_cells": sum(1 for _, _, _, kind, cell in test_observations if kind == 0 and cell in later_cells),
         "note": "Retrospective descriptive counts, not confirmed industrial sources or causal contamination.",
     }
+    for label, sensors in (("all", {"terra", "aqua", "snpp", "noaa20"}), ("snpp", {"snpp"})):
+        type0 = [item for item in test_observations if item[2] in sensors and item[3] == 0]
+        affected = sum(1 for item in type0 if item[4] in later_cells)
+        residual_mask_diagnostics[f"{label}_type0_total"] = len(type0)
+        residual_mask_diagnostics[f"{label}_type0_in_later_mask_cells"] = affected
+        residual_mask_diagnostics[f"{label}_type0_fraction_in_later_mask_cells"] = affected / len(type0) if type0 else None
     all_months = aggregate_monthly(observations, frozen_mask)
     rows = month_rows(all_months, ordered)
     by_month = {row["month"]: row for row in rows}

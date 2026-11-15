@@ -1,5 +1,7 @@
 # FirePulse — front-bis
 
+Diagnostic exploratoire 2020–2025 sur les fichiers pays, avec masque gelé en 2017 : 21 199 / 111 719 détections type 0 (19,0 %), dont 9 206 / 48 075 S-NPP (19,1 %), sont dans des cellules ajoutées au masque rétrospectif 2000–2025. Ces proportions décrivent des détections situées dans des cellules, pas des torchères confirmées, des taux d'erreur ou une contamination causale ; le masque rétrospectif utilise les données de test et la couverture demeure inconnue.
+
 > **État scientifique : en revue.** Les chiffres et descriptions de la section « validation renforcée » ci-dessous décrivent l'artefact historique, antérieur aux corrections du script. Ils ne constituent pas une validation indépendante ni une garantie de couverture. Le masque de cet ancien artefact utilise les données de calibration, la couverture mensuelle des observations est inconnue, et la période de test a déjà été examinée. Ne pas utiliser ces chiffres comme résultats de la méthode corrigée ; une régénération versionnée et une revue M1/M2/M3 restent nécessaires.
 
 Une expérience narrative immersive (3D + motion design) autour du calendrier
