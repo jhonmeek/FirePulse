@@ -7,6 +7,7 @@ Les fichiers contiennent des détections de points chauds observées par des sat
 ## Couverture et géographie
 
 - Les CSV de détections et leurs empreintes ne suffisent pas à mesurer tous les passages exploitables, les nuages ou les pertes de données. La couverture d'observation reste inconnue dans les agrégats M1 de préparation.
+- La disponibilité mensuelle du backend est déduite des bornes `min_date`/`max_date` des lots importés : un mois sans détection à l'intérieur d'un lot est un zéro recensé, un mois hors de toute borne reste une entrée manquante (`null`, régime `missing`) et n'est plus transformé en zéro. Ces bornes ne prouvent pas une couverture satellite complète du mois.
 - Les archives initiales s'arrêtent à 2025. Aucune donnée 2026 n'est ajoutée implicitement, et aucun comptage récent n'est extrapolé pour remplir cette année.
 - La sélection nationale M1 reprend le fichier pays fourni. Le découpage par provinces ou polygones personnalisés demande des frontières versionnées et une règle de sélection spatiale ; il n'est pas validé par ce lot.
 - Une cellule préagrégée intersectant un polygone ne permet pas de connaître exactement le nombre de points dans la portion intersectée.
