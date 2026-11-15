@@ -53,7 +53,9 @@ def acquire(product: str, start: date, days: int, output_dir: Path, key: str, bb
         except (ValueError,TypeError): raise ValueError("invalid coordinates") from None
         if not math.isfinite(lat) or not math.isfinite(lon) or not (south<=lat<=north and west<=lon<=east):
             raise ValueError("FIRMS response outside requested bounding box")
-        time=row["acq_time"].zfill(4)
+        raw_time=(row["acq_time"] or "").strip()
+        if not raw_time: raise ValueError("invalid acquisition time")
+        time=raw_time.zfill(4)
         if not re.fullmatch(r"\d{4}",time) or int(time[:2])>23 or int(time[2:])>59:
             raise ValueError("invalid acquisition time")
         dates.add(acquired.isoformat());count+=1

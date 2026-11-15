@@ -117,6 +117,7 @@ def _fetch_region_monthly_counts(region_id: int, filter_static: bool) -> dict[da
             FROM observations_hotspotobservation o
             JOIN observations_region r ON r.id = %s
             WHERE ST_Within(o.position, r.geom)
+            AND o.counts_in_aggregates
             {static_sql}
             GROUP BY 1
             ORDER BY 1;

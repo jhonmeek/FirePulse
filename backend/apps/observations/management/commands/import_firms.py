@@ -83,7 +83,7 @@ def _row_to_observation(row: dict[str, str], batch: ImportBatch, source: str) ->
     satellite = (row.get("satellite") or "").strip()
     instrument = (row.get("instrument") or ("MODIS" if source == SourceChoices.MODIS else "VIIRS")).strip()
     version = (row.get("version") or "").strip()
-    is_nrt = "nrt" in version.lower() or batch.processing_level == ProcessingLevelChoices.NRT
+    is_nrt = ("nrt" in version.lower()) if version else batch.processing_level == ProcessingLevelChoices.NRT
 
     if source == SourceChoices.MODIS:
         mir = _parse_float(row.get("brightness"))
@@ -111,12 +111,42 @@ def _row_to_observation(row: dict[str, str], batch: ImportBatch, source: str) ->
         confidence_raw=conf_raw,
         confidence_tier=_normalize_confidence(source, conf_raw),
         daynight=(row.get("daynight") or "D").strip()[:1].upper(),
-        hotspot_type=int(row["type"]) if row.get("type") not in (None, "") else 0,
+        hotspot_type=int(row["type"]) if row.get("type") not in (None, "") else None,
         is_static_masked=False,
         product_version=version,
         is_nrt=is_nrt,
         original_hash=obs_hash,
     )
+
+
+def reconcile_nrt_duplicates() -> int:
+    """Count one exact detection, preferring SP; retain every source row."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            WITH ranked AS (
+                SELECT id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY source, satellite, DATE_TRUNC('minute', acquired_at),
+                            ROUND(ST_Y(position)::numeric, 5),
+                            ROUND(ST_X(position)::numeric, 5)
+                        ORDER BY is_nrt ASC, id ASC
+                    ) AS rank,
+                    BOOL_OR(is_nrt) OVER (
+                        PARTITION BY source, satellite, DATE_TRUNC('minute', acquired_at),
+                            ROUND(ST_Y(position)::numeric, 5),
+                            ROUND(ST_X(position)::numeric, 5)
+                    ) AS has_nrt
+                FROM observations_hotspotobservation
+            )
+            UPDATE observations_hotspotobservation AS o
+            SET counts_in_aggregates = (NOT ranked.has_nrt OR ranked.rank = 1)
+            FROM ranked
+            WHERE o.id = ranked.id
+              AND o.counts_in_aggregates IS DISTINCT FROM (NOT ranked.has_nrt OR ranked.rank = 1);
+            """
+        )
+        return cursor.rowcount
 
 
 def rebuild_static_mask_and_flag() -> int:
@@ -133,6 +163,7 @@ def rebuild_static_mask_and_flag() -> int:
                     COUNT(DISTINCT DATE_TRUNC('month', acquired_at))
                         FILTER (WHERE source = 'viirs-snpp') AS active_months_snpp
                 FROM observations_hotspotobservation
+                WHERE counts_in_aggregates
                 GROUP BY 1, 2
             ),
             flagged AS (
@@ -181,7 +212,10 @@ def rebuild_grid_cell_months() -> int:
     with connection.cursor() as cursor:
         cursor.execute("TRUNCATE TABLE observations_gridcellmonth RESTART IDENTITY;")
         for filter_static in (True, False):
-            where_clause = "WHERE hotspot_type = 0 AND NOT is_static_masked" if filter_static else ""
+            where_clause = (
+                "WHERE counts_in_aggregates AND hotspot_type = 0 AND NOT is_static_masked"
+                if filter_static else "WHERE counts_in_aggregates"
+            )
             cursor.execute(
                 f"""
                 WITH binned AS (
@@ -238,13 +272,14 @@ class Command(BaseCommand):
         parser.add_argument(
             "--force",
             action="store_true",
-            help="Re-import files even if their SHA-256 is already recorded",
+            help="Rebuild derived mask and grid even when all files are already recorded",
         )
         parser.add_argument(
             "--rebuild-only",
             action="store_true",
             help="Skip CSV ingestion and only rebuild static flare mask and 0.25 deg grid",
         )
+        parser.add_argument("--skip-rebuild-if-unchanged", action="store_true")
 
     def handle(self, *args, **options) -> None:
         if not options["rebuild_only"]:
@@ -261,10 +296,10 @@ class Command(BaseCommand):
             for csv_path in csv_files:
                 sha = _file_sha256(csv_path)
                 existing = ImportBatch.objects.filter(file_sha256=sha).first()
-                if existing and not options["force"]:
+                if existing:
+                    # A repeated file is already represented by its original batch.
+                    # --force still rebuilds derived data without deleting provenance.
                     continue
-                if existing and options["force"]:
-                    existing.delete()
 
                 source = _infer_source(csv_path.name)
                 proc_level = (
@@ -317,12 +352,16 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"CSV ingestion finished: {imported_files} new/updated files ({total_rows} rows)."
             )
+            if imported_files == 0 and options["skip_rebuild_if_unchanged"] and not options["force"]:
+                self.stdout.write("No new file; mask and grid left unchanged.")
+                return
 
+        reconciled_rows = reconcile_nrt_duplicates()
         masked_cells = rebuild_static_mask_and_flag()
         grid_rows = rebuild_grid_cell_months()
         invalidate_api_cache()
         self.stdout.write(
             self.style.SUCCESS(
-                f"Static flare mask: {masked_cells} cells; GridCellMonth rows: {grid_rows}."
+                f"NRT rows reconciled: {reconciled_rows}; Static flare mask: {masked_cells} cells; GridCellMonth rows: {grid_rows}."
             )
         )

@@ -84,6 +84,8 @@ docker compose exec backend python manage.py import_firms
 docker compose exec backend python manage.py build_baseline_series
 ```
 
+- Scheduled FIRMS NRT ingestion (opt-in Docker profile): see [docs/nrt-celery.md](docs/nrt-celery.md).
+
 Verify backend health and test suite:
 
 ```bash
