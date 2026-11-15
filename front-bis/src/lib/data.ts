@@ -18,6 +18,7 @@ import {
   fetchMethodology,
   fetchRegions,
 } from './api'
+import { locale } from './i18n'
 import { provenance } from './provenance'
 import type {
   CalendarPoint,
@@ -157,6 +158,21 @@ export const MONTH_NAMES = [
   'Décembre',
 ]
 
+export const MONTH_NAMES_EN = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
+
 export const MONTH_SHORT = [
   'Jan',
   'Fév',
@@ -172,9 +188,28 @@ export const MONTH_SHORT = [
   'Déc',
 ]
 
+export const MONTH_SHORT_EN = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
+
 export const YEARS = Array.from({ length: 26 }, (_, i) => 2000 + i)
 
-/** Détections brutes MODIS + VIIRS S-NPP : les deux capteurs principaux sans double comptage NOAA-20. */
+/**
+ * Somme MODIS + VIIRS S-NPP.
+ * Attention : après 2012, les deux capteurs observent les mêmes feux. Cette somme
+ * n'est donc pas un nombre physique de feux ; elle sert uniquement de vue « tout brut ».
+ */
 export function rawCount(p: CalendarPoint): number {
   return (p.modis_count ?? 0) + (p.viirs_snpp_count ?? 0)
 }
@@ -194,21 +229,25 @@ export function yearOf(month: string): number {
 
 export function monthLabel(month: string): string {
   const m = monthNumber(month)
-  return `${MONTH_NAMES[m - 1]} ${yearOf(month)}`
+  const names = locale.value === 'en' ? MONTH_NAMES_EN : MONTH_NAMES
+  return `${names[m - 1]} ${yearOf(month)}`
 }
 
 export function monthShortLabel(month: string): string {
-  return `${MONTH_SHORT[monthNumber(month) - 1]} ${String(yearOf(month)).slice(2)}`
+  const names = locale.value === 'en' ? MONTH_SHORT_EN : MONTH_SHORT
+  return `${names[monthNumber(month) - 1]} ${String(yearOf(month)).slice(2)}`
 }
 
 export function formatCount(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return new Intl.NumberFormat('fr-FR').format(Math.round(value))
+  const loc = locale.value === 'en' ? 'en-US' : 'fr-FR'
+  return new Intl.NumberFormat(loc).format(Math.round(value))
 }
 
 export function formatDecimal(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return new Intl.NumberFormat('fr-FR', {
+  const loc = locale.value === 'en' ? 'en-US' : 'fr-FR'
+  return new Intl.NumberFormat(loc, {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(value)
@@ -217,10 +256,12 @@ export function formatDecimal(value: number | null | undefined, digits = 1): str
 export function formatPercent(value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   const sign = value > 0 ? '+' : ''
-  return `${sign}${new Intl.NumberFormat('fr-FR', {
+  const isEn = locale.value === 'en'
+  const formatted = new Intl.NumberFormat(isEn ? 'en-US' : 'fr-FR', {
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
-  }).format(value)} %`
+  }).format(value)
+  return isEn ? `${sign}${formatted}%` : `${sign}${formatted} %`
 }
 
 export function median(values: number[]): number {
@@ -296,6 +337,70 @@ export const secondarySeason = computed(() =>
     .map((value, index) => ({ month: index + 1, value }))
     .filter((d) => d.value >= 250 && d.value < 500)
     .map((d) => d.month),
+)
+
+/** Série mensuelle des détections écartées par le filtre complet (différence entre tout confondu et type 0 hors sources persistantes). */
+export const flareSeries = computed<CalendarPoint[]>(() => {
+  const cleanByMonth = new Map(staticSeries.value.map((p) => [p.month, p]))
+  const rawDiffs = allSeries.value.map((allPt) => {
+    const cleanPt = cleanByMonth.get(allPt.month)
+    const modis = Math.max(0, (allPt.modis_count ?? 0) - (cleanPt?.modis_count ?? 0))
+    const terra = Math.max(0, (allPt.modis_terra_count ?? 0) - (cleanPt?.modis_terra_count ?? 0))
+    const aqua = Math.max(0, (allPt.modis_aqua_count ?? 0) - (cleanPt?.modis_aqua_count ?? 0))
+    const snpp = Math.max(0, (allPt.viirs_snpp_count ?? 0) - (cleanPt?.viirs_snpp_count ?? 0))
+    const noaa20 = Math.max(0, (allPt.viirs_noaa20_count ?? 0) - (cleanPt?.viirs_noaa20_count ?? 0))
+    const harm =
+      allPt.harmonized_value !== null &&
+      cleanPt?.harmonized_value !== null &&
+      cleanPt?.harmonized_value !== undefined
+        ? Math.max(0, Math.round((allPt.harmonized_value - cleanPt.harmonized_value) * 10) / 10)
+        : modis + snpp
+    return { allPt, modis, terra, aqua, snpp, noaa20, harm }
+  })
+
+  const medians = Array.from({ length: 12 }, (_, idx) => {
+    const calMonth = idx + 1
+    const vals = rawDiffs
+      .filter((d) => yearOf(d.allPt.month) >= 2001 && monthNumber(d.allPt.month) === calMonth)
+      .map((d) => d.harm)
+    return median(vals)
+  })
+
+  return rawDiffs.map(({ allPt, modis, terra, aqua, snpp, noaa20, harm }) => {
+    const base = medians[monthNumber(allPt.month) - 1] ?? 0
+    const abs = harm - base
+    const pct = base > 0 ? Math.round((abs / base) * 1000) / 10 : null
+    return {
+      ...allPt,
+      modis_count: modis,
+      modis_terra_count: terra,
+      modis_aqua_count: aqua,
+      viirs_snpp_count: snpp,
+      viirs_noaa20_count: noaa20,
+      harmonized_value: harm,
+      ci_low: null,
+      ci_high: null,
+      baseline_median: Math.round(base * 10) / 10,
+      anomaly_absolute: Math.round(abs * 10) / 10,
+      anomaly_percent: pct,
+    }
+  })
+})
+
+/** Profil mensuel moyen (médiane 2001–2025) comparant type 0 hors sources persistantes et détections écartées. */
+export const monthlySeasonComparison = computed(() =>
+  Array.from({ length: 12 }, (_, index) => {
+    const calMonth = index + 1
+    const flareVals = flareSeries.value
+      .filter((p) => yearOf(p.month) >= 2001 && monthNumber(p.month) === calMonth)
+      .map((p) => p.harmonized_value)
+      .filter((v): v is number => v !== null)
+    return {
+      monthNum: calMonth,
+      veg: monthlyMedians.value[index] ?? 0,
+      flare: median(flareVals),
+    }
+  }),
 )
 
 export function isPartialCoverage(point: CalendarPoint): boolean {
@@ -564,6 +669,67 @@ export const provinceFeatures = computed(() =>
   regionFeatures.value.filter((f) => f.properties.region_type !== 'country'),
 )
 
+function pointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i]![0]!
+    const yi = ring[i]![1]!
+    const xj = ring[j]![0]!
+    const yj = ring[j]![1]!
+    const intersect = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function pointInPolygonRings(lon: number, lat: number, rings: number[][][]): boolean {
+  if (!rings.length || !pointInRing(lon, lat, rings[0]!)) return false
+  for (let i = 1; i < rings.length; i++) {
+    if (pointInRing(lon, lat, rings[i]!)) return false
+  }
+  return true
+}
+
+/** Retourne le nom de la province gabonaise contenant (lon, lat), ou la côte/province la plus proche. */
+export function findProvinceName(lon: number, lat: number): string {
+  for (const feature of provinceFeatures.value) {
+    for (const poly of feature.geometry.coordinates) {
+      if (pointInPolygonRings(lon, lat, poly)) {
+        return feature.properties.name
+      }
+    }
+  }
+  if (lon < 9.8 && lat < -0.2) {
+    return 'Ogooué-Maritime (Offshore)'
+  }
+  let bestName = 'Gabon'
+  let bestDist = Infinity
+  for (const region of regionsState.value) {
+    if (region.region_type === 'country' || region.bbox.length < 4) continue
+    const [w, s, e, n] = region.bbox
+    const cx = (w! + e!) / 2
+    const cy = (s! + n!) / 2
+    const dist = (lon - cx) ** 2 + (lat - cy) ** 2
+    if (dist < bestDist) {
+      bestDist = dist
+      bestName = region.name
+    }
+  }
+  return bestName
+}
+
+/** Liste des provinces (hors Gabon national) avec leur centre approximatif pour l'étiquetage carte. */
+export const provinceSummaries = computed(() =>
+  regionsState.value
+    .filter((r) => r.region_type !== 'country' && r.bbox.length >= 4)
+    .map((r) => ({
+      code: r.code,
+      name: r.name,
+      bbox: r.bbox,
+      center: [(r.bbox[0]! + r.bbox[2]!) / 2, (r.bbox[1]! + r.bbox[3]!) / 2] as [number, number],
+    })),
+)
+
 function sumSensors(series: CalendarPoint[]) {
   let modis = 0
   let snpp = 0
@@ -596,6 +762,18 @@ export const composition = computed(() => {
     gaExcluded,
     gaExcludedShare: gaAll.total > 0 ? Math.round((gaExcluded / gaAll.total) * 1000) / 10 : 0,
     gaCleanShare: gaAll.total > 0 ? Math.round((gaClean.total / gaAll.total) * 1000) / 10 : 0,
+
+    // Décomposition du filtre complet (type 2/3 hors masque + type 0 dans une cellule candidate).
+    gaType23Count: provenance.ga.totalType23Count,
+    gaType23Share:
+      gaAll.total > 0
+        ? Math.round((provenance.ga.totalType23Count / gaAll.total) * 1000) / 10
+        : 0,
+    gaType0InMaskCount: provenance.ga.totalType0InMaskCount,
+    gaType0InMaskShare:
+      gaAll.total > 0
+        ? Math.round((provenance.ga.totalType0InMaskCount / gaAll.total) * 1000) / 10
+        : 0,
 
     modisTotal: gaAll.modis,
     modisClean: gaClean.modis,

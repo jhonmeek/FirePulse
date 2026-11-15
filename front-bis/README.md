@@ -25,15 +25,17 @@ npm run preview
 
 - **Globe 3D** en Three.js : étoiles, graticule, orbites des capteurs, contour du Gabon,
   points chauds en particules additives.
-- **Récit scrollé** en 9 temps : le saut de 2012, le piège des torchères, la traduction
-  MODIS → VIIRS, le calendrier, la carte, la preuve renforcée, notre apport, le pont 2026
-  et l'explorateur.
-- **Graphiques SVG animés** : série brute, série harmonisée, bande d'incertitude 80 %,
-  annotations 2012 et août 2024.
+- **Récit scrollé** en 6 temps (ouverture + 5 étapes) : le saut de 2012, les sources
+  persistantes, la traduction MODIS → VIIRS, le calendrier, la carte, puis la preuve
+  renforcée et le relais 2026.
+- **Graphiques SVG animés** : vues par capteur (MODIS, S-NPP, NOAA-20), série harmonisée
+  expérimentale, bande d'incertitude 80 %, annotations 2012 et août 2024.
 - **Calendrier Années × Mois** accessible au clavier, avec détail du mois, rang historique,
   composition et export CSV.
 - **Carte MapLibre** sans fond de carte externe : grille 0,25°, contours du Gabon et des
-  provinces, sites statiques 0,05°, sélecteur de période et toggle torchères.
+  provinces, cellules candidates 0,05°, sélecteur de période et toggle sources persistantes.
+- **Fiche de confiance** sous les séries et la carte, et version complète dans la section
+  preuve : source, période, capteur, protocole, couverture et limites.
 - **Motion design** : GSAP + ScrollTrigger + Lenis, révélations au scroll, compteurs animés,
   respect de `prefers-reduced-motion`.
 - **Typographie** : Roboto (texte et titres) + Roboto Mono (labels), via `@fontsource`
@@ -50,7 +52,7 @@ synchronisés avec la base (`src/data/*.json`) si le backend est indisponible ou
 - `/api/v1/calendar/` (`calendar-static.json` / `calendar-all.json`) : séries mensuelles
   harmonisées (`filter_static=true` et `false`) et médianes officielles `2001–2025`.
 - `/api/v1/hotspots/?mode=grid&agg=cell` (`hotspots-static.json` / `hotspots-all.json`) :
-  grille `0,25°` et masque des `183` cellules statiques `0,05°`.
+  grille `0,25°` et masque des `183` cellules candidates `0,05°`.
 - `/api/v1/methodology/` (`methodology.json` / `methodology-raw.json`) : paramètres
   calibrés et métriques hors échantillon `2020–2025`.
 - `/api/v1/coverage/` (`coverage.json`) : couverture temporelle des capteurs ingérés.
@@ -70,15 +72,15 @@ géographiques :
 - **Archive FIRMS SP ingérée (BBox Gabon, 48 fichiers, 2000-11 → 2025-12)** : `292 589`
   détections (`59 282` MODIS, `147 745` VIIRS S-NPP, `85 562` VIIRS NOAA-20), `10` régions,
   `42 482` cellules-mois (`18 775` filtrées + `23 707` brutes), `6 011` lignes mensuelles
-  harmonisées, `183` cellules statiques `0,05°`, `352` cellules actives `0,25°` dans `GA`
+  harmonisées, `183` cellules candidates `0,05°`, `352` cellules actives `0,25°` dans `GA`
   (`355` au total dans la BBox).
 - **Polygone officiel Gabon `GA` (`ST_Within`, base de `/calendar/` et `/methodology/`)** :
   `285 013` détections (`57 732` MODIS, `143 894` VIIRS S-NPP, `83 387` NOAA-20), dont
-  `175 500` feux de végétation retenus (`filter_static=true`, `61,6 %`) et `109 513`
-  écartées (`38,4 %`). Sur S-NPP dans `GA`, `31 110` (`21,6 %`) portent le tag FIRMS
-  `type 2/3` (`21,2 %` / `31 298` sur l'archive brute) et `26 068` détections `type 0`
-  tombent dans les `183` mailles persistantes `0,05°` — soit `57 178` (`39,7 %`) écartées
-  au total par le filtre complet.
+  `175 500` détections `type 0` hors cellules candidates retenues (`filter_static=true`,
+  `61,6 %`) et `109 513` écartées (`38,4 %`). Cette exclusion se décompose en `57 934`
+  détections `type 2/3` (`20,3 %`) et `51 579` détections `type 0` dans les `183` cellules
+  candidates `0,05°` (`18,1 %`). Ce sont des cellules candidates, pas des torchères
+  confirmées une par une.
 - **Évaluation hors échantillon (`GA`, `filter_static=true`, méthode `v2.0`)** : entraînement
   `2012-02 → 2019-12` (`95` mois, ratio global `×3,93` hors statiques / `×4,65` en brut),
   test `2020-01 → 2025-12` (`72` mois) : Naïf MAE `355,7` (`R² 0,143`) → Power-law `log1p`
@@ -93,8 +95,8 @@ Le script `scripts/validate_harmonization.py` relit les **48 CSV FIRMS pays** et
 `src/data/validation.json` + `src/data/validation_series.csv`. Il répond aux trois critiques
 qui limitaient le benchmark DB `v2.0` :
 
-1. **masque statique gelé sur `2000–2019`** — il ne connaît pas les torchères de
-   `2020–2025` ; le masque all-years est conservé uniquement pour mesurer le look-ahead ;
+1. **masque de cellules candidates gelé sur `2000–2019`** — il ne connaît pas les sources
+   persistantes de `2020–2025` ; le masque all-years est conservé uniquement pour mesurer le look-ahead ;
 2. **split en trois temps** — entraînement `2012-02 → 2017-12` (`71` mois), calibration
    `2018-01 → 2019-12` (`24` mois), test `2020-01 → 2025-12` (`72` mois) ;
 3. **évaluation sur les anomalies** — le R² brut est gonflé par la saisonnalité ; on ajoute
@@ -138,7 +140,7 @@ Ce que cela change dans le discours :
 - **Les résultats négatifs sont publiés** : Terra → Aqua échoue, la couverture est de 63,9 %,
   le masque all-years flatte la MAE. C'est ce qui rend la preuve crédible.
 - **Un produit complet** : calendrier accessible, carte 0,25°, anomalies, CSV, API
-  Django/PostGIS, mode snapshot hors-ligne.
+  Django/PostGIS, mode snapshot hors-ligne, et fiche de confiance par résultat.
 - **Une méthode transférable** : Bassin du Congo, FRP, NOAA-21, surface brûlée.
 
 ## Notes

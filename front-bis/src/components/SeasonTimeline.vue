@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, useTemplateRef } from 'vue'
-import { gsap, ScrollTrigger } from '@/lib/motion'
+import { computed } from 'vue'
+import { formatDecimal } from '@/lib/data'
+import { t } from '@/lib/i18n'
+import { provenance } from '@/lib/provenance'
 
 const props = withDefaults(
   defineProps<{
@@ -10,320 +12,198 @@ const props = withDefaults(
   }>(),
   {
     reducedMotion: false,
-    archiveEnd: '2025-12',
-    noaaBridgeRatio: 1.0381,
+    archiveEnd: provenance.archiveEnd,
+    noaaBridgeRatio: 0.94,
   },
 )
 
-const wrapper = useTemplateRef<HTMLDivElement>('wrapper')
-
-const regimes = computed(() => [
-  {
-    id: 'terra',
-    label: 'MODIS Terra seul',
-    range: '2000-11 → 2002-06',
-    width: 6.5,
-    tone: 'gold',
-    note: 'Aqua n’est pas encore lancé (modèle dédié).',
-  },
-  {
-    id: 'modis',
-    label: 'MODIS Terra + Aqua',
-    range: '2002-07 → 2012-01',
-    width: 38,
-    tone: 'ember',
-    note: 'Reconstitué sur l’échelle VIIRS S-NPP.',
-  },
-  {
-    id: 'snpp',
-    label: 'VIIRS S-NPP',
-    range: `2012-02 → ${props.archiveEnd} (arch. SP) · arrêt 2026-11-02`,
-    width: 39,
-    tone: 'teal',
-    note: 'L’échelle de référence.',
-  },
-  {
-    id: 'noaa20',
-    label: 'Pont NOAA-20',
-    range: '2026-11-03 → …',
-    width: 16.5,
-    tone: 'cyan',
-    note: `Continuité calibrée sur 2019–2025 (ratio ${props.noaaBridgeRatio.toFixed(3).replace('.', ',')}).`,
-  },
-])
-
-onMounted(async () => {
-  if (props.reducedMotion) return
-  await nextTick()
-  const line = wrapper.value?.querySelector('.timeline-progress')
-  if (line) {
-    gsap.from(line, {
-      scaleX: 0,
-      transformOrigin: 'left center',
-      duration: 1.6,
-      ease: 'power2.inOut',
-      immediateRender: false,
-      scrollTrigger: { trigger: wrapper.value, start: 'top 82%', once: true },
-    })
-  }
-  ScrollTrigger.refresh()
-})
+const noaaDiffPct = computed(() => Math.abs(Math.round((props.noaaBridgeRatio - 1) * 1000) / 10))
 </script>
 
 <template>
-  <div ref="wrapper" class="timeline">
-    <div class="timeline-head">
-      <span class="tiny-label">Quatre régimes, une seule chronologie</span>
-      <span class="timeline-cut">2 nov. 2026 · arrêt S-NPP</span>
-    </div>
+  <div class="relay-wrap" :aria-label="t('Le passage de relais entre satellites au Gabon', 'Satellite relay over Gabon')">
+    <div class="relay-grid">
+      <article class="relay-card">
+        <div class="relay-top">
+          <span class="relay-period">2000 – 2011</span>
+          <span class="relay-tag">{{ t('Passé · Réaligné', 'Past · Aligned') }}</span>
+        </div>
+        <h3>{{ t('Ancien satellite (MODIS)', 'Older satellite (MODIS)') }}</h3>
+        <p>
+          {{
+            t(
+              'Première caméra spatiale sur le Gabon, avec une vue large (~1 km). Elle comptait environ 4 fois moins de détections : FirePulse remet cet historique au niveau actuel.',
+              'First space camera watching Gabon at a wide resolution (~1 km). It counted roughly 4x fewer detections: FirePulse aligns this archive to today’s scale.',
+            )
+          }}
+        </p>
+        <div class="relay-foot">
+          {{ t('Archive couverte dès novembre 2000', 'Archive starts November 2000') }}
+        </div>
+      </article>
 
-    <div class="timeline-track">
-      <div class="timeline-progress"></div>
-      <div
-        v-for="regime in regimes"
-        :key="regime.id"
-        class="timeline-segment"
-        :class="regime.tone"
-        :style="{ flexGrow: regime.width }"
-      >
-        <span class="segment-bar"></span>
-        <span class="segment-label">{{ regime.label }}</span>
-        <span class="segment-range">{{ regime.range }}</span>
-        <span class="segment-note">{{ regime.note }}</span>
-      </div>
-      <div class="timeline-marker" aria-hidden="true">
-        <span class="marker-pulse"></span>
-        <span class="marker-label">S-NPP</span>
-      </div>
-    </div>
+      <div class="relay-arrow" aria-hidden="true">→</div>
 
-    <div class="timeline-legend">
-      <span><i class="dot gold"></i>Terra seul</span>
-      <span><i class="dot ember"></i>MODIS reconstitué</span>
-      <span><i class="dot teal"></i>VIIRS observé</span>
-      <span><i class="dot cyan"></i>Pont NOAA-20</span>
+      <article class="relay-card is-active">
+        <div class="relay-top">
+          <span class="relay-period">2012 – 2026</span>
+          <span class="relay-tag is-active">{{ t('Référence de l’archive', 'Archive reference') }}</span>
+        </div>
+        <h3>{{ t('Satellite de référence (VIIRS S-NPP)', 'Reference satellite (VIIRS S-NPP)') }}</h3>
+        <p>
+          {{
+            t(
+              `Image beaucoup plus nette (375 m) qui sert de base à tous les graphiques. L'archive étudiée ici va jusqu'à ${archiveEnd}. La mission opérationnelle s'est arrêtée le 2 novembre 2026.`,
+              `Much sharper view (375 m) serving as the baseline for every chart. This archive runs to ${archiveEnd}. Operational delivery ended on November 2, 2026.`,
+            )
+          }}
+        </p>
+        <div class="relay-foot is-warn">
+          {{ t('Mission terminée le 2 novembre 2026', 'Mission ended November 2, 2026') }}
+        </div>
+      </article>
+
+      <div class="relay-arrow" aria-hidden="true">→</div>
+
+      <article class="relay-card is-next">
+        <div class="relay-top">
+          <span class="relay-period">{{ t('2026+', '2026+') }}</span>
+          <span class="relay-tag is-next">{{ t('Relais préparé', 'Relay prepared') }}</span>
+        </div>
+        <h3>{{ t('Successeur (VIIRS NOAA-20)', 'Successor (VIIRS NOAA-20)') }}</h3>
+        <p>
+          {{
+            t(
+              `En orbite depuis 2018 à la même résolution (375 m). Sur la période commune 2018–2019, le ratio de calibration mesuré est de ${formatDecimal(props.noaaBridgeRatio, 3)} (~${formatDecimal(noaaDiffPct, 1)} % d'écart). Le relais reste à valider sur les données 2026, absentes de cette archive.`,
+              `Operating since 2018 at the same resolution (375 m). Over the 2018–2019 overlap, the measured calibration ratio is ${formatDecimal(props.noaaBridgeRatio, 3)} (~${formatDecimal(noaaDiffPct, 1)}% gap). The relay still needs validation on 2026 data, absent from this archive.`,
+            )
+          }}
+        </p>
+        <div class="relay-foot is-next">
+          {{ t('Relais préparé, validation 2026 à faire', 'Relay prepared, 2026 validation pending') }}
+        </div>
+      </article>
     </div>
   </div>
 </template>
 
 <style scoped>
-.timeline {
-  display: grid;
-  gap: 18px;
+.relay-wrap {
+  width: 100%;
 }
 
-.timeline-head {
+.relay-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.relay-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: var(--gold);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.relay-card {
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(11, 16, 22, 0.88);
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 10px;
+}
+
+.relay-card.is-active {
+  border-color: rgba(255, 196, 107, 0.44);
+  background: linear-gradient(160deg, rgba(255, 138, 61, 0.1), rgba(11, 16, 22, 0.92));
+}
+
+.relay-card.is-next {
+  border-color: rgba(56, 189, 248, 0.36);
+  background: linear-gradient(160deg, rgba(56, 189, 248, 0.08), rgba(11, 16, 22, 0.92));
+}
+
+.relay-top {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
   justify-content: space-between;
-  gap: 8px 20px;
+  align-items: center;
+  gap: 8px;
 }
 
-.timeline-cut {
+.relay-period {
   font-family: var(--font-mono);
-  font-size: 0.56rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ember);
-}
-
-.timeline-track {
-  position: relative;
-  display: flex;
-  gap: 5px;
-  min-height: 168px;
-  padding: 18px 0 10px;
-}
-
-.timeline-progress {
-  position: absolute;
-  top: 8px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, var(--gold), var(--ember) 38%, var(--teal) 68%, var(--cyan));
-  opacity: 0.7;
-}
-
-.timeline-segment {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 4px;
-  min-width: 0;
-  padding: 12px 10px 10px;
-  border-top: 2px solid transparent;
-  background: linear-gradient(180deg, rgba(244, 241, 232, 0.04), transparent);
-  transition:
-    background 0.3s ease,
-    border-color 0.3s ease;
-}
-
-.timeline-segment:hover {
-  background: rgba(244, 241, 232, 0.07);
-}
-
-.timeline-segment.gold {
-  border-color: var(--gold);
-}
-.timeline-segment.ember {
-  border-color: var(--ember);
-}
-.timeline-segment.teal {
-  border-color: var(--teal);
-}
-.timeline-segment.cyan {
-  border-color: var(--cyan);
-}
-
-.segment-bar {
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 88px;
-  height: 3px;
-  border-radius: 2px;
-  background: currentColor;
-  opacity: 0.7;
-}
-
-.gold .segment-bar {
-  color: var(--gold);
-}
-.ember .segment-bar {
-  color: var(--ember);
-}
-.teal .segment-bar {
-  color: var(--teal);
-}
-.cyan .segment-bar {
-  color: var(--cyan);
-}
-
-.segment-label {
   font-size: 0.76rem;
   font-weight: 600;
-  line-height: 1.25;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.relay-tag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.relay-tag.is-active {
+  border-color: rgba(255, 196, 107, 0.4);
+  color: var(--gold);
+  background: rgba(255, 196, 107, 0.1);
+}
+
+.relay-tag.is-next {
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.relay-card h3 {
+  margin: 0;
+  font-size: 1.06rem;
+  font-weight: 500;
   color: var(--ink);
 }
 
-.segment-range {
+.relay-card p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.54;
+  color: #cdd6df;
+}
+
+.relay-foot {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
-  font-size: 0.54rem;
-  letter-spacing: 0.03em;
-  color: var(--gold);
+  font-size: 0.66rem;
+  color: var(--muted);
 }
 
-.segment-note {
-  margin-top: 2px;
-  font-size: 0.64rem;
-  line-height: 1.4;
-  color: var(--dim);
+.relay-foot.is-warn {
+  color: #ffb86c;
 }
 
-.timeline-marker {
-  position: absolute;
-  top: 0;
-  left: 77%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  transform: translateX(-50%);
-  pointer-events: none;
+.relay-foot.is-next {
+  color: #7dd3fc;
 }
 
-.marker-pulse {
-  position: relative;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--ember);
-  box-shadow: 0 0 0 0 rgba(255, 122, 61, 0.45);
-  animation: pulse 2.4s var(--ease-in-out) infinite;
-}
-
-.marker-label {
-  font-family: var(--font-mono);
-  font-size: 0.5rem;
-  letter-spacing: 0.08em;
-  color: var(--ember);
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 122, 61, 0.5);
+@media (max-width: 980px) {
+  .relay-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
   }
-  70% {
-    box-shadow: 0 0 0 12px rgba(255, 122, 61, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(255, 122, 61, 0);
-  }
-}
-
-.timeline-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 22px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: 0.54rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-
-.timeline-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-}
-
-.dot.gold {
-  background: var(--gold);
-}
-.dot.ember {
-  background: var(--ember);
-}
-.dot.teal {
-  background: var(--teal);
-}
-.dot.cyan {
-  background: var(--cyan);
-}
-
-@media (max-width: 900px) {
-  .timeline-track {
-    flex-direction: column;
-    gap: 6px;
-    min-height: 0;
-  }
-  .timeline-progress {
-    display: none;
-  }
-  .timeline-segment {
-    padding: 10px 12px;
-  }
-  .segment-bar {
-    position: static;
-    width: 22px;
-    height: 3px;
-    margin-bottom: 4px;
-  }
-  .segment-note {
-    display: none;
-  }
-  .timeline-marker {
+  .relay-arrow {
     display: none;
   }
 }

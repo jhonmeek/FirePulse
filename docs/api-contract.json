@@ -107,7 +107,7 @@
         "polygon": "Optional URL-encoded GeoJSON Polygon, MultiPolygon, or Feature (takes precedence over bbox)",
         "start": "Optional YYYY-MM filter applied to output series (custom bbox/polygon baselines still use full 2001-2025 history)",
         "end": "Optional YYYY-MM filter applied to output series",
-        "filter_static": "true|false (default true: excludes type!=0 and 0.05 deg static flare cells)"
+        "filter_static": "true|false (default true: excludes type!=0 and 0.05 deg candidate persistent cells)"
       },
       "notes": "When bbox or polygon is used, region.id is CUSTOM_BBOX or CUSTOM_POLYGON, baseline_iqr is computed across 2001-2025, and ci_low/ci_high remain null.",
       "response_example": {
@@ -194,7 +194,7 @@
         "bbox": "west,south,east,north in EPSG:4326",
         "polygon": "Optional URL-encoded GeoJSON Polygon, MultiPolygon, or Feature",
         "filter_static": "true|false (default true)",
-        "include_static_cells": "true|false (default false; appends up to 1000 features with properties.layer='static_flare_mask')",
+        "include_static_cells": "true|false (default false; appends up to 1000 features with properties.layer='static_flare_mask' representing candidate persistent cells)",
         "limit": "1..5000 (default 2000)"
       },
       "response_example": {
@@ -218,7 +218,7 @@
       }
     },
     "GET /api/v1/methodology/": {
-      "description": "Active calibration parameters, out-of-sample benchmark metrics (when locally calibrated), static flare mask stats, and documented limitations.",
+      "description": "Active calibration parameters, out-of-sample benchmark metrics (when locally calibrated), candidate persistent-cell mask stats, and documented limitations.",
       "query_params": {
         "region": "GA (default)",
         "filter_static": "true|false (default true)"

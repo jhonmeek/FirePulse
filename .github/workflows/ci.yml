@@ -82,11 +82,11 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   frontend:
-    name: Frontend (Vue 3 + Vitest + Vite)
+    name: Frontend (Vue 3 + TypeScript + Vite)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: front-bis
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,16 +96,13 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: "frontend/package-lock.json"
+          cache-dependency-path: "front-bis/package-lock.json"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Type-check
         run: npm run type-check
-
-      - name: Run Vitest unit tests
-        run: npm run test:unit -- --run
 
       - name: Build production bundle
         run: npm run build-only

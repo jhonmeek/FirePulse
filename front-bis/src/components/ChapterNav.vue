@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/lib/i18n'
+
 defineProps<{
   chapters: { id: string; label: string }[]
   active: string
@@ -8,7 +10,7 @@ const emit = defineEmits<{ navigate: [id: string] }>()
 </script>
 
 <template>
-  <nav class="chapter-nav" aria-label="Chapitres de l'histoire">
+  <nav class="chapter-nav" :aria-label="t('Chapitres de l’histoire', 'Story chapters')">
     <button
       v-for="chapter in chapters"
       :key="chapter.id"

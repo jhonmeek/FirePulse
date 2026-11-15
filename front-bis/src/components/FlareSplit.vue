@@ -1,101 +1,186 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useTemplateRef } from 'vue'
-import { gsap, ScrollTrigger } from '@/lib/motion'
-import { formatCount } from '@/lib/data'
+import { computed, ref } from 'vue'
+import {
+  MONTH_NAMES,
+  MONTH_NAMES_EN,
+  MONTH_SHORT,
+  MONTH_SHORT_EN,
+  composition,
+  formatCount,
+  formatDecimal,
+  monthlySeasonComparison,
+} from '@/lib/data'
+import { locale, t } from '@/lib/i18n'
 import { provenance } from '@/lib/provenance'
 
-const props = withDefaults(
-  defineProps<{
-    share: number
-    staticCount: number
-    totalCount: number
-    type23Count?: number
-    type23Share?: number
-    maskedCells?: number
-    reducedMotion?: boolean
-  }>(),
-  { reducedMotion: false, type23Count: 31_110, type23Share: 21.6, maskedCells: 183 },
+const showMixed = ref(true)
+const hoveredMonth = ref<number | null>(null)
+const gaTagCount = provenance.ga.totalType23Count
+
+const monthShort = computed(() => (locale.value === 'en' ? MONTH_SHORT_EN : MONTH_SHORT))
+const monthNames = computed(() => (locale.value === 'en' ? MONTH_NAMES_EN : MONTH_NAMES))
+
+const vegCount = computed(() => composition.value.gaClean)
+const flareCount = computed(() => composition.value.gaExcluded)
+const totalCount = computed(() => composition.value.gaTotal)
+const vegShare = computed(() => composition.value.gaCleanShare)
+const flareShare = computed(() => composition.value.gaExcludedShare)
+const pctSuffix = computed(() => (locale.value === 'en' ? '%' : ' %'))
+
+const maxBarValue = computed(() => {
+  let max = 1
+  for (const row of monthlySeasonComparison.value) {
+    const val = showMixed.value ? row.veg + row.flare : row.veg
+    if (val > max) max = val
+  }
+  return max
+})
+
+const bars = computed(() =>
+  monthlySeasonComparison.value.map((row, idx) => {
+    const flare = showMixed.value ? row.flare : 0
+    const total = row.veg + flare
+    return {
+      index: idx,
+      short: monthShort.value[idx] ?? '',
+      name: monthNames.value[idx] ?? '',
+      veg: Math.round(row.veg),
+      flare: Math.round(row.flare),
+      shownFlare: Math.round(flare),
+      total: Math.round(total),
+      vegPct: (row.veg / maxBarValue.value) * 100,
+      flarePct: (flare / maxBarValue.value) * 100,
+    }
+  }),
 )
 
-const filtered = ref(false)
-const wrapper = useTemplateRef<HTMLDivElement>('wrapper')
-const dotCount = computed(() => Math.min(100, Math.max(0, Math.round(props.share))))
-
-// Répartition déterministe des points statiques parmi les 100 points.
-const staticFlags = computed(() =>
-  Array.from({ length: 100 }, (_, index) => (index * 37 + 11) % 100 < dotCount.value),
-)
-
-const removed = computed(() => (filtered.value ? 0 : props.staticCount))
-const visibleShare = computed(() => (filtered.value ? 0 : props.share))
-
-onMounted(async () => {
-  if (props.reducedMotion) return
-  await nextTick()
-  const dots = wrapper.value?.querySelectorAll('.dot.cool')
-  if (!dots?.length) return
-  gsap.from(dots, {
-    opacity: 0,
-    scale: 0.4,
-    duration: 0.45,
-    ease: 'back.out(1.7)',
-    stagger: { each: 0.008, from: 'random' },
-    immediateRender: false,
-    scrollTrigger: { trigger: wrapper.value, start: 'top 82%', once: true },
-  })
-  ScrollTrigger.refresh()
+const activeBar = computed(() => {
+  const idx = hoveredMonth.value ?? 10 // Novembre par défaut (montre le contraste saison des pluies vs torchères)
+  return bars.value[idx] ?? bars.value[7]!
 })
 </script>
 
 <template>
-  <div ref="wrapper" class="flare">
-    <div class="flare-top">
-      <div class="flare-number">
-        <span class="stat">{{ visibleShare.toFixed(1).replace('.', ',') }}<small>%</small></span>
-        <span class="flare-caption">des détections VIIRS S-NPP (GA)<br />écartées par le filtre statique</span>
+  <div class="flare">
+    <div class="flare-head">
+      <div>
+        <span class="flare-kicker">
+          {{ t('Bilan complet au Gabon · 2000–2025 (tous satellites)', 'Full Gabon breakdown · 2000–2025 (all satellites)') }}
+        </span>
+        <div class="flare-total-line">
+          <strong>{{ formatCount(totalCount) }}</strong>
+          <span>{{ t('points chauds enregistrés au total', 'total thermal hotspots recorded') }}</span>
+        </div>
       </div>
-      <button
-        type="button"
-        class="flare-toggle"
-        :class="{ active: filtered }"
-        :aria-pressed="filtered"
-        @click="filtered = !filtered"
-      >
-        <span class="flare-toggle-track"><i></i></span>
-        {{ filtered ? 'Torchères retirées' : 'Retirer les torchères' }}
-      </button>
+      <div class="flare-toggle-group" role="group" :aria-label="t('Affichage du profil mensuel', 'Monthly profile mode')">
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: showMixed }"
+          @click="showMixed = true"
+        >
+          {{ t('Tout mélanger (trompeur)', 'Mix everything (misleading)') }}
+        </button>
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: !showMixed }"
+          @click="showMixed = false"
+        >
+          {{ t('Appliquer le filtre complet', 'Apply the full filter') }}
+        </button>
+      </div>
     </div>
 
-    <div class="dot-grid" :class="{ filtered }" aria-hidden="true">
-      <span
-        v-for="n in 100"
-        :key="n"
-        class="dot"
-        :class="staticFlags[n - 1] ? 'cool' : 'hot'"
-        :style="{ transitionDelay: `${(n % 10) * 18}ms` }"
-      ></span>
+    <!-- Barre proportionnelle unique des 285 013 détections au Gabon -->
+    <div class="split-block">
+      <div class="split-bar" role="img" :aria-label="t('Répartition entre type 0 hors sources persistantes et détections écartées par le filtre', 'Type-0 outside persistent sources vs detections excluded by the filter')">
+        <div class="split-veg" :style="{ width: `${vegShare}%` }"></div>
+        <div class="split-flare" :style="{ width: `${flareShare}%` }"></div>
+      </div>
+
+      <div class="split-stats">
+        <div class="split-card veg">
+          <span class="swatch-label"><i class="swatch hot"></i>{{ t('Type 0 hors sources persistantes (forêt, savane, brûlis)', 'Type 0 outside persistent sources (forest, savanna, clearing)') }}</span>
+          <div class="split-numbers">
+            <strong>{{ formatCount(vegCount) }}</strong>
+            <span>{{ formatDecimal(vegShare, 1) }}{{ pctSuffix }}</span>
+          </div>
+          <p>{{ t('Suivent les saisons sèches. Ce sont des candidats feux de végétation, pas une validation terrain.', 'Follow Gabon’s dry seasons. These are candidate vegetation fires, not field-validated.') }}</p>
+        </div>
+
+        <div class="split-card flare-card">
+          <span class="swatch-label"><i class="swatch cool"></i>{{ t('Détections écartées par le filtre complet', 'Detections excluded by the full filter') }}</span>
+          <div class="split-numbers">
+            <strong>{{ formatCount(flareCount) }}</strong>
+            <span>{{ formatDecimal(flareShare, 1) }}{{ pctSuffix }}</span>
+          </div>
+          <p>
+            {{
+              t(
+                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)} %) + ${formatCount(composition.gaType0InMaskCount)} type 0 dans ${composition.maskedCells} cellules candidates (${formatDecimal(composition.gaType0InMaskShare, 1)} %), côte et offshore.`,
+                `${formatCount(composition.gaType23Count)} type 2/3 (${formatDecimal(composition.gaType23Share, 1)}%) + ${formatCount(composition.gaType0InMaskCount)} type 0 inside ${composition.maskedCells} candidate cells (${formatDecimal(composition.gaType0InMaskShare, 1)}%), coastal and offshore.`,
+              )
+            }}
+          </p>
+        </div>
+      </div>
     </div>
 
-    <div class="flare-legend">
-      <span class="legend-item">
-        <i class="swatch hot"></i>
-        Feux de végétation
-        <strong>{{ formatCount(totalCount - removed) }}</strong>
-      </span>
-      <span class="legend-item">
-        <i class="swatch cool"></i>
-        Sources statiques
-        <strong>{{ formatCount(removed) }}</strong>
-      </span>
+    <!-- Graphique 12 mois comparant l'effet du filtre sur la courbe saisonnière -->
+    <div class="season-proof">
+      <div class="season-proof-head">
+        <div>
+          <span class="season-title">
+            {{
+              showMixed
+                ? t('Sans filtre : les sources persistantes ajoutent un bruit toute l’année', 'Unfiltered: persistent sources add year-round noise')
+                : t('Avec filtre : la saison sèche et le creux des pluies ressortent nettement', 'Filtered: dry seasons and the rainy trough stand out clearly')
+            }}
+          </span>
+          <span class="season-sub">
+            {{ t('Médiane mensuelle au Gabon (2001–2025)', 'Monthly median in Gabon (2001–2025)') }}
+          </span>
+        </div>
+        <div class="season-readout" aria-live="polite">
+          <strong>{{ activeBar.name }}</strong> ·
+          <span class="hot-txt">{{ t('Type 0 hors sources', 'Type 0 outside sources') }} : {{ formatCount(activeBar.veg) }}</span>
+          <template v-if="showMixed">
+            · <span class="cool-txt">{{ t('Écartées par le filtre', 'Excluded by filter') }} : {{ formatCount(activeBar.flare) }}</span>
+          </template>
+        </div>
+      </div>
+
+      <div class="bars-grid">
+        <button
+          v-for="bar in bars"
+          :key="bar.index"
+          type="button"
+          class="bar-col"
+          :class="{ active: activeBar.index === bar.index }"
+          :aria-label="`${bar.name} : ${formatCount(bar.veg)} ${t('détections type 0 hors sources persistantes', 'type-0 detections outside persistent sources')}${showMixed ? `, ${formatCount(bar.flare)} ${t('détections écartées par le filtre', 'detections excluded by the filter')}` : ''}`"
+          @mouseenter="hoveredMonth = bar.index"
+          @focus="hoveredMonth = bar.index"
+          @mouseleave="hoveredMonth = null"
+        >
+          <span class="bar-track">
+            <span class="bar-stack">
+              <i class="seg-flare" :style="{ height: `${bar.flarePct}%` }"></i>
+              <i class="seg-veg" :style="{ height: `${bar.vegPct}%` }"></i>
+            </span>
+          </span>
+          <span class="bar-label">{{ bar.short }}</span>
+        </button>
+      </div>
     </div>
 
     <p class="flare-note">
-      Seules {{ props.type23Share.toFixed(1).replace('.', ',') }} %
-      ({{ formatCount(props.type23Count) }}) portent le tag FIRMS type 2/3 en GA — et en 2017,
-      MODIS n'a signalé aucune source type 2 au Gabon. Le masque de
-      {{ String(provenance.staticGridDeg).replace('.', ',') }}° ({{ props.maskedCells }} mailles
-      persistantes) écarte aussi les détections type 0 situées sur ces mêmes sites, d'où
-      {{ props.share.toFixed(1).replace('.', ',') }} % retirés sur S-NPP.
+      {{
+        t(
+          `La NASA classe ${formatCount(gaTagCount)} détections en type 2/3 (sources fixes ou offshore). Les ${formatCount(composition.gaType0InMaskCount)} autres sont des type 0 tombées dans ${composition.maskedCells} cellules candidates. Le filtre complet écarte ${formatCount(flareCount)} détections, mais toutes ne sont pas des torchères confirmées : c’est une exposition au critère, pas un taux de faux positifs.`,
+          `NASA tags ${formatCount(gaTagCount)} detections as type 2/3 (fixed or offshore sources). The other ${formatCount(composition.gaType0InMaskCount)} are type-0 detections inside ${composition.maskedCells} candidate cells. The full filter excludes ${formatCount(flareCount)} detections, but not all are confirmed flares: this is exposure to the criterion, not a false-positive rate.`,
+        )
+      }}
     </p>
   </div>
 </template>
@@ -103,153 +188,139 @@ onMounted(async () => {
 <style scoped>
 .flare {
   display: grid;
-  gap: 22px;
+  gap: 18px;
 }
 
-.flare-top {
+.flare-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: 14px;
 }
 
-.flare-number {
+.flare-kicker {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.flare-total-line {
   display: flex;
-  align-items: flex-end;
-  gap: 18px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
 }
 
-.flare-number .stat small {
-  font-size: 0.42em;
-  color: var(--gold);
+.flare-total-line strong {
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1;
 }
 
-.flare-caption {
-  max-width: 220px;
-  padding-bottom: 8px;
-  font-size: 0.76rem;
-  line-height: 1.45;
+.flare-total-line span {
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
-.flare-toggle {
+.flare-toggle-group {
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: 10px;
+  background: rgba(244, 241, 232, 0.03);
+}
+
+.mode-btn {
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 7px;
   background: transparent;
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
+  font-size: 0.74rem;
+  font-weight: 500;
   cursor: pointer;
   transition:
-    color 0.25s ease,
-    border-color 0.25s ease,
-    background 0.25s ease;
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
-.flare-toggle:hover,
-.flare-toggle.active {
+.mode-btn:hover {
   color: var(--ink);
-  border-color: rgba(255, 196, 107, 0.45);
-  background: rgba(255, 196, 107, 0.06);
 }
 
-.flare-toggle-track {
-  display: inline-flex;
-  align-items: center;
-  width: 28px;
-  height: 15px;
-  padding: 2px;
-  border-radius: 999px;
-  background: rgba(244, 241, 232, 0.14);
-  transition: background 0.25s ease;
+.mode-btn.active {
+  background: var(--ink);
+  color: #05070b;
+  font-weight: 600;
 }
 
-.flare-toggle-track i {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--muted);
-  transition:
-    transform 0.25s var(--ease-out),
-    background 0.25s ease;
-}
-
-.flare-toggle.active .flare-toggle-track {
-  background: rgba(34, 211, 238, 0.24);
-}
-
-.flare-toggle.active .flare-toggle-track i {
-  transform: translateX(13px);
-  background: var(--cyan);
-  box-shadow: 0 0 8px var(--cyan);
-}
-
-.dot-grid {
+.split-block {
   display: grid;
-  grid-template-columns: repeat(20, minmax(0, 1fr));
-  gap: 5px;
-  max-width: 520px;
+  gap: 12px;
 }
 
-.dot {
-  aspect-ratio: 1;
-  border-radius: 50%;
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s var(--ease-out),
-    background 0.5s ease;
-}
-
-.dot.hot {
-  background: rgba(255, 122, 61, 0.72);
-  box-shadow: 0 0 6px rgba(255, 94, 26, 0.22);
-}
-
-.dot.cool {
-  background: rgba(34, 211, 238, 0.8);
-  box-shadow: 0 0 7px rgba(34, 211, 238, 0.4);
-}
-
-.dot-grid.filtered .dot.cool {
-  opacity: 0.12;
-  transform: scale(0.55);
-  background: rgba(244, 241, 232, 0.3);
-  box-shadow: none;
-}
-
-.flare-legend {
+.split-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px 26px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background: rgba(244, 241, 232, 0.05);
 }
 
-.legend-item {
+.split-veg {
+  background: linear-gradient(90deg, #e24e1b, #ff9e53);
+  transition: width 0.5s var(--ease-out);
+}
+
+.split-flare {
+  background: linear-gradient(90deg, #06b6d4, #22d3ee);
+  transition: width 0.5s var(--ease-out);
+}
+
+.split-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.split-card {
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(244, 241, 232, 0.025);
+}
+
+.split-card.veg {
+  border-color: rgba(255, 122, 61, 0.28);
+}
+
+.split-card.flare-card {
+  border-color: rgba(34, 211, 238, 0.28);
+}
+
+.swatch-label {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.7rem;
-  color: var(--muted);
-}
-
-.legend-item strong {
-  margin-left: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--ink);
+  gap: 7px;
+  font-size: 0.76rem;
   font-weight: 500;
+  color: var(--muted);
 }
 
 .swatch {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
+  flex: none;
   border-radius: 50%;
 }
 
@@ -259,27 +330,164 @@ onMounted(async () => {
 
 .swatch.cool {
   background: var(--cyan);
-  box-shadow: 0 0 7px rgba(34, 211, 238, 0.5);
+}
+
+.split-numbers {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.split-numbers strong {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.split-numbers span {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--gold);
+}
+
+.split-card p {
+  margin-top: 4px;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--dim);
+}
+
+.season-proof {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(5, 7, 11, 0.45);
+}
+
+.season-proof-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+
+.season-title {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.season-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.season-readout {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.hot-txt {
+  color: #ffb37a;
+}
+
+.cool-txt {
+  color: #67e8f9;
+}
+
+.bars-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 6px;
+  height: 150px;
+  align-items: end;
+}
+
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bar-track {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 4px;
+  background: rgba(244, 241, 232, 0.04);
+  overflow: hidden;
+}
+
+.bar-col.active .bar-track,
+.bar-col:hover .bar-track {
+  outline: 1px solid rgba(255, 196, 107, 0.5);
+}
+
+.bar-stack {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.seg-veg {
+  display: block;
+  width: 100%;
+  background: linear-gradient(180deg, #ff9e53, #e24e1b);
+  transition: height 0.45s var(--ease-out);
+}
+
+.seg-flare {
+  display: block;
+  width: 100%;
+  background: linear-gradient(180deg, #67e8f9, #0891b2);
+  transition: height 0.45s var(--ease-out);
+}
+
+.bar-label {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--muted);
+}
+
+.bar-col.active .bar-label {
+  color: var(--gold);
+  font-weight: 600;
 }
 
 .flare-note {
-  font-size: 0.7rem;
-  line-height: 1.6;
-  color: var(--dim);
-  max-width: 62ch;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--muted);
 }
 
 @media (max-width: 640px) {
-  .dot-grid {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
+  .split-stats {
+    grid-template-columns: 1fr;
   }
-  .flare-number {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
+  .bars-grid {
+    gap: 3px;
   }
-  .flare-caption {
-    padding-bottom: 0;
+  .bar-label {
+    font-size: 0.54rem;
   }
 }
 </style>
