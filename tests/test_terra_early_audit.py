@@ -53,6 +53,31 @@ class TerraAuditTests(unittest.TestCase):
         self.assertEqual(result["input_sha256"][str(self.monthly)], hashlib.sha256(self.monthly.read_bytes()).hexdigest())
         self.assertEqual(len(result["input_sha256"]), 4)
 
+    def test_detection_status_distinguishes_terra_rows_from_coverage(self):
+        # Aqua alone does not constitute a Terra detection; type 2 does.
+        self.raw_rows[2001].append(["2001-02-01", "Aqua", "MODIS", "0"])
+        self.write_raw()
+        result = audit(self.raw, self.monthly)
+        months = {row["month"]: row for row in result["months"]}
+        for month in ("2001-02", "2001-03"):
+            self.assertEqual(months[month]["detection_status"], "no_detections_recorded")
+            self.assertEqual(months[month]["raw_terra"], 0)
+            self.assertTrue(months[month]["match"])
+        self.assertEqual(months["2000-12"]["detection_status"], "detections_recorded")
+        self.assertEqual(months["2000-12"]["raw_type0"], 0)
+        self.assertTrue(all(row["observation_coverage"] == "unknown" for row in result["months"]))
+        self.assertEqual(result["totals"]["raw_terra"], 4)
+
+    def test_no_detection_status_survives_monthly_mismatch(self):
+        self.monthly_rows[3][5] = "1"
+        self.write_monthly()
+        result = audit(self.raw, self.monthly)
+        month = result["months"][3]
+        self.assertEqual(month["detection_status"], "no_detections_recorded")
+        self.assertEqual(month["observation_coverage"], "unknown")
+        self.assertEqual((month["raw_terra"], month["monthly_terra"], month["difference_terra"]), (0, 1, -1))
+        self.assertFalse(month["match"])
+
     def test_strict_missing_duplicate_and_invalid_inputs(self):
         missing = self.raw / "modis_2001_Gabon.csv"
         missing.unlink()

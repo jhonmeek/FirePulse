@@ -97,6 +97,8 @@ def audit(raw_dir: Path, monthly_path: Path) -> dict:
         actual = (counts[month], type0[month])
         expected = selected[month]
         records.append({"month": month, "raw_terra": actual[0], "raw_type0": actual[1],
+                        "detection_status": "detections_recorded" if actual[0] else "no_detections_recorded",
+                        "observation_coverage": "unknown",
                         "monthly_terra": expected[0], "monthly_type0": expected[1],
                         "difference_terra": actual[0] - expected[0],
                         "difference_type0": actual[1] - expected[1],
