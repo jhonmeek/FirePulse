@@ -143,6 +143,21 @@ python -m pipeline.aggregate_monthly --input data/processed/normalized --output 
 python front-bis/scripts/validate_harmonization.py
 ```
 
+### 4. Hotspot Type: Thermal Nature + Landscape (backend)
+
+[`classify_hotspot`](backend/apps/observations/fire_typing.py) combines two NASA sources per detection: the FIRMS `type` (0 presumed vegetation fire, 1 volcano, 2 other static land source, 3 offshore; missing stays `unavailable`, never `0`) and **MCD12Q1 C6.1 `LC_Type1` (IGBP, 500 m, annual)** land cover at the detection, same year or nearest available. It answers *in which landscape* a hotspot was detected, never *who or what started it* (`cause` is always `unknown`). A heterogeneous 3×3 neighbourhood (dominant class < 60%) gives `mixed` / `indeterminate`.
+
+```bash
+# Download, clean and verify MCD12Q1 2001–2025 over Gabon (NASA ORNL DAAC web service, no account needed)
+docker compose exec backend python manage.py fetch_mcd12q1 --years 2001-2025
+# Classify the 292,589 FIRMS detections and write the validation report
+docker compose exec backend python manage.py classify_hotspots
+```
+
+- **Data**: [`data/raw/mcd12q1/gabon/`](data/raw/mcd12q1/gabon/) (25 GeoTIFF on the native sinusoidal grid + `manifest.json` with SHA-256, histograms and 90/90 independent single-pixel checks). Report: [`data/processed/hotspot-types/gabon-hotspot-types.json`](data/processed/hotspot-types/gabon-hotspot-types.json); the per-detection `*.csv.gz` export and the ORNL cache are rebuildable and not versioned.
+- **Results (inferred vegetation fires)**: savanna 46–52%, grassland 34–41%, tropical forest 11–13% depending on the sensor, while forest covers ~79% of the land: grassland ×10–12 and forest ×0.15 relative to area, 72–79% of fires in June–September, consistent across MODIS, S-NPP and NOAA-20.
+- **Limits**: ~22% of detections are `mixed` (forest–savanna edges); MCD12Q1 class 8 (woody savanna) alternates with forest in some years; land cover is a classification, not ground truth.
+
 ---
 
 ## REST API v1 Endpoints (`http://localhost:8000/api/v1/`)
