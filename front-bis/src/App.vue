@@ -54,7 +54,7 @@ const chapters = [
   { id: 'translate', label: 'La traduction' },
   { id: 'calendar', label: 'Le calendrier' },
   { id: 'map', label: 'La carte' },
-  { id: 'proof', label: 'La preuve' },
+  { id: 'proof', label: 'Analyse exploratoire' },
   { id: 'contribution', label: 'Notre apport' },
   { id: 'future', label: 'Demain' },
   { id: 'explorer', label: 'Explorer' },
@@ -68,9 +68,10 @@ const globePoints = computed(() => buildGlobePoints())
 const validationCoverageLabel = `${(validation.conformal.coverage_test_q80_calibration * 100)
   .toFixed(1)
   .replace('.', ',')} %`
-const validationAnomalyR2Label = (validation.models.power_law_log1p?.anomaly.r2 ?? 0)
-  .toFixed(2)
-  .replace('.', ',')
+const validationAnomalyR2 = validation.models.power_law_log1p?.anomaly.r2
+const validationAnomalyR2Label = validationAnomalyR2 == null
+  ? '—'
+  : validationAnomalyR2.toFixed(2).replace('.', ',')
 
 const chartPoints = computed(() =>
   staticSeries.value.map((p) => ({
@@ -276,7 +277,7 @@ onBeforeUnmount(() => {
           <div class="hero-copy">
             <p class="kicker hero-kicker">
               NASA Space Apps 2026 · MODIS × VIIRS ·
-              <span>{{ dataSourceMode === 'live' ? 'PostGIS en direct' : 'Instantané DB' }}</span>
+              <span>{{ dataSourceMode === 'live' ? 'API et instantanés locaux possibles' : 'API partielle ou instantanés locaux' }}</span>
             </p>
             <h1 class="display display-xl hero-title">
               <span class="line"><span>One Planet.</span></span>
@@ -292,7 +293,7 @@ onBeforeUnmount(() => {
                 <span aria-hidden="true">→</span>
               </button>
               <button type="button" class="btn btn-ghost" @click="navigate('proof')">
-                Voir la preuve
+                Voir l’analyse exploratoire
               </button>
             </div>
 
@@ -471,7 +472,7 @@ onBeforeUnmount(() => {
               <li>
                 <span class="step-index">03</span>
                 <div>
-                  <strong>Intervalle conforme 80 %</strong>
+                  <strong>Intervalle expérimental, cible 80 %</strong>
                   <span>Une bande d’incertitude sur la période reconstruite, pas une fausse précision.</span>
                 </div>
               </li>
@@ -493,9 +494,8 @@ onBeforeUnmount(() => {
             <p class="benchmark-note reveal reveal-delay-4">
               Benchmark DB v2.0 : train 2012–2019, test 2020–2025, masque all-years — MAE
               {{ formatDecimal(maeBefore, 1) }} → {{ formatDecimal(maeAfter, 1) }}, R²
-              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. La validation
-              renforcée (plus bas) change le protocole : 3 temps et masque gelé, donc les chiffres
-              diffèrent — c’est précisément le sujet de la preuve.
+              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. L’analyse exploratoire ci-dessous utilise un autre protocole : trois périodes et un masque
+              gelé. Les résultats ne sont pas directement interchangeables.
             </p>
           </div>
 
@@ -520,7 +520,7 @@ onBeforeUnmount(() => {
               <p class="panel-caption">
                 La ligne pointillée est la série brute après retrait des torchères. La ligne
                 lumineuse est l’échelle VIIRS. La bande est celle de la baseline DB v2.0 ; sa
-                couverture empirique est mesurée dans la preuve renforcée.
+                couverture n’est pas établie par l’analyse exploratoire ci-dessous.
               </p>
             </div>
           </div>
@@ -557,8 +557,8 @@ onBeforeUnmount(() => {
 
           <p class="calendar-note reveal reveal-delay-2">
             Le calendrier et sa bande d’incertitude restent ceux de la baseline DB v2.0 (API live
-            ou instantané), pour rester cohérents avec l’existant. La couverture empirique de cette
-            bande ({{ validationCoverageLabel }}) est mesurée dans la preuve renforcée.
+            ou instantané), pour rester cohérents avec l’existant. L’analyse exploratoire ci-dessous rapporte une couverture de {{ validationCoverageLabel }}
+            pour son propre intervalle ; elle ne valide pas cette bande.
           </p>
 
           <div class="feature-grid">
@@ -622,21 +622,20 @@ onBeforeUnmount(() => {
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">06 — La preuve</p>
+              <p class="kicker reveal">06 — Analyse exploratoire</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                Ce que nous pouvons prouver.<br /><em>Et ce que nous ne pouvons pas.</em>
+                Ce que nous explorons.<br /><em>Et les limites à vérifier.</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Trois temps. Un masque gelé avant le test. Une baseline saisonnière. Un capteur tenu
-              à l’écart. C’est le protocole qui nous différencie d’un simple dashboard : nous
-              mesurons la couverture, nous publions les résultats négatifs, et nous savons ce que
-              le R² brut ne prouve pas.
+              Cette analyse compare plusieurs modèles et documente leurs limites. L'artefact affiché
+              reste exploratoire : la couverture des observations et l'indépendance de certaines étapes
+              ne sont pas établies.
             </p>
           </div>
 
           <div class="proof-context reveal reveal-delay-2">
-            <span class="tag dot">Validation renforcée · 48 CSV pays</span>
+            <span class="tag dot">Analyse exploratoire en revue · 48 CSV pays</span>
             <span class="tag">
               {{ validation.split.n_train }} train · {{ validation.split.n_calibration }} calibration ·
               {{ validation.split.n_test }} test
@@ -648,13 +647,13 @@ onBeforeUnmount(() => {
           <ValidationProof :reduced-motion="reducedMotion" />
 
           <p class="proof-disclaimer reveal">
-            La validation renforcée est calculée sur les 48 CSV FIRMS pays (géométrie non rejointe,
+            L'artefact exploratoire initial a été calculé sur 48 CSV FIRMS pays (géométrie non rejointe,
             comme M1) avec
             {{ validation.split.n_train }} mois de train, {{ validation.split.n_calibration }} mois
             de calibration et {{ validation.split.n_test }} mois de test. Le calendrier et la carte
-            utilisent PostGIS (polygone GA) : les comptages peuvent différer marginalement. Le
-            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) reste la
-            référence du produit live ; la validation ci-dessus est le protocole de preuve.
+            peuvent utiliser l'API ou des instantanés ; leur périmètre GA diffère des fichiers pays. Le
+            benchmark DB v2.0 du chapitre 03 (train 2012–2019, masque all-years) utilise une autre
+            méthode ; les deux résultats restent à examiner et ne sont pas interchangeables.
           </p>
         </div>
       </section>
@@ -670,27 +669,26 @@ onBeforeUnmount(() => {
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
-              Ce n’est pas seulement un calendrier. C’est un protocole de preuve reproductible,
-              des résultats négatifs assumés, et un produit déjà utilisable.
+              Notre travail réunit une exploration historique et une documentation transparente
+              de ses limites ; sa validation scientifique reste à compléter.
             </p>
           </div>
 
           <div class="contribution-grid">
             <article class="contribution-card reveal">
-              <span class="roadmap-horizon">01 — Preuve</span>
-              <h3>Une preuve, pas une promesse</h3>
+              <span class="roadmap-horizon">01 — Analyse</span>
+              <h3>Un protocole en revue</h3>
               <p>
-                Split 3 temps, masque gelé sur 2000–2019, calibration séparée, couverture mesurée
-                sur 2020–2025. Nous savons ce que le modèle prouve — et ce qu’il ne prouve pas.
+                L'artefact initial sépare les périodes d'ajustement et de test, mais son masque
+                utilise la période de calibration. Une nouvelle évaluation est nécessaire.
               </p>
             </article>
             <article class="contribution-card reveal reveal-delay-1">
               <span class="roadmap-horizon">02 — Honnêteté</span>
               <h3>Nous publions les résultats négatifs</h3>
               <p>
-                Le transfert Terra → Aqua échoue, la couverture 80 % n’est que de 63,9 % hors
-                échantillon, et le masque all-years flatte la MAE de 24 points. C’est rare, et c’est
-                ce qui rend la preuve crédible.
+                L'artefact initial rapporte une couverture inférieure à la cible et des limites
+                de transfert entre plateformes ; ces chiffres sont exploratoires et à recalculer.
               </p>
             </article>
             <article class="contribution-card reveal reveal-delay-2">
@@ -703,10 +701,10 @@ onBeforeUnmount(() => {
             </article>
             <article class="contribution-card reveal reveal-delay-3">
               <span class="roadmap-horizon">04 — Passage à l’échelle</span>
-              <h3>Une méthode transférable</h3>
+              <h3>Une méthode à explorer ailleurs</h3>
               <p>
-                Le protocole s’applique au Bassin du Congo, à la FRP, à NOAA-21 et à la surface
-                brûlée. C’est une brique pour un produit NASA, pas seulement une démo gabonaise.
+                L’application au Bassin du Congo, à la FRP, à NOAA-21 et à la surface brûlée reste
+                à étudier et à valider.
               </p>
             </article>
           </div>
@@ -823,14 +821,14 @@ onBeforeUnmount(() => {
             <div>
               <span class="recap-number">03</span>
               <p>
-                Trois temps, masque gelé, couverture {{ validationCoverageLabel }} : R²
-                {{ validationAnomalyR2Label }} sur les anomalies.
+                Artefact historique exploratoire : couverture observée {{ validationCoverageLabel }}
+                et R² {{ validationAnomalyR2Label }} sur les anomalies, résultats en revue.
               </p>
             </div>
             <div>
               <span class="recap-number">04</span>
               <p>
-                Un capteur tenu à l’écart (NOAA-20), un calendrier, une carte et un CSV utilisables.
+                Une évaluation exploratoire NOAA-20, un calendrier, une carte et un CSV.
               </p>
             </div>
           </div>
@@ -860,13 +858,13 @@ onBeforeUnmount(() => {
               Source :
               <strong>{{
                 dataSourceMode === 'live'
-                  ? 'PostgreSQL / PostGIS en direct · API Django v1 (/api/v1/)'
-                  : 'Instantané synchronisé sur PostgreSQL / PostGIS (mode hors-ligne)'
+                  ? 'API Django et instantanés locaux possibles ; provenance variable selon les données'
+                  : 'API partielle ou instantanés locaux ; provenance variable selon les données'
               }}</strong>
               — Archive BBox : {{ formatCount(composition.archiveTotal) }} détections
               ({{ composition.archiveFiles }} fichiers FIRMS SP, 2000-11 → 2025-12). Polygone GA :
               {{ formatCount(composition.gaTotal) }} détections dont
-              {{ formatCount(composition.gaClean) }} feux de végétation retenus après filtre
+              {{ formatCount(composition.gaClean) }} détections retenues après filtre
               ({{ composition.maskedCells }} mailles à 0,05° + tag FIRMS type ≠ 0).
             </p>
           </div>
@@ -889,7 +887,7 @@ onBeforeUnmount(() => {
               </li>
               <li>Backend PostGIS / Django — API v1</li>
               <li>Baseline harmonisée v2.0, en revue M1</li>
-              <li>Validation renforcée : 3 temps, masque gelé, couverture mesurée</li>
+              <li>Analyse exploratoire : 3 temps, masque gelé, couverture à examiner</li>
             </ul>
           </div>
           <div>

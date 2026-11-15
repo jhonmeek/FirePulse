@@ -26,7 +26,7 @@ On conserve les feux probables (`hotspot_type = 0`) et on exclut **`183`** cellu
 > Sans ce filtre au Gabon, même le modèle par ratio global décroche sur `2020–2025` (`R² = 0.726` sans filtre contre `0.8781` avec filtre).
 
 ### Étape 2 — Apprendre sur le recouvrement et évaluer après
-On ajuste les modèles sur **`2012-02` → `2019-12`** (`95` mois d'apprentissage) et on mesure leur performance hors échantillon sur **`2020-01` → `2025-12`** (`72` mois de test).
+On ajuste les modèles sur **`2012-02` → `2019-12`** (`95` mois d'apprentissage) et on calcule des métriques sur **`2020-01` → `2025-12`** (`72` mois de test). Ces résultats historiques sont exploratoires : la période de test a servi à d'autres choix et ne constitue pas une validation indépendante.
 
 Au lieu de simplement multiplier MODIS par un facteur constant (`3,93`), ce qui surestime ou sous-estime selon les saisons (basse saison vs pic sec), FirePulse ajuste une **loi de puissance en échelle logarithmique** (`power_law_log1p`) :
 
@@ -34,13 +34,13 @@ $$
 \hat{y} = \exp\big(p \cdot \ln(1 + x) + q\big) - 1
 $$
 
-Chiffres mesurés au Gabon (`GA`, `filter_static=true`, `v2.0`) :
+Chiffres historiques exploratoires au Gabon (`GA`, `filter_static=true`, `v2.0`) :
 - **MODIS Terra + Aqua (`power_law_log1p`) :** `p = 0.9438`, `q = 1.6529`
 - **MODIS Terra seul (`terra_only_power_law`, avant `2002-07`) :** `p = 0.691`, `q = 3.6809`
 - **Évaluation `2020–2025` (`GA`, `filter_static=true`) :** l'erreur moyenne (`MAE`) passe de **`355.72`** (`naive`, `R² = 0.1426`) à **`100.87`** (`power_law_log1p`, **`R² = 0.9189`**).
 
-### Étape 3 — Ajouter la marge d'erreur (intervalle conforme 80 %)
-Pour le passé reconstruit depuis MODIS (`2000–2012`), on quantifie l'écart résiduel en log (`conformal_q80_log = 0.5309`, `conformal_q80_terra_log = 0.6445`) afin de tracer une bande d'incertitude `[ci_low, ci_high]` autour de la courbe estimée.
+### Étape 3 — Tracer une bande d'incertitude nominale à 80 %
+Pour le passé reconstruit depuis MODIS (`2000–2012`), on quantifie l'écart résiduel en log (`conformal_q80_log = 0.5309`, `conformal_q80_terra_log = 0.6445`) afin de tracer une bande d'incertitude `[ci_low, ci_high]` autour de la courbe estimée. Dans la baseline historique, le quantile utilise les résidus de la période de test : la couverture indépendante n'est pas démontrée. Une cible nominale de 80 % ne garantit pas une couverture de 80 %, notamment pour des séries temporelles.
 
 ### Étape 4 — Recoller la chronologie (`2000` → `2026+`) et calculer les anomalies
 1. `2000-11` → `2002-06` : MODIS Terra seul → converti en équivalent S-NPP (`terra_only_power_law` + bande 80 %).
