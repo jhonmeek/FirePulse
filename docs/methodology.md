@@ -60,3 +60,11 @@ M1 outputs reside under `data/processed/`. They can be ingested via a versioned 
 `python -m pipeline.static_mask_audit` reproduces the M2 `0.05°` cell persistence rule (`FLOOR(coordinate × 20)`, threshold `>= 20` type-2/3 detections or S-NPP activity across at least `48` distinct months). When run retrospectively across all `2000–2025` inputs, it flags candidate cells in `static_mask_audit.json` and `static_mask_cells.csv` without modifying source rows.
 
 `python -m pipeline.grid_025` aggregates detections by month, source, satellite, and `0.25°` cell across four views: raw detections, `type 0`, `type 0` outside candidate cells, and all detections inside candidate cells (`grid_025_monthly.csv`, `grid_025_monthly.json`, and `manifest.json`). Across the full 2000–2025 archive (`292,589` rows), the retrospective mask flags `183` cells out of `3,227` active cells (`109,876` total detections inside flagged cells, including `52,023` type-0 detections, or `22.20%` of `234,366` type-0 rows).
+
+The `0.25°` grid contains `41,957` month-source-satellite-cell rows. These measurements use the Gabon country files without administrative geometry checks.
+
+## Independent Reproduction of the M2 Benchmark (H12–H24)
+
+`python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json` checks the SHA-256 of the M2 export, refits the power law on `train` rows and recomputes MAE, RMSE, bias and R² on `test`, for Gabon with and without the mask.
+
+Reproduction of the 14 November 2026 M2 export (CSV SHA-256 `56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd`): without mask, p=0.7916, q=2.6733, MAE=129.71, RMSE=205.47, bias=19.69, R²=0.9165; with mask, p=0.9438, q=1.6529, MAE=100.87, RMSE=169.12, bias=41.77, R²=0.9189. The 95 training months and 72 test months match the M2 manifest. Bounds rebuilt from MODIS, the exported parameters and the quantile cover 59/72 months without mask and 58/72 with mask. This coverage is descriptive and not independent, because the quantile was estimated from residuals of that same test period. The reproduction does not independently validate model selection or interval coverage.

@@ -47,13 +47,16 @@ $$
 \hat{y} = \exp\big(p \cdot \ln(1 + x) + q\big) - 1
 $$
 
-Live `v2.0` Gabon baseline parameters (`GA`, `filter_static=true`):
+Exploratory historical `v2.0` Gabon baseline figures (`GA`, `filter_static=true`):
 - **MODIS Terra + Aqua (`power_law_log1p`)**: `p ≈ 0.944`, `q ≈ 1.653`
 - **MODIS Terra-only (`terra_only_power_law`, `< 2002-07`)**: `p ≈ 0.691`, `q ≈ 3.681`
-- **2020–2025 Holdout (`v2.0` live export)**: Naive MAE `≈ 355.6` (`R² ≈ 0.143`) → `power_law_log1p` MAE `≈ 100.8` (`R² ≈ 0.919`, bias `≈ +41.8`).
+- **2020–2025 evaluation (`v2.0` live export)**: Naive MAE `≈ 355.6` (`R² ≈ 0.143`) → `power_law_log1p` MAE `≈ 100.8` (`R² ≈ 0.919`, bias `≈ +41.8`).
 
-### Step 3 — Uncertainty Envelopes & Timeline Assembly
-Reconstructed MODIS months (`2000-11`–`2012-01`) carry an asymmetric conformal prediction band `[ci_low, ci_high]` (`conformal_q80_log ≈ 0.524`, `conformal_q80_terra_log = 0.6445`), followed by direct S-NPP observations (`2012-02`–`2025-12` in the archive) and the post-2026 NOAA-20 bridge projection (`2026-11+`). Calendar months are normalized against their `2001–2025` calendar-month medians to measure seasonal anomalies (`%` and absolute deltas).
+These historical results are exploratory: the test period was also used for other choices and is not an independent validation.
+
+### Step 3 — Nominal 80% Uncertainty Band & Timeline Assembly
+Reconstructed MODIS months (`2000-11`–`2012-01`) carry an asymmetric nominal 80% band `[ci_low, ci_high]` (`conformal_q80_log ≈ 0.524`, `conformal_q80_terra_log = 0.6445`), followed by direct S-NPP observations (`2012-02`–`2025-12` in the archive) and the post-2026 NOAA-20 bridge projection (`2026-11+`). Calendar months are normalized against their `2001–2025` calendar-month medians to measure seasonal anomalies (`%` and absolute deltas).
+In the historical baseline, the quantile uses test-period residuals: independent coverage is not demonstrated. A nominal 80% target does not guarantee 80% coverage, especially for time series.
 
 > The `2012-02`–`2026-10` S-NPP and `2026-11+` NOAA-20 regimes describe the **reconstruction**, not observed demo data: no 2026 observations are ingested. The NOAA-20 ratio used by the live reconstruction (`1.0381`, `2019–2025`) differs from the held-out validation ratio (`0.940`, `2018–2019`).
 

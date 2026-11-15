@@ -3,7 +3,7 @@
 Ce script ne modifie aucune donnée. Il relit les 48 CSV FIRMS du Gabon et produit
 un artefact JSON reproductible pour la preuve scientifique :
 
-1. masque statique 0,05° **gelé sur 2000–2019** (pas de look-ahead sur le test) ;
+1. masque statique 0,05° **gelé sur 2000–2017** (avant calibration et test) ;
 2. split en trois temps : train 2012-02 → 2017-12, calibration 2018-01 → 2019-12,
    test 2020-01 → 2025-12 ;
 3. comparaison de modèles : naïf, ratio global, ratio saisonnier, OLS,
@@ -48,7 +48,7 @@ GRID_SCALE = 20
 TRAIN = ("2012-02", "2017-12")
 CALIBRATION = ("2018-01", "2019-12")
 TEST = ("2020-01", "2025-12")
-MASK_MAX_YEAR = 2019
+MASK_MAX_YEAR = 2017
 ALL_MAX_YEAR = 2025
 
 SENSOR_FILES = (
@@ -110,6 +110,16 @@ def quantile(values: list[float], q: float) -> float:
     return ordered[lower] * (1 - weight) + ordered[upper] * weight
 
 
+def split_conformal_quantile(values: list[float], coverage: float) -> float:
+    """Finite-sample order statistic; no time-series coverage guarantee is implied."""
+    if not values or not 0 < coverage < 1 or any(not math.isfinite(v) or v < 0 for v in values):
+        raise ValueError("Expected nonempty finite nonnegative scores and coverage between 0 and 1")
+    rank = math.ceil((len(values) + 1) * coverage)
+    if rank > len(values):
+        raise ValueError("Not enough calibration scores for requested nominal coverage")
+    return sorted(values)[rank - 1]
+
+
 def metrics(observed: list[float], predicted: list[float]) -> dict:
     if not observed:
         return {"n": 0, "mae": None, "rmse": None, "bias": None, "r2": None}
@@ -135,6 +145,16 @@ def sha256(path: Path) -> str:
 
 def load_observations() -> tuple[list[tuple], list[dict]]:
     """Retourne (observations, inputs). Observation = (mois, année, capteur, type, cellule)."""
+    # La présence d'un fichier annuel ne prouve pas la couverture mensuelle.
+    # Un fichier manquant ne doit cependant jamais être converti en zéros.
+    expected = {
+        *(f"modis_{year}_Gabon.csv" for year in range(2000, 2026)),
+        *(f"viirs-snpp_{year}_Gabon.csv" for year in range(2012, 2026)),
+        *(f"viirs-jpss1_{year}_Gabon.csv" for year in range(2018, 2026)),
+    }
+    actual = {path.name for prefix, _ in SENSOR_FILES for path in RAW.glob(f"{prefix}_*_Gabon.csv")}
+    if actual != expected:
+        raise ValueError(f"FIRMS input files mismatch: missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}")
     observations: list[tuple] = []
     inputs: list[dict] = []
     for prefix, source in SENSOR_FILES:
@@ -148,18 +168,27 @@ def load_observations() -> tuple[list[tuple], list[dict]]:
             )
             with path.open(encoding="utf-8", newline="") as stream:
                 reader = csv.DictReader(stream)
+                required = {"latitude", "longitude", "type", "acq_date", "satellite"}
+                if not reader.fieldnames or not required.issubset(reader.fieldnames):
+                    raise ValueError(f"Missing required columns: {path.name}")
                 for row in reader:
                     try:
                         lat = float(row["latitude"])
                         lon = float(row["longitude"])
                         hotspot_type = int(row["type"])
-                    except (KeyError, TypeError, ValueError):
-                        continue
-                    month = (row.get("acq_date") or "")[:7]
-                    if len(month) != 7:
-                        continue
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise ValueError(f"Invalid required fields: {path.name}, line {reader.line_num}") from exc
+                    try:
+                        acquired = datetime.strptime(row.get("acq_date") or "", "%Y-%m-%d")
+                    except ValueError as exc:
+                        raise ValueError(f"Invalid date: {path.name}, line {reader.line_num}") from exc
+                    if acquired.year != int(path.name.split("_")[1]):
+                        raise ValueError(f"Date outside file year: {path.name}, line {reader.line_num}")
+                    month = acquired.strftime("%Y-%m")
                     satellite = row.get("satellite") or ""
                     if source == "modis":
+                        if satellite not in ("Terra", "Aqua"):
+                            raise ValueError(f"Unknown MODIS satellite: {path.name}, line {reader.line_num}")
                         sensor = "terra" if satellite == "Terra" else "aqua"
                     elif source == "snpp":
                         sensor = "snpp"
@@ -249,7 +278,7 @@ def fit_power_law(xs: list[float], ys: list[float]) -> tuple[float, float]:
 
 
 def predict_power_law(x: float, p: float, q: float) -> float:
-    return math.expm1(p * math.log1p(max(0.0, x)) + q)
+    return max(0.0, math.expm1(p * math.log1p(max(0.0, x)) + q))
 
 
 def fit_ols(xs: list[float], ys: list[float]) -> tuple[float, float]:
@@ -301,6 +330,15 @@ def anomaly_metrics(
     return metrics(observed_anomaly, predicted_anomaly)
 
 
+def require_recorded_months(observations: list[tuple], months: list[str]) -> set[tuple[str, str]]:
+    """Reject missing sensor-months; observed detections still do not prove complete coverage."""
+    present = {(month, sensor) for month, _year, sensor, _kind, _cell in observations}
+    missing = [(month, sensor) for month in months for sensor in ("terra", "aqua", "snpp") if (month, sensor) not in present]
+    if missing:
+        raise ValueError(f"No detections recorded for sensor-months; cannot distinguish a true zero from missing coverage: {missing}")
+    return present
+
+
 # --------------------------------------------------------------------- validation
 
 
@@ -311,11 +349,28 @@ def validate() -> dict:
     calibration_months = month_range(*CALIBRATION)
     test_months = month_range(*TEST)
 
+    present = require_recorded_months(observations, ordered)
+
     frozen_mask = build_mask(observations, MASK_MAX_YEAR)
     all_mask = build_mask(observations, ALL_MAX_YEAR)
+    later_cells = all_mask - frozen_mask
+    test_observations = [item for item in observations if TEST[0] <= item[0] <= TEST[1]]
+    residual_mask_diagnostics = {
+        "test_type23_outside_frozen_mask": sum(1 for _, _, _, kind, cell in test_observations if kind in (2, 3) and cell not in frozen_mask),
+        "note": "Retrospective descriptive counts, not confirmed industrial sources or causal contamination.",
+    }
+    for label, sensors in (("all", {"terra", "aqua", "snpp", "noaa20"}), ("snpp", {"snpp"})):
+        type0 = [item for item in test_observations if item[2] in sensors and item[3] == 0]
+        affected = sum(1 for item in type0 if item[4] in later_cells)
+        residual_mask_diagnostics[f"{label}_type0_total"] = len(type0)
+        residual_mask_diagnostics[f"{label}_type0_in_later_mask_cells"] = affected
+        residual_mask_diagnostics[f"{label}_type0_fraction_in_later_mask_cells"] = affected / len(type0) if type0 else None
     all_months = aggregate_monthly(observations, frozen_mask)
     rows = month_rows(all_months, ordered)
     by_month = {row["month"]: row for row in rows}
+    for row in rows:
+        if (row["month"], "noaa20") not in present:
+            row["noaa20"] = None
 
     train_rows = [by_month[month] for month in train_months]
     calibration_rows = [by_month[month] for month in calibration_months]
@@ -349,8 +404,8 @@ def validate() -> dict:
             "calibration": predict_seasonal_ratio(x_cal, calibration_months, seasonal_ratio),
         },
         "ols_linear": {
-            "test": [slope * x + intercept for x in x_test],
-            "calibration": [slope * x + intercept for x in x_cal],
+            "test": [max(0.0, slope * x + intercept) for x in x_test],
+            "calibration": [max(0.0, slope * x + intercept) for x in x_cal],
         },
         "power_law_log1p": {
             "test": [predict_power_law(x, p, q) for x in x_test],
@@ -378,14 +433,14 @@ def validate() -> dict:
     log_residuals_test = [
         math.log1p(y) - math.log1p(pred) for y, pred in zip(y_test, power_test)
     ]
-    q80 = quantile([abs(value) for value in log_residuals_cal], 0.80)
-    q90 = quantile([abs(value) for value in log_residuals_cal], 0.90)
+    q80 = split_conformal_quantile([abs(value) for value in log_residuals_cal], 0.80)
+    q90 = split_conformal_quantile([abs(value) for value in log_residuals_cal], 0.90)
     q80_test = quantile([abs(value) for value in log_residuals_test], 0.80)
 
     def coverage(ys: list[float], predictions_: list[float], quantile_value: float) -> float:
         covered = 0
         for y, pred in zip(ys, predictions_):
-            low = math.expm1(math.log1p(max(0.0, pred)) - quantile_value)
+            low = max(0.0, math.expm1(math.log1p(max(0.0, pred)) - quantile_value))
             high = math.expm1(math.log1p(max(0.0, pred)) + quantile_value)
             if low <= y <= high:
                 covered += 1
@@ -402,7 +457,9 @@ def validate() -> dict:
         "note": (
             "Le quantile q80 est appris sur 2018–2019 puis appliqué à 2020–2025. "
             "La couverture q80_test_leaky est donnée uniquement pour comparaison : "
-            "elle est tautologique et ne doit pas être présentée comme une validation."
+            "elle est tautologique et ne doit pas être présentée comme une validation. "
+            "Le rang fini-échantillon ne garantit pas la couverture en séries temporelles ; "
+            "la couverture des observations est inconnue."
         ),
     }
 
@@ -416,25 +473,31 @@ def validate() -> dict:
         sum(observed for _, observed in noaa20_calibration)
         / sum(snpp for snpp, _ in noaa20_calibration)
         if noaa20_calibration
-        else 1.0
+        else None
     )
     noaa20_test_rows = [row for row in test_rows if row["noaa20"] is not None]
     noaa20_observed = [row["noaa20"] for row in noaa20_test_rows]
-    noaa20_predicted = [
-        predict_power_law(row["modis"], p, q) * noaa20_ratio
-        for row in noaa20_test_rows
-    ]
+    noaa20_predicted = (
+        [predict_power_law(row["modis"], p, q) * noaa20_ratio for row in noaa20_test_rows]
+        if noaa20_ratio is not None else []
+    )
     noaa20_months = [row["month"] for row in noaa20_test_rows]
     noaa20_baseline = {
         month: value * noaa20_ratio for month, value in seasonal_baseline.items()
-    }
+    } if noaa20_ratio is not None else {}
     held_out_noaa20 = {
         "role": "capteur tenu à l'écart (non utilisé pour entraîner le power-law)",
         "ratio_noaa20_to_snpp_calibration": noaa20_ratio,
         "calibration_months": len(noaa20_calibration),
-        "raw": metrics(noaa20_observed, noaa20_predicted),
-        "anomaly": anomaly_metrics(
-            noaa20_observed, noaa20_predicted, noaa20_months, noaa20_baseline
+        "raw": metrics(noaa20_observed, noaa20_predicted) if noaa20_ratio is not None else None,
+        "anomaly": (
+            anomaly_metrics(noaa20_observed, noaa20_predicted, noaa20_months, noaa20_baseline)
+            if noaa20_ratio is not None else None
+        ),
+        "limitation": (
+            "Ratio indisponible : aucun mois de calibration avec S-NPP positif."
+            if noaa20_ratio is None else
+            "Ratio estimé sur la calibration ; la couverture mensuelle des observations est inconnue."
         ),
     }
 
@@ -494,7 +557,7 @@ def validate() -> dict:
         predict_power_law(row["modis"], all_p, all_q) for row in all_test
     ]
     mask_freeze_delta = {
-        "frozen_on": "2000–2019",
+        "frozen_on": f"2000–{MASK_MAX_YEAR}",
         "all_years": "2000–2025",
         "cells_frozen": len(frozen_mask),
         "cells_all": len(all_mask),
@@ -504,8 +567,9 @@ def validate() -> dict:
             [row["snpp"] for row in all_test], all_power_test
         ),
         "note": (
-            "Le masque all-years connaît les sources statiques de 2018–2025 ; "
-            "l'écart mesure le look-ahead. Le masque gelé est le seul protocole rigoureux."
+            "Le masque all-years utilise des observations de calibration et de test : "
+            "cette comparaison est une expérience rétrospective avec fuite temporelle, "
+            "pas une estimation indépendante de performance."
         ),
     }
 
@@ -526,6 +590,7 @@ def validate() -> dict:
             [row["modis"] for row in train_], [row["snpp"] for row in train_]
         )
         preds = [predict_power_law(row["modis"], px, pq) for row in test_]
+        local_baseline = fit_seasonal_baseline([row["snpp"] for row in train_], train_months)
         sensitivity[label] = {
             "type23_min": type23_min,
             "snpp_months_min": snpp_min,
@@ -535,7 +600,7 @@ def validate() -> dict:
                 [row["snpp"] for row in test_],
                 preds,
                 [row["month"] for row in test_],
-                seasonal_baseline,
+                local_baseline,
             ),
         }
 
@@ -558,7 +623,7 @@ def validate() -> dict:
         )
 
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_kind": "firepulse-harmonization-validation",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {
@@ -576,7 +641,7 @@ def validate() -> dict:
         },
         "mask": {
             "grid_deg": GRID_DEG,
-            "frozen_on": "2000–2019",
+            "frozen_on": f"2000–{MASK_MAX_YEAR}",
             "type23_min": 20,
             "snpp_months_min": 48,
             "cells_frozen": len(frozen_mask),
@@ -600,16 +665,29 @@ def validate() -> dict:
         },
         "by_season": by_season,
         "mask_freeze_delta": mask_freeze_delta,
+        "residual_mask_diagnostics": residual_mask_diagnostics,
         "sensitivity": sensitivity,
         "test_series": test_series,
+        "experiments": [
+            "La comparaison du masque toutes années est rétrospective et utilise les données de test.",
+            "Les comparaisons de modèles, saisons et seuils sur le même test sont exploratoires.",
+            "Le transfert Terra vers Aqua est une expérience de plateforme ; NOAA-20 utilise un ratio calibré.",
+        ],
+        "limitations": [
+            "La couverture mensuelle des observations est inconnue : une détection enregistrée ne garantit pas une couverture complète. Les mois MODIS/S-NPP sans détection interrompent le calcul ; NOAA-20 absent est indisponible.",
+            "La couverture conforme en séries temporelles n'est pas garantie ; la couverture mesurée dépend du jeu de test.",
+            "Une sélection fondée sur ces expériences nécessite une nouvelle évaluation indépendante.",
+        ],
         "notes": [
             "Les comptages mesurent des détections thermiques, pas des incendies distincts.",
-            "Le R² sur comptages bruts est gonflé par le cycle saisonnier ; les métriques d'anomalie sont le vrai test.",
-            "Le masque est gelé sur 2000–2019 ; 2018–2019 sert à la calibration, 2020–2025 au test.",
+            "Le cycle saisonnier peut gonfler le R² brut ; les métriques d'anomalie sont complémentaires.",
+            "Le masque est gelé sur 2000–2017 ; 2018–2019 sert à la calibration, 2020–2025 au test.",
             "L'intervalle conforme est calibré sur 2018–2019 ; la couverture est mesurée sur 2020–2025.",
             "NOAA-20 est un capteur tenu à l'écart : le ratio est calibré sur 2018–2019, pas sur le test.",
             "Le transfert Terra → Aqua teste la robustesse inter-plateformes, pas un nouveau capteur.",
             "Le pont NOAA-20 post-2026 reste une projection, pas une validation.",
+            "La présence des fichiers et de détections ne prouve pas une couverture mensuelle complète ; un zéro après filtrage reste distinct d'une absence de fichier ou d'observation.",
+            "Les comparaisons entre modèles, saisons et seuils sur le même test sont exploratoires ; elles ne constituent pas une évaluation indépendante après sélection.",
         ],
     }
     return result

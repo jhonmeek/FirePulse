@@ -27,10 +27,12 @@ const errorReductionPct = computed(() => {
   return Math.max(0, Math.round(((naiveMae.value - modelMae.value) / naiveMae.value) * 100))
 })
 
-const noaaDiffPct = computed(() => {
+const noaaDiffPct = computed<number | null>(() => {
   const ratio = validation.held_out.noaa20.ratio_noaa20_to_snpp_calibration
-  return Math.abs(Math.round((ratio - 1) * 1000) / 10)
+  return ratio == null ? null : Math.abs(Math.round((ratio - 1) * 1000) / 10)
 })
+const frozenOn = validation.mask.frozen_on
+const frozenCells = validation.mask.cells_frozen
 
 const testPoints = computed<ChartPoint[]>(() =>
   validation.test_series.map((d) => ({
@@ -46,6 +48,14 @@ const testPoints = computed<ChartPoint[]>(() =>
 
 <template>
   <div class="proof-root">
+    <p class="proof-review-note" role="note">
+      {{
+        t(
+          "Résultats exploratoires en revue scientifique, non validés. Dans l'artefact affiché, le masque utilise la période de calibration, les mois sans détection ne prouvent pas une couverture complète et le quantile utilisé ne justifie pas une garantie conforme. Les années de test ont déjà été examinées. Les chiffres affichés proviennent de l'artefact initial, antérieur aux corrections de calcul en cours.",
+          'Exploratory results under scientific review, not validated. In the displayed artifact, the mask uses the calibration period, months without detections do not prove complete coverage, and the quantile used does not justify a conformal guarantee. The test years have already been examined. The figures shown come from the initial artifact, prior to ongoing calculation fixes.',
+        )
+      }}
+    </p>
     <!-- 3 clear steps replacing jargon-heavy metric tiles -->
     <div class="proof-steps" :aria-label="t('Comment le modèle est testé', 'How the model is tested')">
       <article class="proof-step">
@@ -62,13 +72,13 @@ const testPoints = computed<ChartPoint[]>(() =>
       </article>
 
       <article class="proof-step">
-        <span class="proof-step-tag">{{ t('Étape 2 · Tester à l’aveugle', 'Step 2 · Blind test') }}</span>
+        <span class="proof-step-tag">{{ t('Étape 2 · Évaluer', 'Step 2 · Evaluate') }}</span>
         <strong class="proof-step-value">2020 – 2025</strong>
         <p class="proof-step-desc">
           {{
             t(
-              `On cache les ${testMonths} mois suivants (6 ans) au modèle, puis on lui demande de deviner la courbe uniquement depuis l'ancien capteur.`,
-              `We hide the next ${testMonths} months (6 years) from the model, then ask it to predict the curve using only the older sensor.`,
+              `On évalue le modèle sur les ${testMonths} mois suivants (6 ans) à partir du seul ancien capteur. Ces années ont déjà été examinées : c'est une évaluation exploratoire, pas un test à l'aveugle.`,
+              `We evaluate the model on the next ${testMonths} months (6 years) using only the older sensor. These years have already been examined: this is an exploratory evaluation, not a blind test.`,
             )
           }}
         </p>
@@ -88,12 +98,12 @@ const testPoints = computed<ChartPoint[]>(() =>
       </article>
     </div>
 
-    <!-- Observed vs predicted blind test chart -->
+    <!-- Observed vs predicted exploratory evaluation chart -->
     <div class="proof-chart-card">
       <div class="proof-chart-head">
         <div>
           <span class="chart-eyebrow">
-            {{ t('Test à l’aveugle · Gabon · 2020–2025', 'Blind test · Gabon · 2020–2025') }}
+            {{ t('Évaluation exploratoire · Gabon · 2020–2025', 'Exploratory evaluation · Gabon · 2020–2025') }}
           </span>
           <h3>
             {{
@@ -132,8 +142,8 @@ const testPoints = computed<ChartPoint[]>(() =>
     <p class="proof-protocol-note">
       {{
         t(
-          `Protocole renforcé : masque gelé sur 2000–2019 (61 cellules), apprentissage 2012–2017, calibration 2018–2019, test 2020–2025. L’intervalle nominal à 80 % couvre ${formatDecimal(coverageQ80 * 100, 1)} % des mois de test : c’est un indicateur, pas une garantie. La série live de la base suit un protocole distinct (masque toutes années, 183 cellules) ; voir la fiche de confiance.`,
-          `Reinforced protocol: mask frozen on 2000–2019 (61 cells), training 2012–2017, calibration 2018–2019, test 2020–2025. The nominal 80% interval covers ${formatDecimal(coverageQ80 * 100, 1)}% of test months: an indicator, not a guarantee. The live database series follows a distinct protocol (all-years mask, 183 cells); see the confidence note.`,
+          `Protocole exploratoire : masque gelé sur ${frozenOn} (${frozenCells} cellules, période de calibration incluse), apprentissage 2012–2017, calibration 2018–2019, test 2020–2025. L’intervalle expérimental (cible 80 %) couvre ${formatDecimal(coverageQ80 * 100, 1)} % des mois de test : c’est un indicateur, pas une garantie. La série live de la base suit un protocole distinct (masque toutes années, 183 cellules) ; les deux résultats ne sont pas interchangeables.`,
+          `Exploratory protocol: mask frozen on ${frozenOn} (${frozenCells} cells, calibration period included), training 2012–2017, calibration 2018–2019, test 2020–2025. The experimental interval (80% target) covers ${formatDecimal(coverageQ80 * 100, 1)}% of test months: an indicator, not a guarantee. The live database series follows a distinct protocol (all-years mask, 183 cells); the two results are not interchangeable.`,
         )
       }}
     </p>
@@ -143,7 +153,7 @@ const testPoints = computed<ChartPoint[]>(() =>
       <article class="takeaway-card">
         <header class="takeaway-head">
           <span class="takeaway-badge is-good">{{ t('Fiabilité', 'Reliability') }}</span>
-          <h4>{{ t('Ce que cela prouve concrètement', 'What this proves in practice') }}</h4>
+          <h4>{{ t('Résultats exploratoires', 'Exploratory results') }}</h4>
         </header>
         <ul class="takeaway-list">
           <li>
@@ -157,18 +167,21 @@ const testPoints = computed<ChartPoint[]>(() =>
           <li>
             {{
               t(
-                `Sur ces 6 années jamais vues pendant le réglage, l'écart moyen reste limité à ${formatCount(modelMae)} détections par mois.`,
-                `Across 6 years unseen during tuning, average monthly error stays limited to ${formatCount(modelMae)} detections.`,
+                `Sur les 6 années de test (déjà examinées), l'écart moyen est de ${formatCount(modelMae)} détections par mois.`,
+                `Over the 6 test years (already examined), average monthly error is ${formatCount(modelMae)} detections.`,
               )
             }}
           </li>
-          <li>
+          <li v-if="noaaDiffPct !== null">
             {{
               t(
-                `Un capteur plus récent (VIIRS NOAA-20), gardé à l'écart du réglage, donne un niveau proche sur la calibration 2018–2019 (${formatDecimal(noaaDiffPct, 1)} % d'écart).`,
-                `A newer sensor (VIIRS NOAA-20), kept out of tuning, tracks closely over the 2018–2019 calibration (${formatDecimal(noaaDiffPct, 1)}% gap).`,
+                `Un capteur plus récent (VIIRS NOAA-20) donne un niveau proche sur la calibration 2018–2019 (${formatDecimal(noaaDiffPct, 1)} % d'écart) ; son indépendance est limitée par la construction du masque et du ratio.`,
+                `A newer sensor (VIIRS NOAA-20) gives a close level over the 2018–2019 calibration (${formatDecimal(noaaDiffPct, 1)}% gap); its independence is limited by how the mask and ratio are built.`,
               )
             }}
+          </li>
+          <li v-else>
+            {{ t('Évaluation NOAA-20 indisponible : ratio de calibration absent.', 'NOAA-20 evaluation unavailable: calibration ratio missing.') }}
           </li>
         </ul>
       </article>
@@ -213,6 +226,17 @@ const testPoints = computed<ChartPoint[]>(() =>
 .proof-root {
   display: grid;
   gap: 20px;
+}
+
+.proof-review-note {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 196, 107, 0.4);
+  border-radius: 12px;
+  background: rgba(255, 196, 107, 0.06);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--muted);
 }
 
 .proof-protocol-note {

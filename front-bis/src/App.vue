@@ -49,7 +49,7 @@ const chapters = computed(() => [
   { id: 'translate', label: t('L’accord des données', 'Aligning data') },
   { id: 'calendar', label: t('Le calendrier', 'Calendar') },
   { id: 'map', label: t('La carte', 'Map') },
-  { id: 'proof', label: t('Fiabilité & suite', 'Proof & future') },
+  { id: 'proof', label: t('Analyse & suite', 'Analysis & next') },
 ])
 
 const scrollProgress = ref(0)
@@ -601,7 +601,7 @@ onBeforeUnmount(() => {
                 <span class="step-index">03</span>
                 <div>
                   <strong>{{ t('Afficher la marge d’incertitude', 'Show the uncertainty margin') }}</strong>
-                  <span>{{ t('La bande est nominale à 80 % ; sa couverture empirique est de 63,9 % sur 2020–2025. C’est un indicateur, pas une garantie.', 'The band is nominal 80%; empirical coverage is 63.9% over 2020–2025. Treat it as an indicator, not a guarantee.') }}</span>
+                  <span>{{ t('La bande vient de la baseline DB v2.0 ; sa couverture n’est pas établie. L’analyse exploratoire rapporte 63,9 % pour son propre intervalle (cible 80 %) : un indicateur, pas une garantie.', 'The band comes from the DB v2.0 baseline; its coverage is not established. The exploratory analysis reports 63.9% for its own interval (80% target): an indicator, not a guarantee.') }}</span>
                 </div>
               </li>
             </ol>
@@ -812,17 +812,17 @@ onBeforeUnmount(() => {
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">05 — {{ t('Fiabilité & suite', 'Proof & future') }}</p>
+              <p class="kicker reveal">05 — {{ t('Analyse & suite', 'Analysis & next') }}</p>
               <h2 class="display display-lg reveal reveal-delay-1">
-                {{ t('Testé sur des années jamais vues.', 'Tested on unseen years.') }}<br />
+                {{ t('Évalué sur 2020–2025.', 'Evaluated on 2020–2025.') }}<br />
                 <em>{{ t('Les limites sont publiées.', 'The limits are published.') }}</em>
               </h2>
             </div>
             <p class="lede reveal reveal-delay-2">
               {{
                 t(
-                  'Avant de publier ces courbes, nous avons testé notre méthode à l’aveugle sur 6 années complètes (2020–2025). Voici simplement ce qu’elle sait faire et ce qu’elle ne mesure pas.',
-                  'Before publishing these curves, we blind-tested the method across 6 unseen years (2020–2025). Here is plainly what works and what the limits are.',
+                  'Nous avons évalué la méthode sur 6 années complètes (2020–2025), déjà examinées pendant sa mise au point. Ces résultats exploratoires sont en revue scientifique : voici ce qu’ils montrent et ce qu’ils ne mesurent pas.',
+                  'We evaluated the method over 6 full years (2020–2025), already examined during its development. These exploratory results are under scientific review: here is what they show and what they do not measure.',
                 )
               }}
             </p>
@@ -924,8 +924,8 @@ onBeforeUnmount(() => {
               {{ t('Archive vérifiée (SHA-256) :', 'Verified archive (SHA-256):') }}
               <strong>{{
                 dataSourceMode === 'live'
-                  ? t('Base géographique en direct', 'Live geographic database')
-                  : t('Instantané de base vérifié', 'Verified database snapshot')
+                  ? t('API Django et instantanés locaux, provenance variable', 'Django API and local snapshots, provenance varies')
+                  : t('API partielle ou instantanés locaux, provenance variable', 'Partial API or local snapshots, provenance varies')
               }}</strong>
               — {{ formatCount(composition.gaTotal) }}
               {{
@@ -954,7 +954,7 @@ onBeforeUnmount(() => {
                 </a>
               </li>
               <li>{{ t('Limites provinciales du Gabon (9 provinces)', 'Gabon provincial boundaries (9 provinces)') }}</li>
-              <li>{{ t('Test à l’aveugle sur 72 mois (2020–2025)', 'Blind check over 72 months (2020–2025)') }}</li>
+              <li>{{ t('Évaluation exploratoire sur 72 mois (2020–2025)', 'Exploratory evaluation over 72 months (2020–2025)') }}</li>
             </ul>
           </div>
           <div>

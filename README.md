@@ -24,6 +24,7 @@ Comparing raw NASA thermal hotspot detections across 25 years creates two severe
 - **Vocabulary**: type 0 is a product classification, not field validation. The `183` cells are **candidate** persistent sources, not individually confirmed flares.
 - **Status**: SP archive `2000-11 → 2025-12`; no 2026 or NRT data in the demo. The NOAA-20 relay is calibrated, not yet validated on 2026.
 - **Interactive storytelling (`front-bis/`)**: Features a scroll-guided 3D Earth (`Three.js`), yearly and monthly filterable line charts with separate MODIS / S-NPP / NOAA-20 views, an inverted light-to-dark 25-year seasonal calendar (distinguishing routine dry-season burning from unusual spikes), an interactive 9-province map (`MapLibre GL` + PostgreSQL/PostGIS), automatic regional language adaptation (**EN / FR**), and a confidence note under the series and the map.
+- **Legacy dashboard (`frontend/`, M3 milestone H34–H42)**: Vue 3 + TypeScript + Vite + Tailwind 4 + Pinia + ECharts + MapLibre explorer (calendar, comparison chart, anomalies, map, drawn zone, CSV export), offline demo build with embedded Gabon FIRMS data, Playwright journey and axe-core WCAG 2.1 AA audit, TypeScript types aligned with [docs/api-contract.json](docs/api-contract.json) v2.2.0. See its quick start below.
 
 ---
 
@@ -104,6 +105,30 @@ Production type-check, build, and local preview (`http://127.0.0.1:5176`):
 ```bash
 npm run build    # vue-tsc --noEmit -p tsconfig.json && vite build
 npm run preview
+```
+
+### 2b. Legacy dashboard (`frontend/`)
+
+Requires **Node.js `^22.18` or `>=24.12`**. From [frontend/](frontend/):
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+```
+
+| Mode | How to enable | Data source |
+| :--- | :--- | :--- |
+| **Mocks** (dev default) | nothing to do | `frontend/src/mocks/*.json` (region `GA`) |
+| **Django API** | create `frontend/.env.local` with `VITE_USE_MOCKS=false` | `/api/v1` proxied by Vite to `http://localhost:8000` |
+| **Standalone demo** | `npm run build:demo` then `npm run preview:demo` | static `dist-demo/` build with embedded mocks: works without Docker, API or Internet |
+
+Regenerate mocks after a change in `data/raw/gabon/` or the baseline chain (needs `pandas`, `numpy`, `matplotlib`): `py -3.12 scripts/generate_mocks.py` then `npm run format`. Checks:
+
+```bash
+npm run lint
+npm run test:unit -- --run
+npm run build
+npm run test:e2e
 ```
 
 ### 3. M1 Data Pipeline & Validation (Python `3.10+`)

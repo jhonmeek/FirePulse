@@ -1,0 +1,66 @@
+{
+  "artifact_kind": "firepulse-m1-benchmark-audit",
+  "db_provenance": {
+    "database_name": "firepulse",
+    "db_source": "db",
+    "hotspot_observation_count": 292589,
+    "import_batch_count": 48,
+    "observation_max_date": "2025-12-31",
+    "observation_min_date": "2000-11-01",
+    "static_mask_cell_count": 183
+  },
+  "interpretation": "Exact reproduction checks the exported monthly counts and the power-law fit/metrics. Test interval coverage is descriptive only because M2 calibrated the interval quantile on this same test window.",
+  "m2_csv_sha256": "56ff9a9ab63780a21014d1b7c6c4be1a8529bbd8ef814595a6a9bd55484dadcd",
+  "m2_manifest_sha256": "2132deced41f33d65b8c2c13b94a3cbe8a98fba803913a38f67c49986ee328ff",
+  "results": [
+    {
+      "exported_test_metrics": {
+        "bias": 19.69,
+        "mae": 129.71,
+        "r2": 0.9165,
+        "rmse": 205.47
+      },
+      "filter_static": "false",
+      "interval_coverage_is_independent": false,
+      "recomputed_test_metrics": {
+        "bias": 19.69,
+        "mae": 129.71,
+        "r2": 0.9165,
+        "rmse": 205.47
+      },
+      "refit_power_law_p": 0.7916,
+      "refit_power_law_q": 2.6733,
+      "region": "GA",
+      "test_interval_coverage": 0.8194444444444444,
+      "test_interval_covered_months": 59,
+      "test_interval_evaluable_months": 72,
+      "test_months": 72,
+      "train_months": 95
+    },
+    {
+      "exported_test_metrics": {
+        "bias": 41.77,
+        "mae": 100.87,
+        "r2": 0.9189,
+        "rmse": 169.12
+      },
+      "filter_static": "true",
+      "interval_coverage_is_independent": false,
+      "recomputed_test_metrics": {
+        "bias": 41.77,
+        "mae": 100.87,
+        "r2": 0.9189,
+        "rmse": 169.12
+      },
+      "refit_power_law_p": 0.9438,
+      "refit_power_law_q": 1.6529,
+      "region": "GA",
+      "test_interval_coverage": 0.8055555555555556,
+      "test_interval_covered_months": 58,
+      "test_interval_evaluable_months": 72,
+      "test_months": 72,
+      "train_months": 95
+    }
+  ],
+  "schema_version": 1
+}

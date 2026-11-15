@@ -1,0 +1,207 @@
+{
+  "artifact_kind": "firepulse-frozen-mask-experiment",
+  "excluded_type0_by_source_all_years": {
+    "modis": 2612,
+    "viirs-noaa20": 1733,
+    "viirs-snpp": 3630
+  },
+  "flagged_cells": 29,
+  "grid_deg": 0.05,
+  "limitations": [
+    "Thresholds are inherited from M2 and not calibrated to this shorter training period.",
+    "Cell membership uses half-open floor cells; M2 uses ST_Intersects including boundaries.",
+    "Retrospective archive versions and unknown observation coverage remain limitations.",
+    "Prior knowledge of test years prevents a blind final test."
+  ],
+  "normalized_manifest_sha256": "fb6648045d47918cb079ce4c777f509b33a48c56acc7773005100b2ed3260c68",
+  "period": [
+    "2012-02",
+    "2016-12"
+  ],
+  "schema_version": 1,
+  "source_calendar_sha256": "3311a0da8199ec3024b8b52380980039ff985c11d9cc1dbde28cbc1f72e65ca2",
+  "thresholds": {
+    "snpp_months": 48,
+    "type23": 20
+  },
+  "variants": {
+    "masked": {
+      "artifact_kind": "firepulse-m1-temporal-experiment",
+      "calendar_sha256": "e52992c0105a70fbc381a743fb8cd0679aa837439aafa54bc23e9d79fb3d5d72",
+      "eligible_months": {
+        "calibrate": 36,
+        "evaluate": 36,
+        "select": 36,
+        "train": 59
+      },
+      "evaluation": {
+        "coverage": 0.6944444444444444,
+        "covered": 25,
+        "mean_width": 250.19490841685717,
+        "metrics": {
+          "bias": 84.98663376030522,
+          "mae": 124.82085626216917,
+          "n": 36,
+          "r2": 0.9357479046482454,
+          "rmse": 206.9872194572248
+        }
+      },
+      "excluded_months": {
+        "calibrate": [],
+        "evaluate": [],
+        "select": [],
+        "train": []
+      },
+      "fit": {
+        "power_p": 0.9114085130409411,
+        "power_q": 1.8648025239915604,
+        "ratio": 4.027562446167098
+      },
+      "interval": {
+        "calibration_rank": 30,
+        "nominal_level": 0.8,
+        "radius_count_units": 126.11927925155612
+      },
+      "limitations": [
+        "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
+        "Type-0 counts; mask frozen at end of training",
+        "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+        "2023-2025 was previously inspected, not a blind final holdout.",
+        "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+        "NOAA-20 bridge and custom-region uncertainty not evaluated."
+      ],
+      "schema_version": 1,
+      "selected_model": "power",
+      "selection_metrics": {
+        "identity": {
+          "bias": -508.5,
+          "mae": 508.5,
+          "n": 36,
+          "r2": -0.10043989687533106,
+          "rmse": 717.8529329419316
+        },
+        "power": {
+          "bias": -42.64195765899186,
+          "mae": 75.58158745300312,
+          "n": 36,
+          "r2": 0.9753996085938638,
+          "rmse": 107.33054234739367
+        },
+        "ratio": {
+          "bias": -31.658914728682127,
+          "mae": 87.40223944875108,
+          "n": 36,
+          "r2": 0.9721128944871634,
+          "rmse": 114.27573816502766
+        }
+      },
+      "windows": {
+        "calibrate": [
+          "2020-01",
+          "2022-12"
+        ],
+        "evaluate": [
+          "2023-01",
+          "2025-12"
+        ],
+        "select": [
+          "2017-01",
+          "2019-12"
+        ],
+        "train": [
+          "2012-02",
+          "2016-12"
+        ]
+      }
+    },
+    "unmasked": {
+      "artifact_kind": "firepulse-m1-temporal-experiment",
+      "calendar_sha256": "dea03d8d011244ec161ceb7e36056718e0a7c3533f447d55c0fd75ca900a9ed6",
+      "eligible_months": {
+        "calibrate": 36,
+        "evaluate": 36,
+        "select": 36,
+        "train": 59
+      },
+      "evaluation": {
+        "coverage": 0.6111111111111112,
+        "covered": 22,
+        "mean_width": 228.12502236343133,
+        "metrics": {
+          "bias": 94.6498356043018,
+          "mae": 135.9154242727828,
+          "n": 36,
+          "r2": 0.9226293978562211,
+          "rmse": 229.1998912446439
+        }
+      },
+      "excluded_months": {
+        "calibrate": [],
+        "evaluate": [],
+        "select": [],
+        "train": []
+      },
+      "fit": {
+        "power_p": 0.9641549795450624,
+        "power_q": 1.549715704142539,
+        "ratio": 3.938557596597593
+      },
+      "interval": {
+        "calibration_rank": 30,
+        "nominal_level": 0.8,
+        "radius_count_units": 114.46804158587736
+      },
+      "limitations": [
+        "Country file geometry is unverified; M2 PostGIS values are not directly comparable.",
+        "Type-0 counts; no static mask",
+        "Observation coverage unknown; requiring observed_detections_recorded for each platform may introduce selection bias.",
+        "2023-2025 was previously inspected, not a blind final holdout.",
+        "Time dependence invalidates an automatic exchangeability coverage guarantee.",
+        "NOAA-20 bridge and custom-region uncertainty not evaluated."
+      ],
+      "schema_version": 1,
+      "selected_model": "power",
+      "selection_metrics": {
+        "identity": {
+          "bias": -519.0555555555555,
+          "mae": 519.0555555555555,
+          "n": 36,
+          "r2": -0.11526308942991359,
+          "rmse": 730.4060134229759
+        },
+        "power": {
+          "bias": -35.62655995085732,
+          "mae": 87.68819457482442,
+          "n": 36,
+          "r2": 0.9731514623849091,
+          "rmse": 113.3276787358299
+        },
+        "ratio": {
+          "bias": -24.153480328577604,
+          "mae": 90.88507827345943,
+          "n": 36,
+          "r2": 0.9727327787009042,
+          "rmse": 114.20789236223902
+        }
+      },
+      "windows": {
+        "calibrate": [
+          "2020-01",
+          "2022-12"
+        ],
+        "evaluate": [
+          "2023-01",
+          "2025-12"
+        ],
+        "select": [
+          "2017-01",
+          "2019-12"
+        ],
+        "train": [
+          "2012-02",
+          "2016-12"
+        ]
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ const props = withDefaults(
   defineProps<{
     reducedMotion?: boolean
     archiveEnd?: string
-    noaaBridgeRatio?: number
+    noaaBridgeRatio?: number | null
   }>(),
   {
     reducedMotion: false,
@@ -17,7 +17,9 @@ const props = withDefaults(
   },
 )
 
-const noaaDiffPct = computed(() => Math.abs(Math.round((props.noaaBridgeRatio - 1) * 1000) / 10))
+const noaaDiffPct = computed(() =>
+  props.noaaBridgeRatio == null ? null : Math.abs(Math.round((props.noaaBridgeRatio - 1) * 1000) / 10),
+)
 </script>
 
 <template>
@@ -71,7 +73,15 @@ const noaaDiffPct = computed(() => Math.abs(Math.round((props.noaaBridgeRatio - 
           <span class="relay-tag is-next">{{ t('Relais préparé', 'Relay prepared') }}</span>
         </div>
         <h3>{{ t('Successeur (VIIRS NOAA-20)', 'Successor (VIIRS NOAA-20)') }}</h3>
-        <p>
+        <p v-if="props.noaaBridgeRatio == null || noaaDiffPct == null">
+          {{
+            t(
+              'En orbite depuis 2018 à la même résolution (375 m). Ratio de calibration indisponible dans cet artefact. Le relais reste à valider sur les données 2026, absentes de cette archive.',
+              'Operating since 2018 at the same resolution (375 m). Calibration ratio unavailable in this artifact. The relay still needs validation on 2026 data, absent from this archive.',
+            )
+          }}
+        </p>
+        <p v-else>
           {{
             t(
               `En orbite depuis 2018 à la même résolution (375 m). Sur la période commune 2018–2019, le ratio de calibration mesuré est de ${formatDecimal(props.noaaBridgeRatio, 3)} (~${formatDecimal(noaaDiffPct, 1)} % d'écart). Le relais reste à valider sur les données 2026, absentes de cette archive.`,
