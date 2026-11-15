@@ -39,3 +39,7 @@ data/raw/*.zip
 Thumbs.db
 .vscode/
 .idea/
+
+# MCD12Q1 / hotspot typing: rebuildable cache and detection-level export
+data/raw/mcd12q1/ornl-cache/
+data/processed/hotspot-types/*.csv.gz
