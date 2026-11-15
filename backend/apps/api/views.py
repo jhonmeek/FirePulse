@@ -2,13 +2,14 @@
 
 import csv
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.contrib.gis.db.models.functions import AsGeoJSON
 from django.db import DatabaseError, connection
 from django.db.models import Count, Max, Min, Sum
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -87,6 +88,61 @@ def _in_month_window(m_date: date, start_month: date | None, end_month: date | N
     if end_month and m_date > end_month:
         return False
     return True
+
+
+@api_view(["GET"])
+def recent_unknown_detections_view(request):
+    """Expose recent raw NRT detections with unknown FIRMS type, outside filtered series."""
+    try:
+        days = int(request.query_params.get("days", "2"))
+        limit = int(request.query_params.get("limit", "200"))
+    except ValueError:
+        return bad_request("days and limit must be integers.")
+    if not 1 <= days <= 5 or not 1 <= limit <= 1000:
+        return bad_request("days must be 1..5 and limit must be 1..1000.")
+    region_code = request.query_params.get("region", "GA")
+
+    try:
+        region = Region.objects.filter(code=region_code).only("geom").first()
+        if region is None:
+            return bad_request("Unknown region.")
+        since = timezone.now() - timedelta(days=days)
+        rows = (
+            HotspotObservation.objects.filter(
+                is_nrt=True, hotspot_type__isnull=True, counts_in_aggregates=True,
+                acquired_at__gte=since, position__within=region.geom,
+            )
+            .annotate(geojson_text=AsGeoJSON("position"))
+            .values("id", "geojson_text", "source", "satellite", "acquired_at", "frp",
+                    "confidence_tier", "product_version", "is_static_masked")
+            .order_by("-acquired_at", "-id")[:limit]
+        )
+        features = [
+            {
+                "type": "Feature",
+                "geometry": json.loads(row["geojson_text"]),
+                "properties": {
+                    "id": row["id"], "source": row["source"],
+                    "satellite": row["satellite"],
+                    "acquired_at": row["acquired_at"].isoformat(),
+                    "frp": row["frp"], "confidence_tier": row["confidence_tier"],
+                    "hotspot_type": None, "is_static_masked": row["is_static_masked"],
+                    "processing_level": "NRT", "product_version": row["product_version"],
+                    "interpretation": "thermal_detection_type_unknown",
+                },
+            }
+            for row in rows
+        ]
+    except DatabaseError:
+        return offline_unavailable_response("Recent NRT detections require the live PostGIS database.")
+    response = Response({
+        "type": "FeatureCollection", "features": features,
+        "region": region_code, "since": since.isoformat(), "days": days,
+        "provenance": "NASA FIRMS NRT raw observations; type unavailable; not part of the filtered vegetation-fire series.",
+        "caution": "Thermal detections are not confirmed wildfires; NRT records may be revised.",
+    })
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @api_view(["GET"])

@@ -75,8 +75,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-firepulse}
       POSTGRES_USER: ${POSTGRES_USER:-firepulse}
@@ -100,7 +99,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A config worker --loglevel=INFO --concurrency=1
+    command: >
+      sh -c 'if [ "$$FIRMS_NRT_ENABLED" = "true" ] && [ -z "$$FIRMS_MAP_KEY" ]; then
+        echo "NRT: FIRMS_MAP_KEY est vide. Renseigner la cle dans le .env local de ce worktree." >&2;
+        exit 1;
+      fi;
+      exec celery -A config worker --loglevel=INFO --concurrency=1'
 
   celery-beat:
     profiles: ["nrt"]
@@ -108,8 +112,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file:
-      - path: .env
-        required: false
+      - .env
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       FIRMS_NRT_ENABLED: ${FIRMS_NRT_ENABLED:-false}

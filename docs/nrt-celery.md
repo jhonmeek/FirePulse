@@ -1,6 +1,8 @@
 # Acquisition FIRMS quasi temps réel
 
-Le flux périodique est désactivé par défaut. Pour l'activer localement, configurer `FIRMS_MAP_KEY` et `FIRMS_NRT_ENABLED=true` dans `.env`, puis lancer `docker compose --profile nrt up -d --build`. Le planificateur Celery Beat soumet la tâche selon `FIRMS_NRT_INTERVAL_SECONDS` (3600 s par défaut).
+Le flux périodique est désactivé par défaut. Depuis la racine de **ce worktree**, créer son propre fichier local avec `cp .env.example .env` (PowerShell : `Copy-Item .env.example .env`). Le `.env` d'un autre worktree n'est pas utilisé par Compose. Renseigner `FIRMS_MAP_KEY` et `FIRMS_NRT_ENABLED=true` dans ce fichier, sans jamais mettre la clé dans une commande, un journal ou Git. Vérifier seulement la présence du fichier avec `test -f .env` (PowerShell : `Test-Path .env`), puis lancer `docker compose --profile nrt up -d --build`.
+
+Si `.env` manque, Compose refuse de créer les services NRT qui en dépendent : recréer le fichier local dans ce worktree. Si le fichier existe mais que la clé est vide avec NRT activé, le worker s'arrête avec un diagnostic explicite sans afficher la clé. Consulter `docker compose --profile nrt ps` et les journaux du worker pour confirmer son démarrage. Éviter `docker compose config` sans filtrage : sa sortie peut contenir des secrets. Le planificateur Celery Beat soumet la tâche selon `FIRMS_NRT_INTERVAL_SECONDS` (3600 s par défaut).
 
 Le worker demande une fenêtre glissante NOAA-20 NRT de deux jours UTC par défaut (`FIRMS_NRT_LOOKBACK_DAYS`, entre 1 et 5), conserve la réponse brute dans un dossier horodaté de `data/nrt`, puis crée un CSV dérivé limité aux points strictement dans la frontière GA. Seul ce CSV est transmis à `import_firms`. Le manifeste dérivé garde les empreintes du CSV brut et du CSV filtré. Une réponse sans point dans GA est conservée comme acquisition, sans import.
 
@@ -11,6 +13,8 @@ Les groupes composés uniquement d'observations SP conservent leur comptage hist
 Cette limite suit la documentation officielle [NASA FIRMS sur les archives](https://firms.modaps.eosdis.nasa.gov/download/) et [sur les produits de l'API](https://firms.modaps.eosdis.nasa.gov/content/academy/data_api/firms_api_use.html) : les données NRT peuvent être remplacées par des données standard destinées aux analyses scientifiques.
 
 **Visibilité API des observations sans `type` :** elles restent consultables dans les points bruts (`/api/v1/hotspots/?mode=points&region=GA&month=2026-11&filter_static=false`) avec `hotspot_type: null`, ainsi que dans l'export de points (`/api/v1/export/?dataset=points&region=GA&month=2026-11&filter_static=false`) avec une colonne `hotspot_type` vide. Avec `filter_static=true` (valeur par défaut), ces deux réponses les excluent : seules les observations de `hotspot_type=0` **et** `is_static_masked=false` sont retenues. La même règle s'applique aux agrégats mensuels filtrés ; les agrégats `filter_static=false` comptent les observations retenues après la déduplication décrite ci-dessus, y compris celles de type inconnu. Le type inconnu n'est donc ni déclaré feu de végétation ni perdu des données brutes.
+
+**Contrat pour M3 :** `GET /api/v1/recent-unknown-detections/?region=GA&days=2&limit=200` renvoie une `FeatureCollection` de points NRT récents dont le type manque, avec source, satellite, date UTC, version et une mise en garde. `days` vaut de 1 à 5 et `limit` de 1 à 1000. Cette route exige la base PostGIS ; elle ne remplace pas la série harmonisée et ne classe aucun point comme incendie. M3 peut l'afficher sous « détections thermiques récentes non classées » dans un volet distinct.
 
 Commandes de suivi :
 
