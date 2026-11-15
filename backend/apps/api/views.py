@@ -475,7 +475,7 @@ def hotspots_view(request):
         features: list[dict] = []
 
         if mode == "points":
-            qs = HotspotObservation.objects.all()
+            qs = HotspotObservation.objects.filter(counts_in_aggregates=True)
             if filter_static:
                 qs = qs.filter(hotspot_type=0, is_static_masked=False)
             if month_date:
@@ -809,7 +809,7 @@ def _export_points_csv(
                 return response
 
         spatial_geom = custom_geom or reg.geom
-        qs = HotspotObservation.objects.all()
+        qs = HotspotObservation.objects.filter(counts_in_aggregates=True)
         if filter_static:
             qs = qs.filter(hotspot_type=0, is_static_masked=False)
         if month_date:

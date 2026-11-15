@@ -547,6 +547,69 @@ class FirePulseModelsAndApiTests(TestCase):
         self.assertEqual(with_geom.status_code, 200)
         self.assertEqual(with_geom.json()["regions"][0]["geometry"]["type"], "MultiPolygon")
 
+    def test_missing_firms_type_is_visible_only_in_raw_point_api(self) -> None:
+        unknown = HotspotObservation.objects.create(
+            batch=self.batch,
+            source="viirs-noaa20",
+            satellite="N20",
+            instrument="VIIRS",
+            acquired_at=datetime(2024, 8, 16, 13, 0, tzinfo=timezone.utc),
+            position=Point(11.6, -1.6, srid=4326),
+            confidence_raw="n",
+            confidence_tier="nominal",
+            daynight="D",
+            hotspot_type=None,
+            is_static_masked=False,
+            product_version="2.0NRT",
+            is_nrt=True,
+            original_hash="c" * 64,
+        )
+        self.assertIsNone(unknown.hotspot_type)
+        for hotspot_type, is_static_masked, observation_hash in (
+            (0, True, "d" * 64),
+            (2, False, "e" * 64),
+        ):
+            HotspotObservation.objects.create(
+                batch=self.batch,
+                source="viirs-noaa20",
+                satellite="N20",
+                instrument="VIIRS",
+                acquired_at=datetime(2024, 8, 17, 13, hotspot_type, tzinfo=timezone.utc),
+                position=Point(11.7 + hotspot_type / 100, -1.7, srid=4326),
+                confidence_raw="n",
+                confidence_tier="nominal",
+                daynight="D",
+                hotspot_type=hotspot_type,
+                is_static_masked=is_static_masked,
+                product_version="2.0NRT",
+                is_nrt=True,
+                original_hash=observation_hash,
+            )
+
+        url = "/api/v1/hotspots/?mode=points&region=GA&month=2024-08&limit=10"
+        raw = self.client.get(f"{url}&filter_static=false")
+        self.assertEqual(raw.status_code, 200)
+        raw_types = [feature["properties"]["hotspot_type"] for feature in raw.json()["features"]]
+        self.assertCountEqual(raw_types, [None, 0, 0, 2])
+
+        filtered = self.client.get(f"{url}&filter_static=true")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual(
+            [feature["properties"]["hotspot_type"] for feature in filtered.json()["features"]],
+            [0],
+        )
+
+        export_url = "/api/v1/export/?dataset=points&region=GA&month=2024-08"
+        raw_export = self.client.get(f"{export_url}&filter_static=false")
+        self.assertEqual(raw_export.status_code, 200)
+        raw_rows = list(csv.DictReader(StringIO(raw_export.content.decode("utf-8"))))
+        self.assertCountEqual([row["hotspot_type"] for row in raw_rows], ["", "0", "0", "2"])
+
+        filtered_export = self.client.get(f"{export_url}&filter_static=true")
+        self.assertEqual(filtered_export.status_code, 200)
+        filtered_rows = list(csv.DictReader(StringIO(filtered_export.content.decode("utf-8"))))
+        self.assertEqual([row["hotspot_type"] for row in filtered_rows], ["0"])
+
     def test_health_returns_503_json_on_database_error(self) -> None:
         with patch("apps.api.views.connection.cursor", side_effect=DatabaseError("db offline")):
             res = self.client.get("/api/v1/health/")

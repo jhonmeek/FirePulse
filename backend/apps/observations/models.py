@@ -124,6 +124,7 @@ class HotspotObservation(models.Model):
     is_static_masked = models.BooleanField(default=False, db_index=True)
     product_version = models.CharField(max_length=30)
     is_nrt = models.BooleanField(default=False, db_index=True)
+    counts_in_aggregates = models.BooleanField(default=True, db_index=True)
     original_hash = models.CharField(max_length=64, unique=True)
 
     class Meta:
