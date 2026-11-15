@@ -54,7 +54,7 @@ const chapters = [
   { id: 'translate', label: 'La traduction' },
   { id: 'calendar', label: 'Le calendrier' },
   { id: 'map', label: 'La carte' },
-  { id: 'proof', label: 'La preuve' },
+  { id: 'proof', label: 'Analyse exploratoire' },
   { id: 'contribution', label: 'Notre apport' },
   { id: 'future', label: 'Demain' },
   { id: 'explorer', label: 'Explorer' },
@@ -68,9 +68,10 @@ const globePoints = computed(() => buildGlobePoints())
 const validationCoverageLabel = `${(validation.conformal.coverage_test_q80_calibration * 100)
   .toFixed(1)
   .replace('.', ',')} %`
-const validationAnomalyR2Label = (validation.models.power_law_log1p?.anomaly.r2 ?? 0)
-  .toFixed(2)
-  .replace('.', ',')
+const validationAnomalyR2 = validation.models.power_law_log1p?.anomaly.r2
+const validationAnomalyR2Label = validationAnomalyR2 == null
+  ? '—'
+  : validationAnomalyR2.toFixed(2).replace('.', ',')
 
 const chartPoints = computed(() =>
   staticSeries.value.map((p) => ({
@@ -292,7 +293,7 @@ onBeforeUnmount(() => {
                 <span aria-hidden="true">→</span>
               </button>
               <button type="button" class="btn btn-ghost" @click="navigate('proof')">
-                Voir la preuve
+                Voir l’analyse exploratoire
               </button>
             </div>
 
@@ -493,9 +494,8 @@ onBeforeUnmount(() => {
             <p class="benchmark-note reveal reveal-delay-4">
               Benchmark DB v2.0 : train 2012–2019, test 2020–2025, masque all-years — MAE
               {{ formatDecimal(maeBefore, 1) }} → {{ formatDecimal(maeAfter, 1) }}, R²
-              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. La validation
-              renforcée (plus bas) change le protocole : 3 temps et masque gelé, donc les chiffres
-              diffèrent — c’est précisément le sujet de la preuve.
+              {{ formatDecimal(r2Before, 3) }} → {{ formatDecimal(r2After, 3) }}. L’analyse exploratoire ci-dessous utilise un autre protocole : trois périodes et un masque
+              gelé. Les résultats ne sont pas directement interchangeables.
             </p>
           </div>
 
@@ -520,7 +520,7 @@ onBeforeUnmount(() => {
               <p class="panel-caption">
                 La ligne pointillée est la série brute après retrait des torchères. La ligne
                 lumineuse est l’échelle VIIRS. La bande est celle de la baseline DB v2.0 ; sa
-                couverture empirique est mesurée dans la preuve renforcée.
+                couverture n’est pas établie par l’analyse exploratoire ci-dessous.
               </p>
             </div>
           </div>
@@ -557,8 +557,8 @@ onBeforeUnmount(() => {
 
           <p class="calendar-note reveal reveal-delay-2">
             Le calendrier et sa bande d’incertitude restent ceux de la baseline DB v2.0 (API live
-            ou instantané), pour rester cohérents avec l’existant. La couverture empirique de cette
-            bande ({{ validationCoverageLabel }}) est mesurée dans la preuve renforcée.
+            ou instantané), pour rester cohérents avec l’existant. L’analyse exploratoire ci-dessous rapporte une couverture de {{ validationCoverageLabel }}
+            pour son propre intervalle ; elle ne valide pas cette bande.
           </p>
 
           <div class="feature-grid">
@@ -622,7 +622,7 @@ onBeforeUnmount(() => {
         <div class="shell">
           <div class="section-head">
             <div>
-              <p class="kicker reveal">06 — La preuve</p>
+              <p class="kicker reveal">06 — Analyse exploratoire</p>
               <h2 class="display display-lg reveal reveal-delay-1">
                 Ce que nous explorons.<br /><em>Et les limites à vérifier.</em>
               </h2>
@@ -676,7 +676,7 @@ onBeforeUnmount(() => {
 
           <div class="contribution-grid">
             <article class="contribution-card reveal">
-              <span class="roadmap-horizon">01 — Preuve</span>
+              <span class="roadmap-horizon">01 — Analyse</span>
               <h3>Un protocole en revue</h3>
               <p>
                 L'artefact initial sépare les périodes d'ajustement et de test, mais son masque
@@ -701,10 +701,10 @@ onBeforeUnmount(() => {
             </article>
             <article class="contribution-card reveal reveal-delay-3">
               <span class="roadmap-horizon">04 — Passage à l’échelle</span>
-              <h3>Une méthode transférable</h3>
+              <h3>Une méthode à explorer ailleurs</h3>
               <p>
-                Le protocole s’applique au Bassin du Congo, à la FRP, à NOAA-21 et à la surface
-                brûlée. C’est une brique pour un produit NASA, pas seulement une démo gabonaise.
+                L’application au Bassin du Congo, à la FRP, à NOAA-21 et à la surface brûlée reste
+                à étudier et à valider.
               </p>
             </article>
           </div>
@@ -828,7 +828,7 @@ onBeforeUnmount(() => {
             <div>
               <span class="recap-number">04</span>
               <p>
-                Un capteur tenu à l’écart (NOAA-20), un calendrier, une carte et un CSV utilisables.
+                Une évaluation exploratoire NOAA-20, un calendrier, une carte et un CSV.
               </p>
             </div>
           </div>
@@ -887,7 +887,7 @@ onBeforeUnmount(() => {
               </li>
               <li>Backend PostGIS / Django — API v1</li>
               <li>Baseline harmonisée v2.0, en revue M1</li>
-              <li>Validation renforcée : 3 temps, masque gelé, couverture mesurée</li>
+              <li>Analyse exploratoire : 3 temps, masque gelé, couverture à examiner</li>
             </ul>
           </div>
           <div>

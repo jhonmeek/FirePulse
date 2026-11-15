@@ -90,8 +90,8 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
 
 <template>
   <div class="validation">
-    <p class="v-note v-warning" role="status">
-      Résultats exploratoires en revue scientifique, non validés. Le masque utilise la période
+    <p class="v-note v-warning" role="note">
+      Résultats exploratoires en revue scientifique, non validés. Dans l'artefact affiché, le masque utilise la période
       de calibration, les mois sans détection ne prouvent pas une couverture complète et le
       quantile utilisé ne justifie pas une garantie conforme. Les années de test ont déjà été examinées.
       Les chiffres affichés proviennent de l'artefact initial, antérieur aux corrections de calcul en cours.
@@ -226,17 +226,20 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
 
       <article class="panel panel-pad v-panel">
         <div class="panel-label">
-          <span class="tiny-label">Capteur tenu à l'écart</span>
+          <span class="tiny-label">Évaluation NOAA-20 exploratoire</span>
           <span class="tag cool">NOAA-20</span>
         </div>
         <div class="v-held">
           <div>
             <span class="v-held-label">NOAA-20 · test 2020–2025</span>
-            <strong class="v-held-value">R² {{ fmtR2(noaa20.anomaly.r2) }}</strong>
+            <span class="v-held-note">{{ noaa20.role }}</span>
+            <strong class="v-held-value">R² {{ fmtR2(noaa20.anomaly?.r2) }}</strong>
             <span class="v-held-note">
-              anomalies · MAE {{ fmtMetric(noaa20.raw.mae) }} · ratio
+              anomalies · MAE {{ fmtMetric(noaa20.raw?.mae) }} · ratio
               {{ fmtQ(noaa20.ratio_noaa20_to_snpp_calibration) }}
             </span>
+            <span v-if="noaa20.limitation" class="v-held-note">{{ noaa20.limitation }}</span>
+            <span v-if="noaa20.ratio_noaa20_to_snpp_calibration === null" class="v-held-note">Évaluation indisponible : ratio de calibration absent.</span>
           </div>
           <div class="v-held-negative">
             <span class="v-held-label">Terra → Aqua · contrôle négatif</span>
@@ -318,7 +321,7 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
       <article class="panel panel-pad v-panel">
         <div class="panel-label">
           <span class="tiny-label">Sensibilité du masque</span>
-          <span class="tag">2000–2019</span>
+          <span class="tag">{{ validation.mask.frozen_on }}</span>
         </div>
         <table class="v-table v-table-compact">
           <thead>
@@ -358,7 +361,7 @@ const coverageLeaky = conformal.coverage_test_q80_leaky
             <strong>sur les anomalies</strong> (R² 0,79 vs 0,73 / 0,67 / 0,64).
           </li>
           <li>
-            L'évaluation exploratoire NOAA-20 donne un R² d'anomalies de 0,87 ; son indépendance
+            L'évaluation exploratoire NOAA-20 donne un R² d'anomalies de {{ fmtR2(noaa20.anomaly?.r2) }} ; son indépendance
             est limitée par la construction du masque et du ratio de calibration.
           </li>
           <li>

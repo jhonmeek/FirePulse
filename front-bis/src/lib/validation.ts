@@ -42,7 +42,7 @@ export interface ValidationReport {
     cells_frozen: number
     cells_all_years: number
   }
-  params: Record<string, number>
+  params: Record<string, number | null>
   models: Record<string, ValidationModel>
   conformal: {
     nominal: number
@@ -57,10 +57,11 @@ export interface ValidationReport {
   held_out: {
     noaa20: {
       role: string
-      ratio_noaa20_to_snpp_calibration: number
+      ratio_noaa20_to_snpp_calibration: number | null
       calibration_months: number
-      raw: ValidationMetrics
-      anomaly: ValidationMetrics
+      raw: ValidationMetrics | null
+      anomaly: ValidationMetrics | null
+      limitation?: string
     }
     terra_to_aqua: {
       role: string

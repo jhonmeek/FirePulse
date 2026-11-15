@@ -16,7 +16,7 @@ class InputValidationTests(unittest.TestCase):
         self.assertEqual(module.split_conformal_quantile(list(range(1, 25)), .8), 20)
         self.assertEqual(module.split_conformal_quantile(list(range(1, 25)), .9), 23)
         self.assertEqual(module.split_conformal_quantile([1, 1, 2, 2], .6), 2)
-        for scores, level in (([], .8), ([1], .99), ([1], 1), ([float('nan')], .5)):
+        for scores, level in (([], .8), ([1], .99), ([1], 1), ([float('nan')], .5), ([-1, 2], .5)):
             with self.subTest(scores=scores, level=level), self.assertRaises(ValueError):
                 module.split_conformal_quantile(scores, level)
 
@@ -34,7 +34,7 @@ class InputValidationTests(unittest.TestCase):
 
     def test_missing_sensor_month_is_not_treated_as_zero(self):
         observations = [("2017-01", 2017, "terra", 0, (1, 1))]
-        with self.assertRaisesRegex(ValueError, "Missing recorded sensor-months"):
+        with self.assertRaisesRegex(ValueError, "No detections recorded"):
             module.require_recorded_months(observations, ["2017-01"])
 
     def test_missing_noaa_calibration_does_not_invent_ratio(self):
@@ -81,6 +81,25 @@ class InputValidationTests(unittest.TestCase):
                     source.write_text(f"latitude,longitude,type,acq_date,satellite\n0,10,0,{date},Terra\n", encoding="utf-8")
                     with self.subTest(date=date), self.assertRaises(ValueError):
                         module.load_observations()
+
+    def test_missing_columns_and_unknown_satellite_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for prefix, start in (("modis", 2000), ("viirs-snpp", 2012), ("viirs-jpss1", 2018)):
+                for year in range(start, 2026):
+                    (root / f"{prefix}_{year}_Gabon.csv").write_text("latitude,longitude,type,acq_date,satellite\n", encoding="utf-8")
+            source = root / "modis_2000_Gabon.csv"
+            with patch.object(module, "RAW", root):
+                source.write_text("latitude,longitude\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Missing required columns"):
+                    module.load_observations()
+                source.write_text("latitude,longitude,type,acq_date,satellite\n0,10,0,2000-1-5,Unknown\n", encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Unknown MODIS satellite"):
+                    module.load_observations()
+                source.write_text("latitude,longitude,type,acq_date,satellite\n0,10,0,2000-1-5,Terra\n", encoding="utf-8")
+                observations, inputs = module.load_observations()
+                self.assertEqual(observations[0][0], "2000-01")
+                self.assertEqual(len(inputs), 48)
 
 
 if __name__ == "__main__":

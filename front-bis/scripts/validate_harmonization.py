@@ -178,13 +178,13 @@ def load_observations() -> tuple[list[tuple], list[dict]]:
                         hotspot_type = int(row["type"])
                     except (KeyError, TypeError, ValueError) as exc:
                         raise ValueError(f"Invalid required fields: {path.name}, line {reader.line_num}") from exc
-                    month = (row.get("acq_date") or "")[:7]
                     try:
                         acquired = datetime.strptime(row.get("acq_date") or "", "%Y-%m-%d")
                     except ValueError as exc:
                         raise ValueError(f"Invalid date: {path.name}, line {reader.line_num}") from exc
                     if acquired.year != int(path.name.split("_")[1]):
                         raise ValueError(f"Date outside file year: {path.name}, line {reader.line_num}")
+                    month = acquired.strftime("%Y-%m")
                     satellite = row.get("satellite") or ""
                     if source == "modis":
                         if satellite not in ("Terra", "Aqua"):
@@ -335,7 +335,7 @@ def require_recorded_months(observations: list[tuple], months: list[str]) -> set
     present = {(month, sensor) for month, _year, sensor, _kind, _cell in observations}
     missing = [(month, sensor) for month in months for sensor in ("terra", "aqua", "snpp") if (month, sensor) not in present]
     if missing:
-        raise ValueError(f"Missing recorded sensor-months; coverage unknown: {missing}")
+        raise ValueError(f"No detections recorded for sensor-months; cannot distinguish a true zero from missing coverage: {missing}")
     return present
 
 
@@ -353,6 +353,13 @@ def validate() -> dict:
 
     frozen_mask = build_mask(observations, MASK_MAX_YEAR)
     all_mask = build_mask(observations, ALL_MAX_YEAR)
+    later_cells = all_mask - frozen_mask
+    test_observations = [item for item in observations if TEST[0] <= item[0] <= TEST[1]]
+    residual_mask_diagnostics = {
+        "test_type23_outside_frozen_mask": sum(1 for _, _, _, kind, cell in test_observations if kind in (2, 3) and cell not in frozen_mask),
+        "test_type0_in_later_mask_cells": sum(1 for _, _, _, kind, cell in test_observations if kind == 0 and cell in later_cells),
+        "note": "Retrospective descriptive counts, not confirmed industrial sources or causal contamination.",
+    }
     all_months = aggregate_monthly(observations, frozen_mask)
     rows = month_rows(all_months, ordered)
     by_month = {row["month"]: row for row in rows}
@@ -545,7 +552,7 @@ def validate() -> dict:
         predict_power_law(row["modis"], all_p, all_q) for row in all_test
     ]
     mask_freeze_delta = {
-        "frozen_on": "2000–2017",
+        "frozen_on": f"2000–{MASK_MAX_YEAR}",
         "all_years": "2000–2025",
         "cells_frozen": len(frozen_mask),
         "cells_all": len(all_mask),
@@ -611,7 +618,7 @@ def validate() -> dict:
         )
 
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_kind": "firepulse-harmonization-validation",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {
@@ -629,7 +636,7 @@ def validate() -> dict:
         },
         "mask": {
             "grid_deg": GRID_DEG,
-            "frozen_on": "2000–2017",
+            "frozen_on": f"2000–{MASK_MAX_YEAR}",
             "type23_min": 20,
             "snpp_months_min": 48,
             "cells_frozen": len(frozen_mask),
@@ -653,6 +660,7 @@ def validate() -> dict:
         },
         "by_season": by_season,
         "mask_freeze_delta": mask_freeze_delta,
+        "residual_mask_diagnostics": residual_mask_diagnostics,
         "sensitivity": sensitivity,
         "test_series": test_series,
         "experiments": [
