@@ -6,6 +6,7 @@ import ConfidenceCard from '@/components/ConfidenceCard.vue'
 import CountUp from '@/components/CountUp.vue'
 import FlareSplit from '@/components/FlareSplit.vue'
 import LineChart from '@/components/LineChart.vue'
+import RecentDetections from '@/components/RecentDetections.vue'
 import SeasonTimeline from '@/components/SeasonTimeline.vue'
 import TopBar from '@/components/TopBar.vue'
 import ValidationProof from '@/components/ValidationProof.vue'
@@ -745,6 +746,8 @@ onBeforeUnmount(() => {
           <div class="map-shell reveal reveal-delay-2">
             <HotspotMap :reduced-motion="reducedMotion" />
           </div>
+
+          <RecentDetections />
 
           <ConfidenceCard compact context="map" />
 
