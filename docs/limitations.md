@@ -6,11 +6,6 @@ Source files contain thermal anomaly detections observed from orbit. Detection c
 
 ## Spatial Coverage & Geography
 
-- Les CSV de détections et leurs empreintes ne suffisent pas à mesurer tous les passages exploitables, les nuages ou les pertes de données. La couverture d'observation reste inconnue dans les agrégats M1 de préparation.
-- La disponibilité mensuelle du backend est déduite des bornes `min_date`/`max_date` des lots importés : un mois sans détection à l'intérieur d'un lot est un zéro recensé, un mois hors de toute borne reste une entrée manquante (`null`, régime `missing`) et n'est plus transformé en zéro. Ces bornes ne prouvent pas une couverture satellite complète du mois.
-- Les archives initiales s'arrêtent à 2025. Aucune donnée 2026 n'est ajoutée implicitement, et aucun comptage récent n'est extrapolé pour remplir cette année.
-- La sélection nationale M1 reprend le fichier pays fourni. Le découpage par provinces ou polygones personnalisés demande des frontières versionnées et une règle de sélection spatiale ; il n'est pas validé par ce lot.
-- Une cellule préagrégée intersectant un polygone ne permet pas de connaître exactement le nombre de points dans la portion intersectée.
 - Raw FIRMS CSVs and file manifests cannot capture every satellite overpass, heavy cloud obstruction, dense smoke plume, or telemetry gap. Observation completeness remains `unknown` in M1 preparation aggregates.
 - Standard archive files stop at December 2025 (`2025-12`). No 2026 observations are fabricated or extrapolated to fill incomplete years. The NOAA-20 bridge is calibrated over shared historical overlap but not yet validated on live 2026 detections; post-2026 continuity must be clearly framed as a calibrated projection rather than already-observed 2026 telemetry.
 - Country-level M1 counts rely on NASA country CSV extracts (`GA` scope), whereas M2 PostGIS API endpoints apply exact administrative polygon boundaries (`gabon_adm0.geojson`, `gabon_adm1.geojson`).
@@ -29,6 +24,14 @@ Source files contain thermal anomaly detections observed from orbit. Detection c
 
 - Conformal prediction intervals derived directly from the test window (`v2.0` live baseline) conflate interval calibration with evaluation (`79.2%` leaky empirical coverage). The independent validation protocol in `front-bis/scripts/validate_harmonization.py` addresses this explicitly by freezing the candidate-source mask on `2000–2019`, calibrating `q80` on `2018–2019`, and measuring true blind coverage (`63.9%`) on `2020–2025`.
 - User-drawn custom polygons (`bbox` / `polygon`) display `baseline_iqr` `[p25, p75]` over `2001–2025`, while predictive uncertainty bands remain `null` until region-specific spatial interval calibration is evaluated.
+
+## Predictive Outlook & Model Risk
+
+- The `2026–2035` outlook is a **climatological projection, not a weather forecast**. It combines a smoothed monthly climatology (`2012–2025`) with a conservative province trend; no rainfall, temperature, lightning or ignition forecast is included.
+- The target is **forest-associated `type 0` detections**, not natural fires. FIRMS does not observe ignition cause, and the static `0.05°` micro-mask does not certify that every remaining detection is a vegetation fire.
+- The forest mask is **ESA WorldCover 2021** (tree cover + mangroves, `30%` threshold), kept static across the projection. Land-cover change, deforestation and regrowth are not modeled.
+- Validation is temporal (`2012–2019` train, `2020–2025` test), not a random split. Province-level sample sizes vary; low-signal provinces carry wider uncertainty.
+- The model smooths high-risk probabilities: cells predicted at `30–50%` had higher observed rates in the test window. High classes are therefore **under-estimated**, not over-estimated. Probabilities are indicators, not guarantees.
 
 ## Operational Scope
 

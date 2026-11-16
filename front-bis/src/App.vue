@@ -15,6 +15,7 @@ import ValidationProof from '@/components/ValidationProof.vue'
 // le récit s'affiche sans attendre les moteurs 3D/carte.
 const GlobeScene = defineAsyncComponent(() => import('@/components/GlobeScene.vue'))
 const HotspotMap = defineAsyncComponent(() => import('@/components/HotspotMap.vue'))
+const PredictionExplorer = defineAsyncComponent(() => import('@/components/PredictionExplorer.vue'))
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { useReveal } from '@/composables/useReveal'
 import { useSmoothScroll } from '@/composables/useSmoothScroll'
@@ -51,6 +52,7 @@ const chapters = computed(() => [
   { id: 'calendar', label: t('Le calendrier', 'Calendar') },
   { id: 'map', label: t('La carte', 'Map') },
   { id: 'proof', label: t('Analyse exploratoire & suite', 'Exploratory analysis & future') },
+  { id: 'prediction', label: t('Prévision', 'Outlook') },
 ])
 
 const scrollProgress = ref(0)
@@ -910,6 +912,33 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
+
+      <!-- ============================================================ 06 : PREDICTION -->
+      <section id="prediction" class="chapter prediction-final">
+        <div class="shell">
+          <div class="section-head">
+            <div>
+              <p class="kicker reveal">06 — {{ t('Prévision', 'Outlook') }}</p>
+              <h2 class="display display-lg reveal reveal-delay-1">
+                {{ t('Anticiper les mois à risque,', 'Anticipate risky months,') }}<br />
+                <em>{{ t('pas prédire l’avenir.', 'not predict the future.') }}</em>
+              </h2>
+            </div>
+            <p class="lede reveal reveal-delay-2">
+              {{
+                t(
+                  'À partir de 13 ans de VIIRS et d’un masque forêt, FirePulse estime une probabilité mensuelle de feu forestier pour chaque cellule de 0,25°, pour le Gabon et ses 9 provinces. Ce n’est pas une prévision météo : c’est une projection climatologique, avec sa validation et ses limites.',
+                  'Using 13 years of VIIRS and a forest mask, FirePulse estimates a monthly forest-fire probability for each 0.25° cell, for Gabon and its 9 provinces. This is not a weather forecast: it is a climatological projection, with validation and limits.',
+                )
+              }}
+            </p>
+          </div>
+
+          <div class="reveal reveal-delay-2">
+            <PredictionExplorer />
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="footer">
@@ -1141,6 +1170,8 @@ onBeforeUnmount(() => {
 }
 
 .calendar-shell {
+  position: relative;
+  z-index: 50;
   padding: clamp(16px, 2.4vw, 28px);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1337,6 +1368,13 @@ onBeforeUnmount(() => {
 
 .proof-final {
   padding-bottom: clamp(90px, 11vh, 140px);
+}
+
+.prediction-final {
+  border-top: 1px solid var(--line);
+  background:
+    radial-gradient(60% 50% at 50% 0%, rgba(94, 234, 212, 0.045), transparent 70%),
+    transparent;
 }
 
 .map-cta-bar {

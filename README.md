@@ -17,6 +17,7 @@ Comparing raw NASA thermal hotspot detections across 25 years creates two severe
 - **Separates candidate persistent sources from type-0 detections**: Retains **175,500 type-0 detections outside candidate cells (61.6%)** while masking **183 candidate `0.05°` cells** on both national series and the interactive map. Type 0 is a product classification, not field validation.
 - **Harmonizes 25 years onto one continuous VIIRS scale**: Learns a `power-law log1p` calibration across the **2012–2019** sensor overlap and blind-tests strictly out-of-sample over **72 unseen months (2020–2025)** — cutting average monthly error by **74%** compared to the naive baseline (MAE `460.3` → `120.8`; raw seasonal `R² = 0.918`, anomaly `R² = 0.788`, q80 empirical coverage `63.9%`). See [docs/principe-harmonisation.md](docs/principe-harmonisation.md) and [front-bis/src/data/validation.json](front-bis/src/data/validation.json).
 - **Prepares the post-2026 relay**: **VIIRS Suomi-NPP** operational delivery ended on **November 2, 2026**. FirePulse prepares the **NOAA-20** bridge (operating since 2018; held-out calibration ratio `0.940`, ~`6.0%` average difference), but the relay is **not yet validated on 2026 data**; the demo archive stops in December 2025.
+- **Looks ahead with a calibrated outlook (MVP)**: A dedicated **2026–2035 forest-fire outlook** estimates a monthly probability per `0.25°` forest cell, filterable by province. It is a climatological projection—not a weather forecast—with validation, calibration and limits displayed in the UI. See [`pipeline/prediction/`](pipeline/prediction/) and [`front-bis/src/data/prediction.json`](front-bis/src/data/prediction.json).
 
 ### Reading the Numbers
 - **Scope**: `285,013` detections inside `GA`; `175,500` type-0 detections outside candidate cells (`61.6%`); `109,513` excluded by the full filter (`38.4%`) = `57,934` type 2/3 (`20.3%`) + `51,579` type 0 inside `183` candidate cells (`18.1%`).
@@ -26,6 +27,14 @@ Comparing raw NASA thermal hotspot detections across 25 years creates two severe
 - **Two Frontend Surfaces**:
   - **`front-bis/` (`:5174`, primary scrollytelling app)**: Scroll-guided 3D Earth (`Three.js`), yearly/monthly filterable charts (`MODIS`, `S-NPP`, `NOAA-20`), inverted light-to-dark 25-year seasonal calendar, interactive 9-province + exploratory maritime map (`MapLibre GL`), optional regional **EN / FR** auto-detection, confidence cards, and Vitest unit tests (`npm run test:unit -- --run`).
   - **`frontend/` (`:5173`, M3 explorer & reproducible offline demo)**: Vue 3 + TypeScript + Pinia + ECharts + MapLibre GL explorer with reproducible offline demo build (`npm run build:demo`), Playwright E2E + axe-core WCAG 2.1 AA audit (`npm run test:e2e`), and full Vitest unit coverage (`npm run test:unit -- --run`).
+
+### Predictive Outlook (MVP)
+
+- **Target**: probability of at least one `type 0` detection outside candidate persistent cells in a `0.25°` forest cell, per month.
+- **Method**: smoothed monthly climatology `Beta(1, 4)` over `2012–2025` (VIIRS, homogeneous sensor) plus a conservative province trend for `2026–2035`; forest mask from **ESA WorldCover 2021** (`tree cover` + `mangroves`, threshold `30%`).
+- **Validation** (`2020–2025` holdout): monthly ROC-AUC `0.898`, PR-AUC `0.755`, Brier `0.098`; the top `10%` of cell-months capture `41.6%` of positive cells, the top `20%` capture `68.7%`.
+- **UI**: dedicated `#prediction` section with a province filter, a `2026–2035` × `12`-month calendar, a `0.25°` map, a floating detail card on hover/click, and a confidence note.
+- **Limits**: climatological projection, not a weather forecast; `type 0` is a product classification; the forest mask is static (`2021`); FIRMS coverage is not exhaustive; ignition cause is not observable.
 
 ---
 
@@ -42,7 +51,7 @@ FirePulse/
 ├── data/
 │   ├── boundaries/              # gabon_adm0.geojson (GA) + gabon_adm1.geojson (GA-1..GA-9)
 │   ├── raw/gabon/               # 48 raw NASA FIRMS CSV files (2000–2025) + AttributesReadme.txt
-│   └── processed/               # Reproducible M1 audit, normalized & monthly outputs
+│   └── processed/               # Reproducible M1 audit, normalized, monthly & prediction outputs
 ├── docs/
 │   ├── SPACE_APPS_SUBMISSION.md # Official Global Award submission text & demo scripts
 │   ├── api-contract.json        # Open API v1 response contract (v2.2.0)
@@ -52,9 +61,10 @@ FirePulse/
 │   ├── m1-data-audit.md         # Inventory & quality audit of the 48 FIRMS CSVs
 │   ├── m1-normalization.md      # Normalized dataset schema & monthly aggregation contract
 │   └── HANDOFF.md               # Module ownership & quick-test curl commands
-├── front-bis/                   # Primary storytelling app (Vue 3, TypeScript, Vite, Three.js, MapLibre GL)
+├── front-bis/                   # Primary storytelling app (Vue 3, TypeScript, Vite, Three.js, MapLibre GL) + outlook
 ├── frontend/                    # M3 explorer & reproducible offline demo build (Vue 3, Pinia, ECharts, Playwright)
-├── pipeline/                    # Standard-library Python ETL & audit modules (M1)
+├── pipeline/                    # Python ETL & audit modules (M1)
+│   └── prediction/              # Forest mask + MVP climatology + 2026–2035 outlook
 ├── scripts/                     # Backup, restore & demo preflight scripts
 ├── tests/                       # Python pipeline unit/integration tests
 ├── docker-compose.yml           # PostgreSQL 16 / PostGIS 3.4 (:5433) + Django (:8000)
@@ -83,8 +93,6 @@ docker compose exec backend python manage.py load_regions
 docker compose exec backend python manage.py import_firms
 docker compose exec backend python manage.py build_baseline_series
 ```
-
-- Scheduled FIRMS NRT ingestion (opt-in Docker profile): see [docs/nrt-celery.md](docs/nrt-celery.md).
 
 Verify backend health and test suite:
 
@@ -133,21 +141,6 @@ python -m pipeline.aggregate_monthly --input data/processed/normalized --output 
 python -m pipeline.benchmark_audit --csv data/backups/m1-benchmark-validation/m2_calibration_monthly_series.csv --manifest data/backups/m1-benchmark-validation/manifest.json --output data/processed/benchmark-audit/m1-benchmark-audit.json
 python front-bis/scripts/validate_harmonization.py
 ```
-
-### 4. Hotspot Type: Thermal Nature + Landscape (backend)
-
-[`classify_hotspot`](backend/apps/observations/fire_typing.py) combines two NASA sources per detection: the FIRMS `type` (0 presumed vegetation fire, 1 volcano, 2 other static land source, 3 offshore; missing stays `unavailable`, never `0`) and **MCD12Q1 C6.1 `LC_Type1` (IGBP, 500 m, annual)** land cover at the detection, same year or nearest available. It answers *in which landscape* a hotspot was detected, never *who or what started it* (`cause` is always `unknown`). A heterogeneous 3×3 neighbourhood (dominant class < 60%) gives `mixed` / `indeterminate`.
-
-```bash
-# Download, clean and verify MCD12Q1 2001–2025 over Gabon (NASA ORNL DAAC web service, no account needed)
-docker compose exec backend python manage.py fetch_mcd12q1 --years 2001-2025
-# Classify the 292,589 FIRMS detections and write the validation report
-docker compose exec backend python manage.py classify_hotspots
-```
-
-- **Data**: [`data/raw/mcd12q1/gabon/`](data/raw/mcd12q1/gabon/) (25 GeoTIFF on the native sinusoidal grid + `manifest.json` with SHA-256, histograms and 90/90 independent single-pixel checks). Report: [`data/processed/hotspot-types/gabon-hotspot-types.json`](data/processed/hotspot-types/gabon-hotspot-types.json); the per-detection `*.csv.gz` export and the ORNL cache are rebuildable and not versioned.
-- **Results (inferred vegetation fires)**: savanna 46–52%, grassland 34–41%, tropical forest 11–13% depending on the sensor, while forest covers ~79% of the land: grassland ×10–12 and forest ×0.15 relative to area, 72–79% of fires in June–September, consistent across MODIS, S-NPP and NOAA-20.
-- **Limits**: ~22% of detections are `mixed` (forest–savanna edges); MCD12Q1 class 8 (woody savanna) alternates with forest in some years; land cover is a classification, not ground truth.
 
 ---
 
